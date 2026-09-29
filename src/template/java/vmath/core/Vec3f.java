@@ -1,0 +1,283 @@
+package vmath.core;
+
+import vmath.annotations.DoubleOnly;
+import vmath.annotations.FloatOnly;
+import vmath.annotations.GenerateDouble;
+import vmath.annotations.ValueType;
+import java.nio.FloatBuffer;
+
+/**
+ * Immutable 3-component float vector.
+ *
+ * <p>Valhalla: {@code -Pvalhalla} builds turn {@code @ValueType} into a real
+ * {@code value record}. Never use {@code ==}, {@code synchronized} or identity-based APIs on it.
+ */
+@GenerateDouble
+@ValueType
+public record Vec3f(float x, float y, float z) {
+
+    public static final Vec3f ZERO = new Vec3f(0f, 0f, 0f);
+    public static final Vec3f ONE = new Vec3f(1f, 1f, 1f);
+    public static final Vec3f UNIT_X = new Vec3f(1f, 0f, 0f);
+    public static final Vec3f UNIT_Y = new Vec3f(0f, 1f, 0f);
+    public static final Vec3f UNIT_Z = new Vec3f(0f, 0f, 1f);
+
+    public static Vec3f splat(float s) {
+        return new Vec3f(s, s, s);
+    }
+
+    public Vec3f add(Vec3f o) {
+        return new Vec3f(x + o.x, y + o.y, z + o.z);
+    }
+
+    public Vec3f add(float ox, float oy, float oz) {
+        return new Vec3f(x + ox, y + oy, z + oz);
+    }
+
+    public Vec3f sub(Vec3f o) {
+        return new Vec3f(x - o.x, y - o.y, z - o.z);
+    }
+
+    public Vec3f mul(float s) {
+        return new Vec3f(x * s, y * s, z * s);
+    }
+
+    /** Component-wise product. */
+    public Vec3f mul(Vec3f o) {
+        return new Vec3f(x * o.x, y * o.y, z * o.z);
+    }
+
+    public Vec3f div(float s) {
+        float inv = 1f / s;
+        return new Vec3f(x * inv, y * inv, z * inv);
+    }
+
+    public Vec3f negate() {
+        return new Vec3f(-x, -y, -z);
+    }
+
+    /** {@code this + a * s}. */
+    public Vec3f fma(Vec3f a, float s) {
+        return new Vec3f(x + a.x * s, y + a.y * s, z + a.z * s);
+    }
+
+    public float dot(Vec3f o) {
+        return x * o.x + y * o.y + z * o.z;
+    }
+
+    /** Right-handed cross product. */
+    public Vec3f cross(Vec3f o) {
+        return new Vec3f(
+                y * o.z - z * o.y,
+                z * o.x - x * o.z,
+                x * o.y - y * o.x);
+    }
+
+    public float lengthSquared() {
+        return x * x + y * y + z * z;
+    }
+
+    public float length() {
+        return (float) Math.sqrt(lengthSquared());
+    }
+
+    public float distanceSquared(Vec3f o) {
+        float dx = x - o.x, dy = y - o.y, dz = z - o.z;
+        return dx * dx + dy * dy + dz * dz;
+    }
+
+    public float distance(Vec3f o) {
+        return (float) Math.sqrt(distanceSquared(o));
+    }
+
+    /** Unit vector in the same direction. A zero vector yields NaN components. */
+    public Vec3f normalize() {
+        float inv = 1f / length();
+        return new Vec3f(x * inv, y * inv, z * inv);
+    }
+
+    /** Like {@link #normalize()} but returns {@link #ZERO} for (near-)zero input. */
+    public Vec3f normalizeOrZero() {
+        float len2 = lengthSquared();
+        if (len2 <= 1e-30f) {
+            return ZERO;
+        }
+        float inv = 1f / (float) Math.sqrt(len2);
+        return new Vec3f(x * inv, y * inv, z * inv);
+    }
+
+    public Vec3f lerp(Vec3f o, float t) {
+        return new Vec3f(x + (o.x - x) * t, y + (o.y - y) * t, z + (o.z - z) * t);
+    }
+
+    /** Angle between this and {@code o} in radians, in [0, PI]. */
+    public float angle(Vec3f o) {
+        return (float) Math.atan2(cross(o).length(), dot(o));
+    }
+
+    public Vec3f min(Vec3f o) {
+        return new Vec3f(Math.min(x, o.x), Math.min(y, o.y), Math.min(z, o.z));
+    }
+
+    public Vec3f max(Vec3f o) {
+        return new Vec3f(Math.max(x, o.x), Math.max(y, o.y), Math.max(z, o.z));
+    }
+
+    public Vec3f abs() {
+        return new Vec3f(Math.abs(x), Math.abs(y), Math.abs(z));
+    }
+
+    /**
+     * A unit vector perpendicular to this one. Zero input yields NaN components.
+     */
+    public Vec3f anyPerpendicular() {
+        float ax = Math.abs(x), ay = Math.abs(y), az = Math.abs(z);
+        Vec3f axis = ax <= ay && ax <= az ? UNIT_X : ay <= az ? UNIT_Y : UNIT_Z;
+        return cross(axis).normalize();
+    }
+
+    public float minComponent() {
+        return Math.min(Math.min(x, y), z);
+    }
+
+    public float maxComponent() {
+        return Math.max(Math.max(x, y), z);
+    }
+
+    /** True when no component is NaN or infinite. */
+    public boolean isFinite() {
+        return Float.isFinite(x) && Float.isFinite(y) && Float.isFinite(z);
+    }
+
+    /** Component-wise clamp to {@code [lo, hi]}. */
+    public Vec3f clamp(Vec3f lo, Vec3f hi) {
+        return new Vec3f(Math.min(Math.max(x, lo.x), hi.x), Math.min(Math.max(y, lo.y), hi.y), Math.min(Math.max(z, lo.z), hi.z));
+    }
+
+    public Vec3f clamp(float lo, float hi) {
+        return new Vec3f(Math.min(Math.max(x, lo), hi), Math.min(Math.max(y, lo), hi), Math.min(Math.max(z, lo), hi));
+    }
+
+    /** Clamps every component to [0, 1]. */
+    public Vec3f saturate() {
+        return clamp(0f, 1f);
+    }
+
+    public Vec3f floor() {
+        return new Vec3f((float) Math.floor(x), (float) Math.floor(y), (float) Math.floor(z));
+    }
+
+    public Vec3f ceil() {
+        return new Vec3f((float) Math.ceil(x), (float) Math.ceil(y), (float) Math.ceil(z));
+    }
+
+    /** Fractional part as in GLSL: {@code v - floor(v)}, always in [0, 1). */
+    public Vec3f fract() {
+        return new Vec3f(x - (float) Math.floor(x), y - (float) Math.floor(y), z - (float) Math.floor(z));
+    }
+
+    /** -1, 0 or +1 per component (NaN stays NaN). */
+    public Vec3f sign() {
+        return new Vec3f(Math.signum(x), Math.signum(y), Math.signum(z));
+    }
+
+    /** 0 where the component is below {@code edge}, else 1. */
+    public Vec3f step(float edge) {
+        return new Vec3f(x < edge ? 0f : 1f, y < edge ? 0f : 1f, z < edge ? 0f : 1f);
+    }
+
+    /** Hermite interpolation of each component between {@code e0} and {@code e1}, as in GLSL. */
+    public Vec3f smoothstep(float e0, float e1) {
+        return new Vec3f(smooth(x, e0, e1), smooth(y, e0, e1), smooth(z, e0, e1));
+    }
+
+    private static float smooth(float v, float e0, float e1) {
+        float t = Math.min(Math.max((v - e0) / (e1 - e0), 0f), 1f);
+        return t * t * (3f - 2f * t);
+    }
+
+    /** Mirror around the unit normal {@code n}: {@code this - 2 (this . n) n}. */
+    public Vec3f reflect(Vec3f n) {
+        float d = 2f * dot(n);
+        return new Vec3f(x - d * n.x, y - d * n.y, z - d * n.z);
+    }
+
+    /**
+     * Refraction through a surface with unit normal {@code n} and index ratio {@code eta} (GLSL
+     * {@code refract}). This vector must be a unit incident direction. Returns {@link #ZERO} on total
+     * internal reflection.
+     */
+    public Vec3f refract(Vec3f n, float eta) {
+        float d = dot(n);
+        float k = 1f - eta * eta * (1f - d * d);
+        if (k < 0f) {
+            return ZERO;
+        }
+        float s = eta * d + (float) Math.sqrt(k);
+        return new Vec3f(eta * x - s * n.x, eta * y - s * n.y, eta * z - s * n.z);
+    }
+
+    /** Component of this vector along {@code onto}. Returns {@link #ZERO} when {@code onto} is zero. */
+    public Vec3f project(Vec3f onto) {
+        float d = onto.lengthSquared();
+        if (d == 0f) {
+            return ZERO;
+        }
+        float s = dot(onto) / d;
+        return new Vec3f(onto.x * s, onto.y * s, onto.z * s);
+    }
+
+    /** Component perpendicular to {@code onto}: {@code this - project(onto)}. */
+    public Vec3f reject(Vec3f onto) {
+        return sub(project(onto));
+    }
+
+    /** GLSL {@code faceforward}: this vector, flipped when {@code ref . incident >= 0}. */
+    public Vec3f faceForward(Vec3f incident, Vec3f ref) {
+        return ref.dot(incident) < 0f ? this : negate();
+    }
+
+    public float get(int i) {
+        return switch (i) {
+            case 0 -> x;
+            case 1 -> y;
+            case 2 -> z;
+            default -> throw new IndexOutOfBoundsException(i);
+        };
+    }
+
+    public boolean approxEquals(Vec3f o, float eps) {
+        return Math.abs(x - o.x) <= eps && Math.abs(y - o.y) <= eps && Math.abs(z - o.z) <= eps;
+    }
+
+    public void writeTo(float[] dst, int off) {
+        dst[off] = x;
+        dst[off + 1] = y;
+        dst[off + 2] = z;
+    }
+
+    /** Absolute write at {@code index}; does not change the buffer position. */
+    public void writeTo(FloatBuffer dst, int index) {
+        dst.put(index, x).put(index + 1, y).put(index + 2, z);
+    }
+
+    @FloatOnly
+    public Vec3d toDouble() {
+        return new Vec3d(x, y, z);
+    }
+
+    @DoubleOnly
+    public Vec3f toFloat() {
+        return new Vec3f((float) x, (float) y, (float) z);
+    }
+
+    /**
+     * {@code this - origin}, subtracted in double and then narrowed to float. This is the core of
+     * camera-relative rendering: pass the camera's world position as {@code origin} so vertex
+     * data stays small enough for float precision on the GPU.
+     */
+    @DoubleOnly
+    public Vec3f relativeTo(Vec3d origin) {
+        return new Vec3f((float) (x - origin.x), (float) (y - origin.y), (float) (z - origin.z));
+    }
+}

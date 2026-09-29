@@ -5,6 +5,8 @@ import org.joml.Matrix3dc;
 import org.joml.Matrix3fc;
 import org.joml.Matrix4dc;
 import org.joml.Matrix4fc;
+import org.joml.Matrix4x3dc;
+import org.joml.Matrix4x3fc;
 import org.joml.Quaterniondc;
 import org.joml.Quaternionfc;
 import org.joml.Vector2dc;
@@ -18,12 +20,12 @@ import org.joml.Vector4fc;
  * Tolerance assertions. A component passes when {@code |actual - expected| <= eps * max(1, |expected|)},
  * i.e. {@code eps} is absolute near zero and relative for large magnitudes.
  */
-final class Check {
+public final class Check {
 
     private Check() {
     }
 
-    static void check(boolean ok, int trial, String what) {
+    public static void check(boolean ok, int trial, String what) {
         if (!ok) {
             throw new AssertionError(ctx(trial) + what);
         }
@@ -31,7 +33,7 @@ final class Check {
 
     // ------------------------------------------------------------ core
 
-    static void closeArr(double[] actual, double[] expected, double eps, int trial) {
+    public static void closeArr(double[] actual, double[] expected, double eps, int trial) {
         for (int i = 0; i < expected.length; i++) {
             double tol = eps * Math.max(1.0, Math.abs(expected[i]));
             boolean bothNaN = Double.isNaN(actual[i]) && Double.isNaN(expected[i]);
@@ -49,29 +51,29 @@ final class Check {
 
     // ------------------------------------------------------------ scalars
 
-    static void close(double actual, double expected, double eps, int trial) {
+    public static void close(double actual, double expected, double eps, int trial) {
         closeArr(new double[] {actual}, new double[] {expected}, eps, trial);
     }
 
     // ------------------------------------------------------------ float vs JOML
 
-    static void close(Vec2f a, Vector2fc e, double eps, int trial) {
+    public static void close(Vec2f a, Vector2fc e, double eps, int trial) {
         closeArr(new double[] {a.x(), a.y()}, new double[] {e.x(), e.y()}, eps, trial);
     }
 
-    static void close(Vec3f a, Vector3fc e, double eps, int trial) {
+    public static void close(Vec3f a, Vector3fc e, double eps, int trial) {
         closeArr(arr(a), new double[] {e.x(), e.y(), e.z()}, eps, trial);
     }
 
-    static void close(Vec4f a, Vector4fc e, double eps, int trial) {
+    public static void close(Vec4f a, Vector4fc e, double eps, int trial) {
         closeArr(arr(a), new double[] {e.x(), e.y(), e.z(), e.w()}, eps, trial);
     }
 
-    static void close(Quatf a, Quaternionfc e, double eps, int trial) {
+    public static void close(Quatf a, Quaternionfc e, double eps, int trial) {
         closeArr(new double[] {a.x(), a.y(), a.z(), a.w()}, new double[] {e.x(), e.y(), e.z(), e.w()}, eps, trial);
     }
 
-    static void close(Mat3f a, Matrix3fc e, double eps, int trial) {
+    public static void close(Mat3f a, Matrix3fc e, double eps, int trial) {
         double[] ea = new double[9];
         for (int c = 0; c < 3; c++) {
             for (int r = 0; r < 3; r++) {
@@ -81,7 +83,7 @@ final class Check {
         closeArr(arr(a), ea, eps, trial);
     }
 
-    static void close(Mat4f a, Matrix4fc e, double eps, int trial) {
+    public static void close(Mat4f a, Matrix4fc e, double eps, int trial) {
         double[] ea = new double[16];
         for (int c = 0; c < 4; c++) {
             for (int r = 0; r < 4; r++) {
@@ -91,29 +93,48 @@ final class Check {
         closeArr(arr(a), ea, eps, trial);
     }
 
+    public static void close(Mat4x3f a, Matrix4x3fc e, double eps, int trial) {
+        closeArr(arr(a), new double[] {e.m00(), e.m01(), e.m02(), e.m10(), e.m11(), e.m12(), e.m20(), e.m21(), e.m22(),
+                e.m30(), e.m31(), e.m32()}, eps, trial);
+    }
+
+    public static void close(Mat4x3f a, Mat4x3f e, double eps, int trial) {
+        closeArr(arr(a), arr(e), eps, trial);
+    }
+
+    private static double[] arr(Mat4x3f m) {
+        float[] f = new float[12];
+        m.writeTo(f, 0);
+        return widen(f);
+    }
+
     // ------------------------------------------------------------ float vs float
 
-    static void close(Vec3f a, Vec3f e, double eps, int trial) {
+    public static void close(Vec2f a, Vec2f e, double eps, int trial) {
+        closeArr(new double[] {a.x(), a.y()}, new double[] {e.x(), e.y()}, eps, trial);
+    }
+
+    public static void close(Vec3f a, Vec3f e, double eps, int trial) {
         closeArr(arr(a), arr(e), eps, trial);
     }
 
-    static void close(Vec4f a, Vec4f e, double eps, int trial) {
+    public static void close(Vec4f a, Vec4f e, double eps, int trial) {
         closeArr(arr(a), arr(e), eps, trial);
     }
 
-    static void close(Mat3f a, Mat3f e, double eps, int trial) {
+    public static void close(Mat3f a, Mat3f e, double eps, int trial) {
         closeArr(arr(a), arr(e), eps, trial);
     }
 
-    static void close(Mat4f a, Mat4f e, double eps, int trial) {
+    public static void close(Mat4f a, Mat4f e, double eps, int trial) {
         closeArr(arr(a), arr(e), eps, trial);
     }
 
-    static void close(Quatf a, Quatf e, double eps, int trial) {
+    public static void close(Quatf a, Quatf e, double eps, int trial) {
         closeArr(new double[] {a.x(), a.y(), a.z(), a.w()}, new double[] {e.x(), e.y(), e.z(), e.w()}, eps, trial);
     }
 
-    static void sameRotation(Quatf a, Quatf e, double eps, int trial) {
+    public static void sameRotation(Quatf a, Quatf e, double eps, int trial) {
         check(a.sameRotation(e, (float) eps), trial, "rotations differ: " + a + " vs " + e);
     }
 
@@ -147,23 +168,23 @@ final class Check {
 
     // ------------------------------------------------------------ double vs JOML
 
-    static void close(Vec2d a, Vector2dc e, double eps, int trial) {
+    public static void close(Vec2d a, Vector2dc e, double eps, int trial) {
         closeArr(new double[] {a.x(), a.y()}, new double[] {e.x(), e.y()}, eps, trial);
     }
 
-    static void close(Vec3d a, Vector3dc e, double eps, int trial) {
+    public static void close(Vec3d a, Vector3dc e, double eps, int trial) {
         closeArr(arr(a), new double[] {e.x(), e.y(), e.z()}, eps, trial);
     }
 
-    static void close(Vec4d a, Vector4dc e, double eps, int trial) {
+    public static void close(Vec4d a, Vector4dc e, double eps, int trial) {
         closeArr(arr(a), new double[] {e.x(), e.y(), e.z(), e.w()}, eps, trial);
     }
 
-    static void close(Quatd a, Quaterniondc e, double eps, int trial) {
+    public static void close(Quatd a, Quaterniondc e, double eps, int trial) {
         closeArr(new double[] {a.x(), a.y(), a.z(), a.w()}, new double[] {e.x(), e.y(), e.z(), e.w()}, eps, trial);
     }
 
-    static void close(Mat3d a, Matrix3dc e, double eps, int trial) {
+    public static void close(Mat3d a, Matrix3dc e, double eps, int trial) {
         double[] ea = new double[9];
         for (int c = 0; c < 3; c++) {
             for (int r = 0; r < 3; r++) {
@@ -173,7 +194,7 @@ final class Check {
         closeArr(arr(a), ea, eps, trial);
     }
 
-    static void close(Mat4d a, Matrix4dc e, double eps, int trial) {
+    public static void close(Mat4d a, Matrix4dc e, double eps, int trial) {
         double[] ea = new double[16];
         for (int c = 0; c < 4; c++) {
             for (int r = 0; r < 4; r++) {
@@ -183,29 +204,48 @@ final class Check {
         closeArr(arr(a), ea, eps, trial);
     }
 
+    public static void close(Mat4x3d a, Matrix4x3dc e, double eps, int trial) {
+        closeArr(arr(a), new double[] {e.m00(), e.m01(), e.m02(), e.m10(), e.m11(), e.m12(), e.m20(), e.m21(), e.m22(),
+                e.m30(), e.m31(), e.m32()}, eps, trial);
+    }
+
+    public static void close(Mat4x3d a, Mat4x3d e, double eps, int trial) {
+        closeArr(arr(a), arr(e), eps, trial);
+    }
+
+    private static double[] arr(Mat4x3d m) {
+        double[] d = new double[12];
+        m.writeTo(d, 0);
+        return d;
+    }
+
     // ------------------------------------------------------------ double vs double
 
-    static void close(Vec3d a, Vec3d e, double eps, int trial) {
+    public static void close(Vec2d a, Vec2d e, double eps, int trial) {
+        closeArr(new double[] {a.x(), a.y()}, new double[] {e.x(), e.y()}, eps, trial);
+    }
+
+    public static void close(Vec3d a, Vec3d e, double eps, int trial) {
         closeArr(arr(a), arr(e), eps, trial);
     }
 
-    static void close(Vec4d a, Vec4d e, double eps, int trial) {
+    public static void close(Vec4d a, Vec4d e, double eps, int trial) {
         closeArr(arr(a), arr(e), eps, trial);
     }
 
-    static void close(Mat3d a, Mat3d e, double eps, int trial) {
+    public static void close(Mat3d a, Mat3d e, double eps, int trial) {
         closeArr(arr(a), arr(e), eps, trial);
     }
 
-    static void close(Mat4d a, Mat4d e, double eps, int trial) {
+    public static void close(Mat4d a, Mat4d e, double eps, int trial) {
         closeArr(arr(a), arr(e), eps, trial);
     }
 
-    static void close(Quatd a, Quatd e, double eps, int trial) {
+    public static void close(Quatd a, Quatd e, double eps, int trial) {
         closeArr(new double[] {a.x(), a.y(), a.z(), a.w()}, new double[] {e.x(), e.y(), e.z(), e.w()}, eps, trial);
     }
 
-    static void sameRotation(Quatd a, Quatd e, double eps, int trial) {
+    public static void sameRotation(Quatd a, Quatd e, double eps, int trial) {
         check(a.sameRotation(e, eps), trial, "rotations differ: " + a + " vs " + e);
     }
 

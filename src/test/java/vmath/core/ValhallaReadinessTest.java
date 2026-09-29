@@ -11,6 +11,20 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import vmath.geo.Aabbd;
+import vmath.geo.Aabbf;
+import vmath.geo.Frustumd;
+import vmath.geo.Frustumf;
+import vmath.geo.Obbd;
+import vmath.geo.Obbf;
+import vmath.geo.Planed;
+import vmath.geo.Planef;
+import vmath.geo.Rayd;
+import vmath.geo.Rayf;
+import vmath.geo.Sphered;
+import vmath.geo.Spheref;
+import vmath.geo.Triangled;
+import vmath.geo.Trianglef;
 
 /**
  * Guard rails that keep every core type a valid future {@code value record}.
@@ -22,7 +36,9 @@ class ValhallaReadinessTest {
 
     static final List<Class<?>> VALUE_TYPES = List.of(
             Vec2f.class, Vec3f.class, Vec4f.class, Quatf.class, Mat3f.class, Mat4f.class,
-            Vec2d.class, Vec3d.class, Vec4d.class, Quatd.class, Mat3d.class, Mat4d.class);
+            Vec2d.class, Vec3d.class, Vec4d.class, Quatd.class, Mat3d.class, Mat4d.class,
+            Aabbf.class, Spheref.class, Planef.class, Rayf.class, Trianglef.class, Obbf.class, Frustumf.class,
+            Aabbd.class, Sphered.class, Planed.class, Rayd.class, Triangled.class, Obbd.class, Frustumd.class);
 
     @Test
     void allAreRecordsOfPrimitives() {
@@ -32,8 +48,9 @@ class ValhallaReadinessTest {
             assertTrue(c.getInterfaces().length == 0,
                     c + " should not implement interfaces (keeps call sites monomorphic and flattenable)");
             for (RecordComponent rc : c.getRecordComponents()) {
-                assertTrue(rc.getType().isPrimitive(),
-                        c.getSimpleName() + "." + rc.getName() + " must be primitive so the type stays flattenable");
+                assertTrue(rc.getType().isPrimitive() || VALUE_TYPES.contains(rc.getType()),
+                        c.getSimpleName() + "." + rc.getName()
+                                + " must be a primitive or another value record so the type stays flattenable");
             }
         }
     }
@@ -50,32 +67,40 @@ class ValhallaReadinessTest {
     }
 
     @Test
-    void sourcesCarryValueMarker() throws IOException {
-        Path root = Path.of("src/main/java/vmath/core");
+    void templatesCarryValueAnnotations() throws IOException {
+        Path root = Path.of("src/template/java");
         if (!Files.isDirectory(root)) {
             return; // running outside the project directory
         }
         for (Class<?> c : VALUE_TYPES) {
-            String src = Files.readString(root.resolve(c.getSimpleName() + ".java"));
-            if (!src.contains("public /*value*/ record " + c.getSimpleName() + "(")) {
-                fail(c.getSimpleName() + ".java must declare 'public /*value*/ record' so -Pvalhalla can rewrite it");
+            if (!c.getSimpleName().endsWith("f")) {
+                continue; // double twins are generated from the float template
+            }
+            Path file = root.resolve(c.getPackageName().replace('.', '/')).resolve(c.getSimpleName() + ".java");
+            String src = Files.readString(file);
+            if (!src.contains("@ValueType") || !src.contains("@GenerateDouble")
+                    || !src.contains("public record " + c.getSimpleName() + "(")) {
+                fail(c.getSimpleName() + ".java must be a '@GenerateDouble @ValueType public record' template so"
+                        + " the generator can emit both precisions and -Pvalhalla can make it a value record");
             }
         }
     }
 
     @Test
     void sourcesAvoidReferenceEqualityOnValueTypes() throws IOException {
-        Path root = Path.of("src/main/java/vmath");
-        if (!Files.isDirectory(root)) {
-            return;
-        }
+        List<Path> roots = List.of(Path.of("src/main/java/vmath"), Path.of("src/template/java/vmath"));
         // Heuristic: flag '==' or '!=' next to a static constant of a value type, e.g. 'v == Vec3f.ZERO'.
         var pattern = java.util.regex.Pattern.compile("[!=]=\\s*(Vec[234]|Quat|Mat[34])[fd]\\.[A-Z_]+");
-        try (var files = Files.walk(root)) {
-            for (Path p : files.filter(f -> f.toString().endsWith(".java")).toList()) {
-                var m = pattern.matcher(Files.readString(p));
-                if (m.find()) {
-                    fail(p + ": reference comparison '" + m.group() + "'; use equals() or approxEquals()");
+        for (Path root : roots) {
+            if (!Files.isDirectory(root)) {
+                continue;
+            }
+            try (var files = Files.walk(root)) {
+                for (Path p : files.filter(f -> f.toString().endsWith(".java")).toList()) {
+                    var m = pattern.matcher(Files.readString(p));
+                    if (m.find()) {
+                        fail(p + ": reference comparison '" + m.group() + "'; use equals() or approxEquals()");
+                    }
                 }
             }
         }

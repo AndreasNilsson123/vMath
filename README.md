@@ -4,10 +4,21 @@ Immutable 3D math for a Java/LWJGL engine, built so every type can become a Valh
 `value record` by flipping a build flag.
 
 ```
-src/main/java/vmath/core   Vec2/3/4, Quat, Mat3, Mat4. The f variants are hand-written, the d variants are generated
-src/main/java/vmath/gl     std140 layout helpers
-src/test/java/vmath/core   JOML-oracle property tests + Valhalla readiness checks
-tools/GenDouble.java       float -> double source generator
+src/template/java         float templates (Vec2/3/4, Quat, Mat3/4): the single source of truth
+src/testTemplate/java     float test templates
+src/template/java/vmath/geo  Aabb, Sphere, Plane, Ray, Triangle, Obb, Frustum, ray/shape intersections
+src/main/java/vmath/bulk  SoA containers: BoundsArray, Mat4fArray, VisibilitySet, IntList
+src/template/java/vmath/camera  Camera (view/projection/pick/unproject), plus Jitter and Cascades in src/main
+src/main/java/vmath/spatial  culling framework: FrustumCuller, CullPipeline, StaticBvh, BvhQuery
+src/main/java/vmath/gl    GPU layouts (std140/std430/scalar), writers, @GpuStruct generated classes
+src/main/java/vmath/pack  compact formats: half, unorm/snorm, RGB10A2, R11G11B10F, RGB9E5, octahedral, quaternions
+src/main/java/vmath/occlusion  software Hi-Z occlusion culling (conservative depth buffer, pipeline stage, GPU Hi-Z sizing)
+src/main/java/vmath/mesh  indexed meshes, primitives, normals/tangents, weld/cache/fetch optimisation, GPU export
+src/test/java             JOML-oracle helpers + Valhalla readiness checks
+vmath-annotations         @GenerateDouble, @FloatOnly, @DoubleOnly, @Eps, @ValueType
+vmath-codegen             build-time generator (float template -> float + double types)
+vmath-simd                optional Vector API kernels (needs --add-modules jdk.incubator.vector)
+vmath-bench               JMH benchmarks
 ```
 
 ## Conventions
@@ -26,7 +37,7 @@ tools/GenDouble.java       float -> double source generator
 
 `ValhallaReadinessTest` enforces these:
 
-1. Each type is a `public /*value*/ record` whose components are all primitives, with no interfaces.
+1. Each type is a `@ValueType public record` whose components are primitives or other value records (such as `Frustumf`, which is six `Planef`), with no interfaces.
 2. No `==` or `!=` on math types. Use `equals` (exact) or `approxEquals` (tolerant).
 3. No `synchronized`, weak/soft references or identity hash maps keyed by math types.
 4. Operations return new values. Don't add mutable "dest" parameters, because escape analysis
@@ -37,19 +48,9 @@ tools/GenDouble.java       float -> double source generator
 
 ## Float is the source of truth
 
-Edit only the `*f.java` files and `*fTest.java` files, then run:
-
-```
-java tools/GenDouble.java          # regenerate the *d.java and *dTest.java files
-java tools/GenDouble.java --check  # CI: fails if generated files are stale (also runs in `gradle check`)
-```
-
-The generator understands these markers:
-
-- `// @float-only-begin` … `// @float-only-end` marks code dropped from the double version (for example `toDouble()`).
-- `// @eps-double 1e-12` on a field declaration replaces that field's value in the double test.
-- Members that exist only on double types (`toFloat()`, `Vec3d.relativeTo` for camera-relative
-  rendering) are declared in `GenDouble.DOUBLE_EXTRAS`.
+Edit only the templates under `src/template/java` and `src/testTemplate/java`. `./gradlew build` generates both the
+float and the double types into `build/generated/`: nothing generated is checked in. Precision differences are
+declared with annotations (`@FloatOnly`, `@DoubleOnly`, `@Eps`), not comments. See [docs/CODEGEN.md](docs/CODEGEN.md).
 
 ## Tests: JOML as the oracle
 
@@ -83,17 +84,20 @@ harness does catch real regressions.
 ./gradlew build -Pvalhalla
 ```
 
-This rewrites each `public /*value*/ record` to `public value record` into `build/generated/valhalla`,
-then compiles and tests with `--release 28 --enable-preview`. Only the modifier changes, so both builds
-run identical code and identical tests. Requirements:
+The generator emits `public value record` for every `@ValueType` type, then everything compiles and tests with
+`--release 28 --enable-preview`. Only the modifier changes, so both builds run identical code and identical tests. Requirements:
 
 - A JDK 28 early-access build from jdk.java.net/28. JEP 401 is integrated there as a preview feature.
   If Gradle doesn't detect it automatically, point it there with
   `org.gradle.java.installations.paths=/path/to/jdk-28` in `~/.gradle/gradle.properties`.
 - A Gradle version that recognizes Java 28 toolchains.
 
-Benchmark both modes with JMH before switching the engine over. JEP 401 is expected to stay in preview
-through the JDK 29 LTS.
+`vmath-simd` and `vmath-bench` follow the same switch (Java 28 with `--enable-preview`), and the `jmh` task launches on the
+matching JDK. Verified on JDK 28-ea+17 (mainline, `jdk-28` from `~/.jdks`): all 494 tests pass with real value records.
+
+Benchmark both modes with JMH before switching the engine over; the first measurements are in `docs/PERFORMANCE.md`
+("Valhalla measured": no allocation for single operations, but `Mat4f.invert` and some chains got slower). JEP 401 is
+expected to stay in preview through the JDK 29 LTS.
 
 ## Migrating from JOML
 
@@ -108,9 +112,26 @@ through the JDK 29 LTS.
 
 A thin adapter class with `toJoml` / `fromJoml` lets you migrate one subsystem at a time.
 
+## Build and benchmarks
+
+Requires JDK 25 (the baseline moves to the newest JDK; there is no LTS constraint).
+
+```
+./gradlew build                                               # generate, compile, test everything
+./gradlew :vmath-bench:jmh -Pjmh.args="-prof gc CoreBench"    # JMH with allocation profile
+./gradlew build -Pvmath.buildRoot=C:/tmp/vmath-build          # keep build output out of a OneDrive checkout
+```
+
+Allocation findings and the performance contract are in [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
+
 ## Next steps
 
-- `vmath.bulk`: structure-of-arrays containers with transform kernels.
-- `vmath.geo`: `Geodetic`, `Ecef`, WGS-84 conversions, frame-tagged transforms.
-- A JMH module that checks allocations actually disappear (`-prof gc`) on the hot paths.
-- Frustum planes / culling, `Mat4` decomposition (TRS extraction), `Quat` from rotation matrix.
+The full backlog is in [docs/ROADMAP.md](docs/ROADMAP.md); design notes are in `docs/` (CODEGEN, CULLING, GPU, CAMERA, FORMATS,
+PERFORMANCE, API-COMPAT). Not built yet, roughly in order of value:
+
+- A SIMD occlusion test, temporal coherence for occlusion queries, and portal culling (the rest of culling is built: frustum
+  kernels, BVH, dynamic tree, grid, octree, k-NN, LOD, cone, shadow, light and occlusion culling; see `docs/CULLING.md`).
+- Mesh processing (tangents, vertex-cache optimization, meshlets, simplification) and a glTF loader.
+- Animation (skinning, blending, IK) and a scene-transform hierarchy in SoA form.
+- Indirect-draw and vertex-format structs, and a shared GLSL header generator.
+- Random and noise utilities, color spaces, curves.

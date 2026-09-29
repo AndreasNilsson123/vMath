@@ -10,6 +10,9 @@ import vmath.core.Vec3f;
  *
  * <p>Indices are in floats, not bytes. {@code vec3} and each {@code mat3} column occupy a 16-byte
  * slot (4 floats). Callers are responsible for the base alignment of the member itself.
+ *
+ * <p>For whole blocks (std140, std430 and scalar layouts, arrays, nested structs, generated writers) use {@link GlslType},
+ * {@link StructLayout} and {@link GpuWriter} instead; this class covers only three member types.
  */
 public final class Std140 {
 

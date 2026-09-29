@@ -9,11 +9,11 @@ import java.util.SplittableRandom;
  * {@code -Dvmath.seed=<n>} (for example a nightly job using the date) to explore new inputs;
  * every failure message includes the seed.
  */
-final class Rnd {
+public final class Rnd {
 
-    static final long SEED = Long.getLong("vmath.seed", 0x5EEDL);
+    public static final long SEED = Long.getLong("vmath.seed", 0x5EEDL);
     /** Trials per property. */
-    static final int N = Integer.getInteger("vmath.trials", 2_000);
+    public static final int N = Integer.getInteger("vmath.trials", 2_000);
 
     private final SplittableRandom r;
 
@@ -21,73 +21,73 @@ final class Rnd {
         this.r = new SplittableRandom(seed);
     }
 
-    static Rnd create() {
+    public static Rnd create() {
         return new Rnd(SEED);
     }
 
-    double range(double lo, double hi) {
+    public double range(double lo, double hi) {
         return lo + (hi - lo) * r.nextDouble();
     }
 
-    boolean nextBoolean() {
+    public boolean nextBoolean() {
         return r.nextBoolean();
     }
 
     // ------------------------------------------------------------ float
 
-    Vec2f nextVec2f() {
+    public Vec2f nextVec2f() {
         return new Vec2f((float) range(-10, 10), (float) range(-10, 10));
     }
 
-    Vec3f nextVec3f() {
+    public Vec3f nextVec3f() {
         return new Vec3f((float) range(-10, 10), (float) range(-10, 10), (float) range(-10, 10));
     }
 
-    Vec4f nextVec4f() {
+    public Vec4f nextVec4f() {
         return new Vec4f((float) range(-10, 10), (float) range(-10, 10), (float) range(-10, 10), (float) range(-10, 10));
     }
 
-    Vec3f nextScaleVec3f() {
+    public Vec3f nextScaleVec3f() {
         return new Vec3f((float) range(0.25, 4), (float) range(0.25, 4), (float) range(0.25, 4));
     }
 
-    Quatf nextUnitQuatf() {
+    public Quatf nextUnitQuatf() {
         return nextUnitQuatd().toFloat();
     }
 
     /** Translation * rotation * scale: the typical, well-conditioned model matrix. */
-    Mat4f nextTrsMat4f() {
+    public Mat4f nextTrsMat4f() {
         return Mat4f.translationRotateScale(nextVec3f().mul(10f), nextUnitQuatf(), nextScaleVec3f());
     }
 
     /** Dense matrix with entries in [-1, 1] plus a dominant diagonal, so it is safely invertible. */
-    Mat4f nextDenseMat4f() {
+    public Mat4f nextDenseMat4f() {
         return nextDenseMat4d().toFloat();
     }
 
-    Mat3f nextDenseMat3f() {
+    public Mat3f nextDenseMat3f() {
         return nextDenseMat3d().toFloat();
     }
 
     // ------------------------------------------------------------ double
 
-    Vec2d nextVec2d() {
+    public Vec2d nextVec2d() {
         return new Vec2d(range(-10, 10), range(-10, 10));
     }
 
-    Vec3d nextVec3d() {
+    public Vec3d nextVec3d() {
         return new Vec3d(range(-10, 10), range(-10, 10), range(-10, 10));
     }
 
-    Vec4d nextVec4d() {
+    public Vec4d nextVec4d() {
         return new Vec4d(range(-10, 10), range(-10, 10), range(-10, 10), range(-10, 10));
     }
 
-    Vec3d nextScaleVec3d() {
+    public Vec3d nextScaleVec3d() {
         return new Vec3d(range(0.25, 4), range(0.25, 4), range(0.25, 4));
     }
 
-    Quatd nextUnitQuatd() {
+    public Quatd nextUnitQuatd() {
         // Uniform on the 3-sphere via normalized Gaussian 4-vector.
         double x, y, z, w, len2;
         do {
@@ -101,11 +101,11 @@ final class Rnd {
         return new Quatd(x * inv, y * inv, z * inv, w * inv);
     }
 
-    Mat4d nextTrsMat4d() {
+    public Mat4d nextTrsMat4d() {
         return Mat4d.translationRotateScale(nextVec3d().mul(10.0), nextUnitQuatd(), nextScaleVec3d());
     }
 
-    Mat4d nextDenseMat4d() {
+    public Mat4d nextDenseMat4d() {
         double[] m = new double[16];
         for (int i = 0; i < 16; i++) {
             m[i] = range(-1, 1);
@@ -117,7 +117,7 @@ final class Rnd {
                 m[8], m[9], m[10], m[11], m[12], m[13], m[14], m[15]);
     }
 
-    Mat3d nextDenseMat3d() {
+    public Mat3d nextDenseMat3d() {
         double[] m = new double[9];
         for (int i = 0; i < 9; i++) {
             m[i] = range(-1, 1);
