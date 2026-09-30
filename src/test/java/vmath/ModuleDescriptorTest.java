@@ -22,7 +22,7 @@ class ModuleDescriptorTest {
 
     private static final Set<String> EXPECTED_EXPORTS =
             Set.of("vmath.core", "vmath.geo", "vmath.bulk", "vmath.spatial", "vmath.gl", "vmath.camera", "vmath.pack",
-                    "vmath.occlusion", "vmath.mesh", "vmath.anim");
+                    "vmath.occlusion", "vmath.mesh", "vmath.anim", "vmath.tex", "vmath.gltf");
 
     private static Path jar() {
         String p = System.getProperty("vmath.jar");

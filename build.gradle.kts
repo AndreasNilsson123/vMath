@@ -56,7 +56,8 @@ java {
 
 tasks.withType<JavaCompile>().configureEach {
     options.encoding = "UTF-8"
-    options.compilerArgs.addAll(listOf("-Xlint:all", "-Xlint:-preview"))
+    // -exports: vmath.annotations.Experimental has class retention on purpose (japicmp reads it), but the annotations module is "requires static", so javac would warn on every use
+    options.compilerArgs.addAll(listOf("-Xlint:all", "-Xlint:-preview", "-Xlint:-exports"))
 }
 
 // Javadoc is linted as part of `check`: broken references, bad HTML and malformed tags fail the build. Missing comments and missing @param tags on
@@ -273,6 +274,7 @@ val japicmp = tasks.register<JavaExec>("japicmp") {
             addAll(listOf("--old", baselinePath.get().absolutePath))
             addAll(listOf("--new", tasks.jar.get().archiveFile.get().asFile.absolutePath))
             addAll(listOf("--only-modified", "-a", "public"))
+            addAll(listOf("--exclude", "@vmath.annotations.Experimental")) // docs/VERSIONING.md
             addAll(listOf("--html-file", report.get().file("index.html").asFile.absolutePath))
             if (!japicmpAllowBreak) {
                 addAll(listOf("--error-on-binary-incompatibility", "--error-on-source-incompatibility"))

@@ -328,7 +328,9 @@ public final class Transformer {
 
             @Override
             public Void visitImport(ImportTree imp, Void v) {
-                if (imp.getQualifiedIdentifier().toString().startsWith(ANNOTATION_PACKAGE + ".")) {
+                String imported = imp.getQualifiedIdentifier().toString();
+                // only the annotations this generator removes lose their import: others (such as Experimental) stay in the output and need theirs
+                if (imported.startsWith(ANNOTATION_PACKAGE + ".") && OUR_ANNOTATIONS.contains(imported.substring(ANNOTATION_PACKAGE.length() + 1))) {
                     removeLines(imp);
                     importRemovals.add(edits.get(edits.size() - 1));
                     return null;

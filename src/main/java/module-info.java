@@ -17,6 +17,8 @@ module vmath {
     exports vmath.occlusion;
     exports vmath.mesh;
     exports vmath.anim;
+    exports vmath.tex;
+    exports vmath.gltf;
 
     uses vmath.spatial.FrustumKernelProvider;
 }

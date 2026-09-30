@@ -315,15 +315,19 @@ can be chained and composed, and they run on SoA bounds.
       *Done: `Mesh` (heap `float[]`/`int[]` streams: positions, normals, tangents, four UV sets), `VertexLayout` and `MeshExport` writing interleaved vertices (float, octahedral, half) and 16/32-bit indices into a `MemorySegment`. Off-heap storage of the mesh itself is not built. See `docs/MESH.md`.*
 - [x] **MESH-2 (P2, M)** Normals (angle-weighted, smooth groups), tangents (MikkTSpace-compatible), bounds computation.  
       *Done: angle-weighted smooth normals, crease-angle splitting with a remap, UV-derivative tangents with handedness (standard accumulation, not a bit-exact MikkTSpace port), NaN-free on degenerate input, `bounds()`/`surfaceArea()`/`signedVolume()`.*
-- [ ] **MESH-3 (P2, L)** Meshoptimizer-style pipeline: vertex dedupe, vertex-cache and overdraw optimization, vertex fetch reorder.  
-      *Partial: `weld`, Forsyth `optimizeVertexCache` (ACMR 2.99 shuffled to 0.66-0.68), `optimizeVertexFetch`, `acmr`. Overdraw optimisation is open.*
-- [ ] **MESH-4 (P2, XL)** Meshlet builder (bounds + normal cone per meshlet), LOD simplification (quadric error metrics) and
-      LOD chain / cluster hierarchy generation.
+- [x] **MESH-3 (P2, L)** Meshoptimizer-style pipeline: vertex dedupe, vertex-cache and overdraw optimization, vertex fetch reorder.  
+      *Partial: `weld`, Forsyth `optimizeVertexCache` (ACMR 2.99 shuffled to 0.66-0.68), `optimizeVertexFetch`, `acmr`. `Overdraw` (experimental): software overdraw measure and cluster ordering, accepted only when measured overdraw drops within an ACMR budget; numbers in `docs/MESH.md`.*
+- [x] **MESH-4 (P2, XL)** Meshlet builder (bounds + normal cone per meshlet), LOD simplification (quadric error metrics) and
+      LOD chain / cluster hierarchy generation.  
+      *Done (experimental): `Meshlets` (greedy builder, sphere + normal cone, GPU records), `MeshSimplifier` (QEM, seams, borders and explicit locks), `MeshLod` (discrete chain with errors and LodSelector thresholds), `ClusterHierarchy` (Nanite-style cluster DAG with crack-free selection, tested on closed meshes). The hierarchy build is slow on big meshes (14 s for 328k triangles) and unoptimised; see `docs/MESH.md`.*
 - [x] **MESH-5 (P2, M)** Procedural primitives: plane, box, UV/ico sphere, capsule, cylinder, cone, torus, with UV/normals/tangents.  
       *Done: `Primitives`, watertight by position, outward-wound, volumes and areas checked against the analytic shapes.*
-- [ ] **MESH-6 (P2, L)** glTF 2.0 loader (mesh, skin, animation, materials) writing straight into `MemorySegment` streams.
-- [ ] **MESH-7 (P3, L)** Texture-side utilities: mip-chain sizing, KTX2 header parse, block-compression formats table, cubemap/array layouts.
-- [ ] **MESH-8 (P3, M)** UV unwrap/atlas packing (rect packing), lightmap UV helpers.
+- [x] **MESH-6 (P2, L)** glTF 2.0 loader (mesh, skin, animation, materials) writing straight into `MemorySegment` streams.  
+      *Done (experimental): `vmath.gltf.Gltf` (GLB and glTF, all accessor kinds, `readInto` a segment, meshes, materials, nodes, skins to `Skeleton`, animations to `AnimationClip` with STEP approximated and CUBICSPLINE resampled); hardened and mutation-tested. No morph targets, no compressed geometry, tested with hand-built files only. See `docs/GLTF.md`.*
+- [x] **MESH-7 (P3, L)** Texture-side utilities: mip-chain sizing, KTX2 header parse, block-compression formats table, cubemap/array layouts.  
+      *Done (experimental): `vmath.tex` with `TextureFormat`, `TextureLayout`, `CubeFace`, `Ktx2` header and level index; no pixel decoding or supercompression. See `docs/TEXTURES.md`.*
+- [x] **MESH-8 (P3, M)** UV unwrap/atlas packing (rect packing), lightmap UV helpers.  
+      *Done (experimental): `RectPacker` (MaxRects), `UvAtlas` (planar chart unwrap, uniform texel density, padding). Not a conformal/LSCM unwrap; see `docs/MESH.md`.*
 
 ### Phase K. Animation, scene and simulation glue (P2/P3)
 
@@ -354,7 +358,8 @@ can be chained and composed, and they run on SoA bounds.
       *Done: all three exist; the API table is backed by `ApiParityTest`.*
 - [ ] **DOC-2 (P2, M)** Cookbook: "camera-relative rendering", "culling 1M instances", "GPU-driven pipeline", "migrating from JOML".
 - [x] **DOC-3 (P2, S)** ~~JOML adapter module~~ *Dropped on purpose: it would be double bookkeeping; the README migration table is the bridge.*
-- [ ] **DOC-4 (P2, S)** Changelog + semver policy; mark experimental APIs (`@Experimental` annotation, also in the framework).
+- [x] **DOC-4 (P2, S)** Changelog + semver policy; mark experimental APIs (`@Experimental` annotation, also in the framework).  
+      *Done: `CHANGELOG.md`, `docs/VERSIONING.md`, `vmath.annotations.Experimental` (class retention, excluded from japicmp). The framework side does not exist yet.*
 - [ ] **DOC-5 (P3, M)** Sample app (LWJGL) that renders and culls 1M instances; doubles as an end-to-end benchmark.  
       *Partial: headless `CullAndDrawSample` (cull 1M, write instance buffer + indirect draw, numbers in `docs/GPU.md`); an LWJGL window that actually draws is open; `FrameBench` compares serial/parallel/BVH frames; `InstanceWriteBench` tuned the instance write (word-wise set walk, about 25% faster; packed centres and staged bulk copy rejected, numbers in `docs/GPU.md`).*
 

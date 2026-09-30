@@ -43,6 +43,27 @@ public final class Mesh {
         indices = new int[Math.max(triangleCapacity, 1) * 3];
     }
 
+    /** An independent copy of this mesh: every stream and the indices, trimmed to the used part. */
+    public Mesh copy() {
+        Mesh m = new Mesh(Math.max(vertexCount, 4), Math.max(indexCount / 3, 1));
+        m.positions = java.util.Arrays.copyOf(positions, Math.max(vertexCount, 4) * 3);
+        if (normals != null) {
+            m.normals = java.util.Arrays.copyOf(normals, m.positions.length);
+        }
+        if (tangents != null) {
+            m.tangents = java.util.Arrays.copyOf(tangents, Math.max(vertexCount, 4) * 4);
+        }
+        for (int s = 0; s < MAX_UV_SETS; s++) {
+            if (uvs[s] != null) {
+                m.uvs[s] = java.util.Arrays.copyOf(uvs[s], Math.max(vertexCount, 4) * 2);
+            }
+        }
+        m.indices = java.util.Arrays.copyOf(indices, Math.max(indexCount, 3));
+        m.vertexCount = vertexCount;
+        m.indexCount = indexCount;
+        return m;
+    }
+
     // ---------------------------------------------------------------- sizes
 
     public int vertexCount() {

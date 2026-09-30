@@ -68,3 +68,10 @@ Requires a JDK 28 EA build with JEP 401.
 
 `vmath-codegen/src/test` has golden tests for every rule above plus the diagnostics. Run
 `./gradlew :vmath-codegen:test`.
+
+## Annotations the generator does not remove
+
+The generator strips its own annotations (`GenerateDouble`, `FloatOnly`, `DoubleOnly`, `Eps`, `ValueType`, `GpuStruct`, `GpuArray`, `GpuUint`) and their imports from the
+output. Other annotations of `vmath.annotations`, at the moment `@Experimental`, are passed through together with their import, which is why the main sources
+compile with `compileOnly(project(":vmath-annotations"))`. (An earlier version removed every import from that package and broke the `-Pvalhalla` build as soon as
+the first `@Experimental` class appeared; the Valhalla build is the one that runs hand-written sources through the generator.)

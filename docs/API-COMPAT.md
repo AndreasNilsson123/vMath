@@ -35,6 +35,6 @@ break. Consequences:
   new type, instead.
 - New types are additions and never break the check.
 - While the version is `0.x` breaks are allowed, but they must be intentional: run with `-Pjapicmp.allowBreak`, read the
-  report, and say so in the commit message. Planned future help: an `@Experimental` marker for types that may still change.
+  report, and say so in the commit message. Types marked `@Experimental` are excluded from the check; the full policy is in `docs/VERSIONING.md`.
 
 The generated double twins and the float types share one jar, so a change to a template shows up twice in the report.

@@ -343,7 +343,7 @@ public final class MeshOptimizer {
     // ---------------------------------------------------------------- shared
 
     /** Rebuilds every stream so that new vertex {@code i} is old vertex {@code newToOld[i]}, then installs the given indices. */
-    private static void rebuild(Mesh mesh, int[] newToOld, int newCount, int[] indices, int indexEntries) {
+    static void rebuild(Mesh mesh, int[] newToOld, int newCount, int[] indices, int indexEntries) {
         float[] pos = new float[Math.max(newCount, 1) * 3];
         gather(mesh.positions(), pos, newToOld, newCount, 3);
         float[] nrm = null, tan = null;
