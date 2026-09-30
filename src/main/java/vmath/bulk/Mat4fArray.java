@@ -1,5 +1,7 @@
 package vmath.bulk;
 
+import java.lang.foreign.MemorySegment;
+import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.util.Arrays;
 import vmath.core.Mat4f;
@@ -72,6 +74,21 @@ public final class Mat4fArray {
     /** The live backing array (matrix {@code i} starts at {@code i * STRIDE}); replaced when the array grows. */
     public float[] data() {
         return data;
+    }
+
+    /**
+     * Writes all matrices (16 floats each, column-major) into {@code dst} starting at byte {@code offset}, {@code strideBytes} apart (at least 64), in the
+     * given byte order.
+     */
+    public void writeTo(MemorySegment dst, long offset, long strideBytes, ByteOrder order) {
+        Strided.write(data, 0, STRIDE, size, dst, offset, strideBytes, order);
+    }
+
+    /** Replaces the contents with {@code count} matrices read from {@code src} ({@link #writeTo(MemorySegment, long, long, ByteOrder)} reversed). */
+    public void readFrom(MemorySegment src, long offset, long strideBytes, ByteOrder order, int count) {
+        ensureCapacity(count);
+        Strided.read(src, offset, strideBytes, order, data, 0, STRIDE, count);
+        size = count;
     }
 
     /** Absolute write of all matrices at {@code index}; does not move the buffer position. */

@@ -189,7 +189,7 @@ Consistency first, then features. All new features are written once in float and
 - [ ] **MEM-3 (P1, M)** Generate the SoA container and scalar loops from the scalar ops via `@Kernel`/`@Bulk`, so
       new ops don't need hand-written loops. → AF-2
 - [ ] **MEM-4 (P1, M)** `writeTo`/`readFrom` for `ByteBuffer` (with `ByteOrder`), `MemorySegment`, and strided/interleaved variants.  
-      *Partial: `FloatBuffer` writers on the containers; `ByteBuffer`/`MemorySegment`/interleaved vertex writers open.*
+      *Partial: `FloatBuffer` writers on the containers; `MemorySegment` and `ByteBuffer` strided/byte-order writers and readers (`Strided`, container `writeTo`/`readFrom`) done; named interleaved vertex-layout writers open (`MeshExport` covers the common mesh case).*
       Interleaved vertex writers for common layouts.
 - [ ] **MEM-5 (P1, M)** Allocators: arena, slab/pool, free-list and ring allocators over `MemorySegment`; persistent-mapped
       buffer ring (N frames in flight) with fence tracking hooks.
@@ -238,7 +238,7 @@ Value records for single shapes; SoA storage in `vmath-bulk` for large sets.
       *Done: all nine shapes (`Segment`, `Capsule` added with closest point, bounds, transform; capsule radius scales by the largest axis scale).*
       with construct/merge/expand/transform/contain/closest-point.
 - [ ] **GEO-2 (P1, L)** Intersection matrix, all pairs: ray×{aabb, sphere, plane, tri, obb, capsule}, aabb×{aabb, sphere, plane,  
-      *Partial: ray x {aabb, sphere, plane, triangle}, plane x {aabb, sphere}, sphere x {aabb, sphere, triangle} done; segment-segment, segment-aabb, sphere/capsule/aabb x capsule, capsule x capsule, ray-capsule, OBB-OBB (15-axis SAT) and aabb-triangle (13-axis SAT) done; sweep tests, plane-triangle and obb x {sphere, plane, ray} matrix gaps open.*
+      *Partial: ray x {aabb, sphere, plane, triangle}, plane x {aabb, sphere}, sphere x {aabb, sphere, triangle} done; segment-segment, segment-aabb, sphere/capsule/aabb x capsule, capsule x capsule, ray-capsule, OBB-OBB (15-axis SAT) and aabb-triangle (13-axis SAT) done; ray-OBB, sphere-OBB, plane-OBB, plane-triangle and sphere-sphere sweep done; sweeps against boxes and triangles, and capsule sweeps, open.*
       tri, obb}, sphere×{sphere, plane, tri}, sweep tests, and distance queries. Each with conservative/exact variants documented.
 - [x] **GEO-3 (P1, M)** Robust ray-triangle (watertight, Woop et al.), slab test with correct NaN/0-direction handling.  
       *Done: watertight ray-triangle.*
@@ -353,9 +353,10 @@ can be chained and composed, and they run on SoA bounds.
 - [x] **DOC-1 (P1, M)** `docs/PERFORMANCE.md` (contract from §2), `docs/CODEGEN.md`, `docs/API.md` parity table.  
       *Done: all three exist; the API table is backed by `ApiParityTest`.*
 - [ ] **DOC-2 (P2, M)** Cookbook: "camera-relative rendering", "culling 1M instances", "GPU-driven pipeline", "migrating from JOML".
-- [ ] **DOC-3 (P2, S)** JOML adapter module (`toJoml`/`fromJoml`) promised in the README.
+- [x] **DOC-3 (P2, S)** ~~JOML adapter module~~ *Dropped on purpose: it would be double bookkeeping; the README migration table is the bridge.*
 - [ ] **DOC-4 (P2, S)** Changelog + semver policy; mark experimental APIs (`@Experimental` annotation, also in the framework).
-- [ ] **DOC-5 (P3, M)** Sample app (LWJGL) that renders and culls 1M instances; doubles as an end-to-end benchmark.
+- [ ] **DOC-5 (P3, M)** Sample app (LWJGL) that renders and culls 1M instances; doubles as an end-to-end benchmark.  
+      *Partial: headless `CullAndDrawSample` (cull 1M, write instance buffer + indirect draw, numbers in `docs/GPU.md`); an LWJGL window that actually draws is open; `FrameBench` compares serial/parallel/BVH frames; `InstanceWriteBench` tuned the instance write (word-wise set walk, about 25% faster; packed centres and staged bulk copy rejected, numbers in `docs/GPU.md`).*
 
 ---
 

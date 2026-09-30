@@ -43,3 +43,13 @@ tasks.register<JavaExec>("jmh") {
     val forkArgs = listOf("-jvmArgsAppend", vmArgs)
     args(forkArgs + extra.split(" ").filter { it.isNotBlank() })
 }
+
+// ./gradlew :vmath-bench:sample   headless sample: cull 1M instances, write the instance buffer and an indirect draw command
+tasks.register<JavaExec>("sample") {
+    group = "application"
+    description = "Runs CullAndDrawSample."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("vmath.bench.sample.CullAndDrawSample")
+    javaLauncher.set(javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(if (valhalla) 28 else 25)) })
+    jvmArgs((if (valhalla) "--add-modules=jdk.incubator.vector --enable-preview" else "--add-modules=jdk.incubator.vector").split(" "))
+}

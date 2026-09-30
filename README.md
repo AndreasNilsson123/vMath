@@ -110,8 +110,6 @@ expected to stay in preview through the JDK 29 LTS.
 | `m.get(buf)` | `m.writeTo(buf, buf.position())` |
 | `q.transform(v)` (mutates `v`) | `v = q.transform(v)` |
 
-A thin adapter class with `toJoml` / `fromJoml` lets you migrate one subsystem at a time.
-
 ## Build and benchmarks
 
 Requires JDK 25 (the baseline moves to the newest JDK; there is no LTS constraint).

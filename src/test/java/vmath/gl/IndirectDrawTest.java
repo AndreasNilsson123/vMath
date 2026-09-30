@@ -180,6 +180,45 @@ class IndirectDrawTest {
     // ------------------------------------------------------------ instance data
 
     @Test
+    void translationOnlyInstanceEqualsTheGeneralWriter() {
+        for (int i = 0; i < Rnd.N; i++) {
+            Vec3f t = rnd.nextVec3f();
+            int user = (int) rnd.range(0, 1e6);
+            MemorySegment a = MemorySegment.ofArray(new byte[(int) InstanceWriter.STRIDE * 2]);
+            MemorySegment b = MemorySegment.ofArray(new byte[(int) InstanceWriter.STRIDE * 2]);
+            InstanceWriter.write(a, 1, Mat4x3f.translation(t), user);
+            InstanceWriter.writeTranslation(b, 1, t.x(), t.y(), t.z(), user);
+            assertEquals(-1L, a.mismatch(b), "same bytes");
+        }
+    }
+
+    @Test
+    void visibleTranslationsMatchTheElementwiseWriter() {
+        int n = 1000;
+        vmath.bulk.BoundsArray bounds = new vmath.bulk.BoundsArray(n);
+        vmath.bulk.VisibilitySet visible = new vmath.bulk.VisibilitySet(n);
+        for (int i = 0; i < n; i++) {
+            Vec3f c = rnd.nextVec3f();
+            float h = (float) rnd.range(0.1, 2);
+            bounds.add(c.x() - h, c.y() - h, c.z() - h, c.x() + h, c.y() + h, c.z() + h);
+            if (rnd.range(0, 1) < 0.3) {
+                visible.set(i);
+            }
+        }
+        MemorySegment a = MemorySegment.ofArray(new byte[(int) InstanceWriter.STRIDE * (n + 3)]);
+        MemorySegment b = MemorySegment.ofArray(new byte[(int) InstanceWriter.STRIDE * (n + 3)]);
+        int written = InstanceWriter.writeVisibleTranslations(a, 2, visible, bounds);
+        int k = 2;
+        for (int i = visible.nextSetBit(0); i >= 0; i = visible.nextSetBit(i + 1)) {
+            Vec3f c = bounds.get(i).center();
+            InstanceWriter.writeTranslation(b, k++, c.x(), c.y(), c.z(), i);
+        }
+        assertEquals(visible.count(), written);
+        assertEquals(-1L, a.mismatch(b), "same bytes as one writeTranslation per visible object");
+        assertEquals(0, InstanceWriter.writeVisibleTranslations(a, 0, new vmath.bulk.VisibilitySet(n), bounds), "nothing visible writes nothing");
+    }
+
+    @Test
     void instanceRowsReproduceTheTransformInTheShader() {
         for (int i = 0; i < Rnd.N; i++) {
             Mat4x3f m = Mat4x3f.fromMat4(rnd.nextTrsMat4f());

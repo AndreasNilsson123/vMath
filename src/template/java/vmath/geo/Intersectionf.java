@@ -442,6 +442,60 @@ public final class Intersectionf {
         return !(Math.abs(dist) > rad);
     }
 
+    /** Ray against an oriented box; the distance along the ray ({@code 0} when the origin is inside), or {@code +Infinity} for a miss beyond {@code tMax}. */
+    public static float rayObb(Rayf ray, Obbf box, float tMax) {
+        Vec3f o = box.toLocal(ray.origin());
+        Vec3f d = box.rotation().conjugate().transform(ray.direction());
+        Aabbf local = new Aabbf(-box.hx(), -box.hy(), -box.hz(), box.hx(), box.hy(), box.hz());
+        return rayAabb(Rayf.of(o, d), local, tMax); // the rotation is rigid, so t is the same in both frames
+    }
+
+    /** True when the sphere and the oriented box share a point. */
+    public static boolean sphereObb(Spheref s, Obbf box) {
+        return !(box.distanceSquared(s.center()) > s.radius() * s.radius());
+    }
+
+    /** Which side of {@code p} the oriented box is on, as for {@link #planeAabb}; the plane normal must be unit length. */
+    public static int planeObb(Planef p, Obbf box) {
+        Mat3f r = box.axes();
+        float rad = box.hx() * Math.abs(p.nx() * r.m00() + p.ny() * r.m01() + p.nz() * r.m02())
+                + box.hy() * Math.abs(p.nx() * r.m10() + p.ny() * r.m11() + p.nz() * r.m12())
+                + box.hz() * Math.abs(p.nx() * r.m20() + p.ny() * r.m21() + p.nz() * r.m22());
+        float s = p.distance(box.center());
+        return s - rad >= 0f ? Containment.INSIDE : s + rad < 0f ? Containment.OUTSIDE : Containment.INTERSECTING;
+    }
+
+    /** Which side of {@code p} the triangle is on, as for {@link #planeAabb}: all vertices in front, all behind, or straddling. */
+    public static int planeTriangle(Planef p, Trianglef tri) {
+        float da = p.distance(tri.a()), db = p.distance(tri.b()), dc = p.distance(tri.c());
+        float lo = Math.min(da, Math.min(db, dc)), hi = Math.max(da, Math.max(db, dc));
+        return lo >= 0f ? Containment.INSIDE : hi < 0f ? Containment.OUTSIDE : Containment.INTERSECTING;
+    }
+
+    /**
+     * Swept sphere against sphere: the first time {@code t} in [0, {@code tMax}] at which {@code a}, moving by {@code va} per unit time, touches {@code b}
+     * moving by {@code vb}; {@code 0} when they already overlap, {@code +Infinity} when they do not meet in time.
+     */
+    public static float sweepSphereSphere(Spheref a, Vec3f va, Spheref b, Vec3f vb, float tMax) {
+        Vec3f d = a.center().sub(b.center());
+        Vec3f v = va.sub(vb);
+        float r = a.radius() + b.radius();
+        float c = d.dot(d) - r * r;
+        if (c <= 0f) {
+            return 0f;
+        }
+        float vv = v.dot(v), dv = d.dot(v);
+        if (!(dv < 0f) || !(vv > 0f)) {
+            return Float.POSITIVE_INFINITY; // not approaching
+        }
+        float disc = dv * dv - vv * c;
+        if (!(disc >= 0f)) {
+            return Float.POSITIVE_INFINITY;
+        }
+        float t = (-dv - (float) Math.sqrt(disc)) / vv;
+        return t <= tMax ? t : Float.POSITIVE_INFINITY;
+    }
+
     private static float[] sub(float[] a, float[] b) {
         return new float[] {a[0] - b[0], a[1] - b[1], a[2] - b[2]};
     }

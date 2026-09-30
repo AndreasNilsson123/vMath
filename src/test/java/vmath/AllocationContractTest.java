@@ -389,6 +389,16 @@ class AllocationContractTest {
         });
         vmath.core.Mat4x3f transform = vmath.core.Mat4x3f.translation(1f, 2f, 3f);
         assertNoAllocation("InstanceWriter.write", WARM, CALLS, () -> vmath.gl.InstanceWriter.write(seg, n[0]++ & 511, transform, 7));
+        assertNoAllocation("InstanceWriter.writeTranslation", WARM, CALLS, () -> vmath.gl.InstanceWriter.writeTranslation(seg, n[0]++ & 511, 1f, 2f, 3f, 7));
+        vmath.bulk.BoundsArray bounds = new vmath.bulk.BoundsArray(256);
+        vmath.bulk.VisibilitySet visible = new vmath.bulk.VisibilitySet(256);
+        for (int i = 0; i < 256; i++) {
+            bounds.add(i, i, i, i + 1f, i + 1f, i + 1f);
+            if ((i & 3) == 0) {
+                visible.set(i);
+            }
+        }
+        assertNoAllocation("InstanceWriter.writeVisibleTranslations", WARM_BIG, CALLS_BIG, () -> vmath.gl.InstanceWriter.writeVisibleTranslations(seg, 0, visible, bounds));
     }
 
     // ------------------------------------------------------------ animation

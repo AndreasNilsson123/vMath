@@ -1,5 +1,7 @@
 package vmath.bulk;
 
+import java.lang.foreign.MemorySegment;
+import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.util.Arrays;
 import vmath.core.Quatf;
@@ -106,6 +108,21 @@ public final class TransformArray {
     /** The live backing array (transform {@code i} starts at {@code i * STRIDE}); replaced when the array grows. */
     public float[] data() {
         return data;
+    }
+
+    /**
+     * Writes all transforms (10 floats each, the layout of this array) into {@code dst} starting at byte {@code offset}, {@code strideBytes} apart (at least
+     * 40), in the given byte order.
+     */
+    public void writeTo(MemorySegment dst, long offset, long strideBytes, ByteOrder order) {
+        Strided.write(data, 0, STRIDE, size, dst, offset, strideBytes, order);
+    }
+
+    /** Replaces the contents with {@code count} transforms read from {@code src} ({@link #writeTo(MemorySegment, long, long, ByteOrder)} reversed). */
+    public void readFrom(MemorySegment src, long offset, long strideBytes, ByteOrder order, int count) {
+        ensureCapacity(count);
+        Strided.read(src, offset, strideBytes, order, data, 0, STRIDE, count);
+        size = count;
     }
 
     /** Absolute write of all transforms at {@code index}; does not move the buffer position. */

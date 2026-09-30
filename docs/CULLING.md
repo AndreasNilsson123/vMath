@@ -278,6 +278,9 @@ conservatively otherwise (radius times the largest axis scale). `Intersectionf` 
 | ray-capsule | `rayCapsule` | end spheres plus cylinder wall; origin inside gives `t = 0` |
 | OBB-OBB | `obbObb` | 15-axis SAT with an epsilon on the edge-cross terms |
 | AABB-triangle | `aabbTriangle` | 13-axis SAT |
+| ray-OBB, sphere-OBB | `rayObb`, `sphereObb` | ray is moved into the box frame (rigid, so `t` is unchanged) and uses the slab test |
+| plane-OBB, plane-triangle | `planeObb`, `planeTriangle` | same `Containment` result as `planeAabb` (INSIDE = in front) |
+| sphere sweep | `sweepSphereSphere` | earliest time of contact of two moving spheres, `0` when already overlapping, `+Infinity` for a miss |
 
 All overlap predicates are written as "not separated", so a NaN input reports an overlap (conservative). `obbObb` and `aabbTriangle` are tested against a
 vertex-projection SAT with generic axes, skipping pairs within a touching margin where the two may legitimately differ by the epsilon.

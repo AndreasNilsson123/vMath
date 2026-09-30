@@ -92,3 +92,50 @@ an affine transform as three `vec4` rows (48 bytes instead of the 64 of a padded
 Checking a layout against a shader's reflection data (GPU-2), vertex-format builders
 (GPU-4), and generating a shared GLSL header file from the records (the `GLSL` string is available per struct today).
 The older `Std140` class (`vec3`/`mat3`/`mat4` into a `FloatBuffer`) still works, but the layout engine and writers above supersede it.
+
+## End-to-end sample
+
+`vmath-bench/.../sample/CullAndDrawSample.java` (run with `./gradlew :vmath-bench:sample`) is the CPU half of a GPU-driven frame, headless: 1 000 000 instances
+are frustum culled with the best available kernel (Vulkan clip space), the survivors are written into an instance buffer with
+`InstanceWriter.writeTranslation`, and one `DrawElementsIndirect` command is added to a `DrawCommandBuffer`. A renderer uploads the two segments and issues
+the indirect draw. Measured on one machine, JDK 25, a moving camera with about 95 000 of the 1M instances visible, averaged over 300 frames after warm-up:
+
+| Stage | Time per frame | Allocation per frame |
+|---|---|---|
+| frustum cull, 1M boxes | about 2.0 ms | 0 B |
+| write about 95k instances (64 B each) and the draw command | about 1.7 ms | 0 B |
+
+The first version of the sample built a `Mat4x3f.translation` per instance and allocated about 276 KB per frame (about 3 B per instance: escape analysis
+removed most of the objects but not all), which is why `writeTranslation` exists. A sample with rotation or scale would use `InstanceWriter.write` and should
+be measured again. The cull here is a single thread with no BVH or occlusion stage; `ParallelFrustumKernel` and `BvhStage` are the next levers.
+
+### Frame cost by culling strategy (`FrameBench`)
+
+`FrameBench` runs the same scene as the sample through JMH (`./gradlew :vmath-bench:jmh "-Pjmh.args=-prof gc FrameBench"`), one machine, JDK 25, 5 iterations
+of 1 s, so read the ratios and mind the error bars. "Whole frame" is cull, then writing about 95 000 instances and one draw command, with
+`InstanceWriter.writeVisibleTranslations`:
+
+| Cull strategy | Cull only | Whole frame | Allocation per frame |
+|---|---|---|---|
+| serial (best single-thread kernel) | 2.06 ms ± 0.11 | 3.42 ms ± 0.16 | about 26 B (JMH noise floor) |
+| parallel, 4 chunks | 0.73 ms ± 0.05 | 2.28 ms ± 0.19 | about 230 B (executor hand-off) |
+| static BVH | 0.85 ms ± 0.18 | 2.92 ms ± 2.56 (very noisy) | about 23 B |
+
+The instance write is now as large as the cull, so a faster cull stops paying off quickly: the BVH cull is about 2.4x faster than serial but saves well
+under half of that in the frame. The 4-chunk parallel kernel allocates a few hundred bytes per call (task hand-off), the documented exception to the
+zero-allocation rule.
+
+### Tuning the instance write (`InstanceWriteBench`)
+
+A fixed, random visibility set (9.5% of 1M, the worst case for locality), the step "write one instance per visible object":
+
+| Variant | Time | Kept? |
+|---|---|---|
+| `nextSetBit` loop + six-array gather + write (first version) | 1.9 to 2.0 ms | replaced |
+| walk the set a word at a time (`w &= w - 1`), same gather and write | 1.42 ms | **yes**, now `writeVisibleTranslations` |
+| word loop over one packed centre array instead of six bounds arrays | 1.31 ms ± 0.97 | no: not clearly better within the noise, and it needs a second array kept in step |
+| fill a heap `float[]`, then one bulk copy to the segment | 2.0 to 2.8 ms | no: slower (an extra pass over 6 MB) |
+
+Split of the cost on the same set: bit scan with `nextSetBit` 0.41 ms, word scan 0.20 ms, six-array gather about 0.8 to 0.9 ms, the 64 B writes alone
+0.16 to 0.19 ms. The gather (cache misses across six arrays) is the largest part and is what a packed layout would attack; it was not convincing here, so
+the bounds stay in the planar layout the SIMD cull needs.

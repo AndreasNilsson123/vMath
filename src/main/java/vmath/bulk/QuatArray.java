@@ -1,5 +1,7 @@
 package vmath.bulk;
 
+import java.lang.foreign.MemorySegment;
+import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.util.Arrays;
 import vmath.core.Quatf;
@@ -84,6 +86,21 @@ public final class QuatArray {
     /** The live backing array (quaternion {@code i} starts at {@code i * STRIDE}); replaced when the array grows. */
     public float[] data() {
         return data;
+    }
+
+    /**
+     * Writes all quaternions ({@code x, y, z, w}) into {@code dst} starting at byte {@code offset}, {@code strideBytes} apart (at least 16), in the given byte
+     * order. A stride above 16 leaves the bytes between quaternions alone, so this fills one attribute of an interleaved buffer.
+     */
+    public void writeTo(MemorySegment dst, long offset, long strideBytes, ByteOrder order) {
+        Strided.write(data, 0, STRIDE, size, dst, offset, strideBytes, order);
+    }
+
+    /** Replaces the contents with {@code count} quaternions read from {@code src} ({@link #writeTo(MemorySegment, long, long, ByteOrder)} reversed). */
+    public void readFrom(MemorySegment src, long offset, long strideBytes, ByteOrder order, int count) {
+        ensureCapacity(count);
+        Strided.read(src, offset, strideBytes, order, data, 0, STRIDE, count);
+        size = count;
     }
 
     /** Absolute write of all quaternions at {@code index}; does not move the buffer position. */

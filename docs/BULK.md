@@ -50,3 +50,11 @@ implementation of each.
 `slerp` is the expensive one by a wide margin: it calls `sin` twice and `atan2` once per element. When the two rotations are close (a blend between nearby
 animation frames) a normalised linear interpolation is a good substitute at a fraction of the cost, and a batch `nlerp` would be the obvious addition;
 it is not built. None of these kernels uses the Vector API yet.
+
+## Writing into interleaved buffers
+
+`Vec3fArray`, `QuatArray`, `Mat4fArray` and `TransformArray` have `writeTo(MemorySegment, offset, strideBytes, order)` and `readFrom(...)`. The stride is the
+distance in bytes between elements in the destination; when it is larger than one element the bytes in between are left alone, so one container fills one
+attribute of an interleaved vertex or instance buffer and the next container fills the next. `Strided` is the underlying copy and also has `ByteBuffer`
+variants (absolute positions, the buffer's own byte order). A tightly packed write in native byte order is a single bulk copy; every other case is an
+element loop. No timing is recorded for either yet.
