@@ -34,6 +34,14 @@ public record Mat3f(
                 c2.x(), c2.y(), c2.z());
     }
 
+    /** The matrix stored column-major in {@code src[off..off+8]} (the order {@link #writeTo} writes). */
+    public static Mat3f fromArray(float[] src, int off) {
+        return new Mat3f(
+                src[off], src[off + 1], src[off + 2],
+                src[off + 3], src[off + 4], src[off + 5],
+                src[off + 6], src[off + 7], src[off + 8]);
+    }
+
     public static Mat3f scaling(float sx, float sy, float sz) {
         return new Mat3f(
                 sx, 0f, 0f,
@@ -167,6 +175,15 @@ public record Mat3f(
             case 1 -> new Vec3f(m10, m11, m12);
             case 2 -> new Vec3f(m20, m21, m22);
             default -> throw new IndexOutOfBoundsException(c);
+        };
+    }
+
+    public Vec3f row(int r) {
+        return switch (r) {
+            case 0 -> new Vec3f(m00, m10, m20);
+            case 1 -> new Vec3f(m01, m11, m21);
+            case 2 -> new Vec3f(m02, m12, m22);
+            default -> throw new IndexOutOfBoundsException(r);
         };
     }
 

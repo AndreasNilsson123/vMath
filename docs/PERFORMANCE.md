@@ -17,6 +17,15 @@
 construction (JMH must keep it alive). The `chain*` benchmarks return a primitive, which is the case that shows
 whether escape analysis removed the intermediates.
 
+### Enforced in the unit tests
+
+The zero-allocation promise for the hot paths is also checked on every build by `AllocationContractTest` (helper: `vmath.Alloc`, which reads
+`ThreadMXBean.getThreadAllocatedBytes` around a loop of calls after a warm-up so that the JIT has compiled the code). A path fails if it allocates more than
+a quarter of a byte per call on average, and the message names the path and the measured figure. It covers the flat frustum kernel and pipeline, the
+BVH, dynamic tree, grid and octree queries and updates, occlusion, LOD, cone, shadow and light culling, the transform hierarchy, clip sampling, blending and
+skinning. It does **not** cover APIs that return value records (whether they allocate depends on inlining in the caller, see `CoreBench`), offline mesh tools, or the
+executor hand-off in `ParallelFrustumKernel`; each exclusion is listed in the test's class comment. When you add a hot path, add it there.
+
 ## Findings
 
 Baseline, JDK 25, Ryzen 5 5600H, 1 fork, short run (indicative only):
@@ -65,6 +74,15 @@ allocation, and the ones that were bound by that allocation get faster (`invertA
 the big `invert` method neither avoids the allocation nor keeps its speed, and chains that escape analysis already handled are a
 little slower. This is an early-access preview build (and the JDK 25 side is a different JVM version), so treat it as a first
 data point; rerun it as the build matures.
+
+**A behaviour to know about (found by `AllocationContractTest` on the Valhalla build).** A value record read from a field and passed into a call the
+JIT does not inline is buffered, that is copied to the heap, on that call. With `-Pvalhalla` on JDK 28-ea+17, `kernel.cull(ctx.frustum(), ...)`
+allocated about 128 bytes per call and `ctx.frustum().writeTo(...)` about 84, while holding the same value in a local variable first allocated nothing.
+The cost is a small constant per call, not per object, so the culling loops themselves are unaffected, but it means "zero allocation" on the Valhalla
+build has to be read as "zero allocation per element". The contract test therefore keeps the strict check on a plain JVM and, under `-Pvalhalla`,
+checks for the paths that cross such a call that the allocation stays under a kilobyte and does not grow when the data grows four times
+(`Alloc.assertNoAllocationPerElement`). Practical advice for hot code on that build: read a value-typed component once into a local before a loop or a
+non-inlined call, or pass primitives.
 
 ## Why the flat culling kernel was slow, and what fixed it
 

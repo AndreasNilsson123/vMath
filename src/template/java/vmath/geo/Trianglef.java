@@ -1,8 +1,10 @@
 package vmath.geo;
 
+import vmath.annotations.DoubleOnly;
 import vmath.annotations.FloatOnly;
 import vmath.annotations.GenerateDouble;
 import vmath.annotations.ValueType;
+import vmath.core.Mat4f;
 import vmath.core.Vec3f;
 
 /** A triangle by its three vertices; counter-clockwise winding faces {@link #normal()}. */
@@ -24,6 +26,11 @@ public record Trianglef(float ax, float ay, float az, float bx, float by, float 
 
     public Vec3f c() {
         return new Vec3f(cx, cy, cz);
+    }
+
+    /** The triangle after transforming space by the affine matrix {@code m} (the vertices are transformed; a mirroring {@code m} flips the winding). */
+    public Trianglef transform(Mat4f m) {
+        return of(m.transformPosition(a()), m.transformPosition(b()), m.transformPosition(c()));
     }
 
     /** Unnormalized normal {@code (b - a) x (c - a)}; its length is twice the area. */
@@ -101,5 +108,10 @@ public record Trianglef(float ax, float ay, float az, float bx, float by, float 
     @FloatOnly
     public Triangled toDouble() {
         return new Triangled(ax, ay, az, bx, by, bz, cx, cy, cz);
+    }
+
+    @DoubleOnly
+    public Trianglef toFloat() {
+        return new Trianglef((float) ax, (float) ay, (float) az, (float) bx, (float) by, (float) bz, (float) cx, (float) cy, (float) cz);
     }
 }

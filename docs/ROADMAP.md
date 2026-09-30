@@ -129,14 +129,15 @@ Tasks:
       Verify the "no allocation" claim before building on it.
 - [x] **INF-2 (P0, S)** GitHub Actions: JDK matrix (LTS baseline + latest), Windows/Linux, Valhalla EA job (allowed to fail).  
       *Done: `.github/workflows/ci.yml`, incl. nightly seed and Valhalla EA job.*
-- [ ] **INF-3 (P1, S)** Add allocation regression test (`ThreadMXBean.getThreadAllocatedBytes`) for hot paths in unit tests.
+- [x] **INF-3 (P1, S)** Add allocation regression test (`ThreadMXBean.getThreadAllocatedBytes`) for hot paths in unit tests.  
+      *Done: `Alloc` helper and `AllocationContractTest` (scalar frustum kernel, pipeline, BVH/dynamic tree/grid/octree queries and updates, occlusion, LOD/cone/shadow/light culling, transform hierarchy, sampling, blending, skinning). Value-record-returning APIs, offline mesh tools and the executor hand-off are excluded and listed in the test.*
 - [x] **INF-4 (P1, S)** Decide baseline JDK (21 vs current LTS). FFM final and useful for `MemorySegment` APIs from 22.  
       *Done: baseline is JDK 25.*
       Multi-release or a bump. (Open question 2.)
 - [ ] **INF-5 (P1, M)** JPMS `module-info.java` per module, `japicmp` API-compat check, javadoc with `-Xdoclint`, LICENSE.  
       *Partial: JPMS done for `vmath`, `vmath.annotations` and `vmath.codegen` (`vmath` requires the annotations `static`, so
       it needs only `java.base` at run time), verified against the built jar by `ModuleDescriptorTest`. `vmath-bench` stays
-      non-modular (JMH's generated code is not). `japicmp` is done (`docs/API-COMPAT.md`, baseline tag `v0.1.0`). Javadoc lint and LICENSE are open.*
+      non-modular (JMH's generated code is not). `japicmp` is done (`docs/API-COMPAT.md`, baseline tag `v0.1.0`). Javadoc is linted by `check` (`-Xdoclint:all,-missing` with warnings as errors: broken references, bad HTML, malformed tags); checking for *missing* comments and record `@param` tags is open, and so is the LICENSE (the owner's decision).*
 - [ ] **INF-6 (P1, M)** Restructure into multi-project Gradle build per the module table. → AF-2  
       *Partial: annotations/codegen/bench are modules; core/geo/spatial still share the root project, which is one JPMS module `vmath` exporting `vmath.core`, `geo`, `bulk`, `spatial`, `gl`. Splitting it further means per-module template directories and a generator that resolves family renames across modules.*
 - [ ] **INF-7 (P2, M)** Fuzzing/degenerate suite: zero vectors, denormals, NaN/Inf, huge magnitudes, near-singular
@@ -150,8 +151,8 @@ Tasks:
 
 Consistency first, then features. All new features are written once in float and generated.
 
-- [ ] **CORE-1 (P1, M)** API parity audit: every applicable op on every type (table in `docs/API.md`), plus a test that  
-      *Partial: vector parity done (`Vec2/3/4`, `Mat3.isFinite`, `Quat.isFinite/get`); the reflective parity test is still open.*
+- [x] **CORE-1 (P1, M)** API parity audit: every applicable op on every type (table in `docs/API.md`), plus a test that  
+      *Done: `ApiParityTest` (reflection over required-operation lists for vectors, matrices, quaternions and shapes, plus float/double twin parity). The gaps it found were filled: `Vec4` angle/reflect/refract/splat, `Mat3` row/fromArray, `Mat4x3` rotations and `transform(Vec4)`, `Sphere`/`Ray` closestPoint, `Triangle.transform`, and `toFloat` on the five geometry double types. Intentional exceptions are listed in the test and in `docs/API.md`.*
       fails if a type is missing an op present on its siblings (reflection over a required-ops list).
 - [x] **CORE-2 (P1, M)** Scalar/vector toolbox: `clamp, saturate, sign, floor, ceil, fract, mod, step, smoothstep, mix,
       remap, reflect, refract, project, reject, faceForward, orthonormalBasis, min/max component, isFinite, isZero`.
@@ -161,9 +162,11 @@ Consistency first, then features. All new features are written once in float and
 - [ ] **CORE-4 (P1, M)** `Mat4`: `ortho`, `orthoReversedZ`, `frustum`, `perspectiveInfinite`, inverse projection,  
       *Partial: `frustum`, `perspectiveInfinite`, `lookTo`, `rotationX/Y/Z/Axis`, `decompose`, `isAffine` done; inverse projection and shear open.*
       `lookTo`, `rotationAxis`, `shear`, TRS decomposition (with negative-scale and shear handling), `isAffine`, `isOrthonormal`.
-- [ ] **CORE-5 (P1, L)** `Transform` (TRS) and `Mat4x3` affine (48 B instead of 64 B, ~25% less bandwidth, cheaper multiply/invert).
+- [x] **CORE-5 (P1, L)** `Transform` (TRS) and `Mat4x3` affine (48 B instead of 64 B, ~25% less bandwidth, cheaper multiply/invert).  
+      *Done: `Transformf`/`Transformd` (composition without matrices, non-uniform scale limits documented in its class comment) and `Mat4x3f`/`Mat4x3d` (`mul`, `invert`, `writeTo`).*
       Transform composition without matrices. Non-uniform scale semantics documented.
-- [ ] **CORE-6 (P1, M)** `Vec2i/3i/4i` (+ long variants if needed): grid coordinates, hashing, min/max, conversions.
+- [ ] **CORE-6 (P1, M)** `Vec2i/3i/4i` (+ long variants if needed): grid coordinates, hashing, min/max, conversions.  
+      *Partial: `Vec2i` and `Vec3i` (hand-written, `IntVecTest`); `Vec4i` and long variants are open.*
 - [ ] **CORE-7 (P2, M)** `Mat2`, `Mat2x3`/`Mat3x2` (2D transforms), 2D helpers (rotate, perp-dot, winding).
 - [ ] **CORE-8 (P2, M)** Dual quaternions, `Pose` (Quat + Vec3, rigid-only, 28 B), rigid inverse/compose fast paths.
 - [ ] **CORE-9 (P2, M)** Fast math: polynomial `sin/cos/atan2/acos/exp/log`, fast `invSqrt`, documented max error each,
@@ -178,10 +181,10 @@ Consistency first, then features. All new features are written once in float and
 ### Phase D. Bulk data and memory efficiency (P1)
 
 - [ ] **MEM-1 (P1, L)** `vmath-bulk` SoA containers (`Vec3fArray`, `Vec4fArray`, `QuatArray`, `Mat4fArray`, `TransformArray`)  
-      *Partial: `BoundsArray`, `Mat4fArray`, `VisibilitySet`, `IntList` on `float[]`; `Vec3fArray`/`QuatArray`/`TransformArray` and `MemorySegment` storage open.*
+      *Partial: `BoundsArray`, `Mat4fArray`, `Vec3fArray`, `QuatArray`, `TransformArray`, `VisibilitySet`, `IntList` on `float[]` (`docs/BULK.md`); `Vec4fArray`, `MemorySegment` (off-heap) storage and compaction are open.*
       over `float[]` (heap) and `MemorySegment` (off-heap) with one interface-free API pair. Growth policy, capacity, compaction.
 - [ ] **MEM-2 (P1, L)** Kernels: batch transform points/normals, matrix multiply, TRS compose, quaternion normalize/slerp,  
-      *Partial: `BoundsArray.transformFrom` (per-object matrices); other kernels open.*
+      *Partial, scalar versions: `BoundsArray.transformFrom`, `Vec3fArray` transform positions/directions and normalize, `QuatArray` normalize/multiply/slerp/toMatrices, `TransformArray` toMatrices/blend, measured in `docs/BULK.md` (`QuatArray.slerp` is 72 ns per element). Matrix multiply and the Vector API variants are open.*
       AABB transform. Scalar versions first, then Vector API (incubator) variants selected at startup. → MEM-1, INF-1
 - [ ] **MEM-3 (P1, M)** Generate the SoA container and scalar loops from the scalar ops via `@Kernel`/`@Bulk`, so
       new ops don't need hand-written loops. → AF-2
@@ -217,23 +220,25 @@ Consistency first, then features. All new features are written once in float and
       generate layout computation, size/alignment constants and writers (scalars, vec2/3/4, mat2/3/4, arrays, nested structs). → AF-2
 - [ ] **GPU-2 (P1, S)** Layout validator that compares the generated layout to reflection data from the shader
       (SPIR-V reflection or GL introspection) in an opt-in test.
-- [ ] **GPU-3 (P1, M)** Indirect draw command structs (`DrawArraysIndirect`, `DrawElementsIndirect`, multi-draw), compute
-      dispatch structs, and packed instance-data writers.
+- [x] **GPU-3 (P1, M)** Indirect draw command structs (`DrawArraysIndirect`, `DrawElementsIndirect`, multi-draw), compute
+      dispatch structs, and packed instance-data writers.  
+      *Done: `DrawArraysIndirect`, `DrawElementsIndirect`, `DispatchIndirect` (`@GpuStruct`, sizes 16/20/12 checked against the GL and Vulkan specs), `DrawCommandBuffer` (multi-draw runs, optional 16-byte stride, instance-count zeroing for culling), `InstanceWriter` (transform rows plus user data); `docs/GPU.md`.*
 - [ ] **GPU-4 (P2, M)** Vertex-format descriptions (attribute, stride, offsets) and interleaved-buffer builders that emit the
       matching GL/Vulkan attribute specs.
 - [ ] **GPU-5 (P2, M)** GLSL/Slang shared-header generator so shader code and Java use one struct definition. → GPU-1
-- [ ] **GPU-6 (P2, M)** Clip-space conventions as a type (`GL`, `Vulkan` (Y-down), `D3D`), applied consistently by
-      projection builders. Removes the boolean `zZeroToOne` parameter.
+- [x] **GPU-6 (P2, M)** Clip-space conventions as a type (`GL`, `Vulkan` (Y-down), `D3D`), applied consistently by
+      projection builders. Removes the boolean `zZeroToOne` parameter.  
+      *Done for the matrix builders: `ClipSpace` (`OPENGL`, `VULKAN`, `D3D`), `ClipSpace` overloads of `Mat4f.perspective`/`perspectiveInfinite`/`perspectiveReversedZ`/`ortho`/`frustum`, `Mat4f.flipY`, `DepthRange.of`. The boolean overloads stay (japicmp). `Cameraf` and its screen helpers still assume y-up NDC (changing its record components would be an API break); see `docs/CAMERA.md`.*
 
 ### Phase G. Geometry primitives (P1)
 
 Value records for single shapes; SoA storage in `vmath-bulk` for large sets.
 
-- [ ] **GEO-1 (P1, M)** `Aabb`, `Sphere`, `Plane`, `Ray`, `Segment`, `Triangle`, `Capsule`, `Obb`, `Frustum` (six planes, 96 B),  
-      *Partial: `Aabb`, `Sphere`, `Plane`, `Ray`, `Triangle`, `Obb`, `Frustum` done; `Segment`, `Capsule` open.*
+- [x] **GEO-1 (P1, M)** `Aabb`, `Sphere`, `Plane`, `Ray`, `Segment`, `Triangle`, `Capsule`, `Obb`, `Frustum` (six planes, 96 B),  
+      *Done: all nine shapes (`Segment`, `Capsule` added with closest point, bounds, transform; capsule radius scales by the largest axis scale).*
       with construct/merge/expand/transform/contain/closest-point.
 - [ ] **GEO-2 (P1, L)** Intersection matrix, all pairs: ray×{aabb, sphere, plane, tri, obb, capsule}, aabb×{aabb, sphere, plane,  
-      *Partial: ray x {aabb, sphere, plane, triangle}, plane x {aabb, sphere}, sphere x {aabb, sphere, triangle} done; OBB-OBB, aabb-triangle, sweeps, capsule open.*
+      *Partial: ray x {aabb, sphere, plane, triangle}, plane x {aabb, sphere}, sphere x {aabb, sphere, triangle} done; segment-segment, segment-aabb, sphere/capsule/aabb x capsule, capsule x capsule, ray-capsule, OBB-OBB (15-axis SAT) and aabb-triangle (13-axis SAT) done; sweep tests, plane-triangle and obb x {sphere, plane, ray} matrix gaps open.*
       tri, obb}, sphere×{sphere, plane, tri}, sweep tests, and distance queries. Each with conservative/exact variants documented.
 - [x] **GEO-3 (P1, M)** Robust ray-triangle (watertight, Woop et al.), slab test with correct NaN/0-direction handling.  
       *Done: watertight ray-triangle.*
@@ -277,7 +282,7 @@ can be chained and composed, and they run on SoA bounds.
 - [x] **CULL-11 (P2, M)** Shadow culling: cascade frustum culling, light-space bounds, caster/receiver classification,
       point/spot light volumes, cube-face selection.  
       *Done: `CascadeCasters` (tight light-space caster test per cascade), `LightCull` (point, spot, cube-face masks). Caster/receiver classification bits are not built: the tight caster test covers the same saving.*
-- [ ] **CULL-12 (P2, M)** Spatial queries: ray cast, k-NN, AABB/sphere/frustum overlap, all against BVH/grid, no allocation  
+- [x] **CULL-12 (P2, M)** Spatial queries: ray cast, k-NN, AABB/sphere/frustum overlap, all against BVH/grid, no allocation  
       *Done: AABB/sphere overlap, frustum and ray queries on the trees; k-NN (`Neighbors`) on the BVH, dynamic tree, grid and octree; overlap on the grid and octree.*
       (caller-provided result buffer).
 - [ ] **CULL-13 (P3, L)** GPU-driven culling support: compute-shader Hi-Z + frustum culling that writes indirect draw buffers,
@@ -322,11 +327,12 @@ can be chained and composed, and they run on SoA bounds.
 
 ### Phase K. Animation, scene and simulation glue (P2/P3)
 
-- [x] **ANIM-1 and ANIM-2 done (see `docs/ANIMATION.md`): `TransformHierarchy`, `Skeleton`, `Pose`, `AnimationClip`, `ClipSampler`, `Skinning`.**
-- [ ] **ANIM-1 (P2, L)** (superseded by the line above) Scene-transform hierarchy in SoA: parent indices sorted topologically, local/world `TransformArray`, dirty-flag
-      propagation, batch world-matrix update kernel. → MEM-2, CORE-5
-- [ ] **ANIM-2 (P2, L)** Skeletal animation: pose sampling (keyframe search, quaternion slerp), skinning matrices, blend/additive/layered
-      blending, GPU skinning buffer layout. Dual-quaternion skinning option.
+- [x] **ANIM-1 (P2, L)** Scene-transform hierarchy in SoA: parent indices sorted topologically, local/world `TransformArray`, dirty-flag
+      propagation, batch world-matrix update kernel. → MEM-2, CORE-5  
+      *Done: `TransformHierarchy` (parents-first order, dirty propagation, single forward pass, subtree removal with remap; `docs/ANIMATION.md`). A standalone bulk `TransformArray` is planned under MEM-1.*
+- [x] **ANIM-2 (P2, L)** Skeletal animation: pose sampling (keyframe search, quaternion slerp), skinning matrices, blend/additive/layered
+      blending, GPU skinning buffer layout. Dual-quaternion skinning option.  
+      *Done: `Skeleton`, `Pose`, `AnimationClip`, `ClipSampler`, `Skinning` (joint matrices, CPU reference, unorm8 weight packing, 64-byte `mat4` stride). Dual-quaternion skinning is not built.*
 - [ ] **ANIM-3 (P2, M)** Inverse kinematics (two-bone, FABRIK, CCD) and look-at constraints.
 - [ ] **ANIM-4 (P3, M)** Morph targets/blend shapes packing, root motion extraction, animation compression (curve fitting, quantized keys).
 - [ ] **ANIM-5 (P3, L)** Physics-adjacent math: rigid-body integrators, inertia tensors from shapes, contact manifold math
@@ -344,7 +350,8 @@ can be chained and composed, and they run on SoA bounds.
 
 ### Phase M. Documentation and release (P1/P2)
 
-- [ ] **DOC-1 (P1, M)** `docs/PERFORMANCE.md` (contract from §2), `docs/CODEGEN.md`, `docs/API.md` parity table.
+- [x] **DOC-1 (P1, M)** `docs/PERFORMANCE.md` (contract from §2), `docs/CODEGEN.md`, `docs/API.md` parity table.  
+      *Done: all three exist; the API table is backed by `ApiParityTest`.*
 - [ ] **DOC-2 (P2, M)** Cookbook: "camera-relative rendering", "culling 1M instances", "GPU-driven pipeline", "migrating from JOML".
 - [ ] **DOC-3 (P2, S)** JOML adapter module (`toJoml`/`fromJoml`) promised in the README.
 - [ ] **DOC-4 (P2, S)** Changelog + semver policy; mark experimental APIs (`@Experimental` annotation, also in the framework).

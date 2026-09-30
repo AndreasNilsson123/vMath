@@ -10,5 +10,10 @@ public enum DepthRange {
     /** Vulkan, D3D and GL with {@code glClipControl(..., GL_ZERO_TO_ONE)}: NDC z in [0, 1], near maps to 0. */
     ZERO_TO_ONE,
     /** Reversed-Z: NDC z in [0, 1] with near mapping to 1 and far (or infinity) to 0. */
-    REVERSED_ZERO_TO_ONE
+    REVERSED_ZERO_TO_ONE;
+
+    /** The depth convention of a conventional (not reversed) projection built for {@code space}. */
+    public static DepthRange of(vmath.core.ClipSpace space) {
+        return space.zeroToOne() ? ZERO_TO_ONE : NEGATIVE_ONE_TO_ONE;
+    }
 }

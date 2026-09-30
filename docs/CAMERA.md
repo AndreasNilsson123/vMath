@@ -75,3 +75,22 @@ face matrices, clustered-light froxel math, and the physical camera model (expos
 `up`, `view(face, position)`, the shared 90 degree aspect-1 `projection(near, far, depth)`, `viewProjection`, `frustum` and
 `faceOf(direction)` (the face a cube lookup reads). Use the frusta to cull per face, or `LightCull.cubeFaces` (see
 `docs/CULLING.md`) to get a per-object face mask in one pass. With `REVERSED_ZERO_TO_ONE` the far plane is infinite.
+
+## Clip-space conventions (`ClipSpace`)
+
+The graphics APIs disagree about clip space in two ways, and a projection matrix has to match the one you render with:
+
+| `ClipSpace` | NDC depth, near to far | NDC `y` |
+|---|---|---|
+| `OPENGL` (default GL) | -1 to 1 | up |
+| `VULKAN` | 0 to 1 | **down** |
+| `D3D` (Direct3D, Metal; also GL with `glClipControl(GL_LOWER_LEFT, GL_ZERO_TO_ONE)`) | 0 to 1 | up |
+
+`Mat4f.perspective`, `perspectiveInfinite`, `perspectiveReversedZ`, `ortho` and `frustum` each have an overload taking a `ClipSpace`, which is what
+to use instead of the boolean `zZeroToOne` overloads (those cannot express the Vulkan Y flip and remain for compatibility). The Vulkan variants are the
+depth-0-to-1 matrix with its output `y` mirrored (`Mat4f.flipY()`). Reversed-Z needs a [0, 1] depth range, so `ClipSpace.OPENGL` is rejected there.
+`DepthRange.of(space)` gives the depth convention to pass to `Frustumf.fromViewProjection`; a Y flip only swaps the top and bottom planes, so culling is unchanged.
+
+**What is not converted:** `Cameraf` and the screen-space helpers built on it (`toScreen`, `pickRay`, `project`/`unproject`) still assume a y-up NDC. With
+a Vulkan matrix from `Mat4f.perspective(..., ClipSpace.VULKAN)` use the matrix directly for rendering and flip `y` yourself when converting NDC to pixels.
+Teaching `Cameraf` about `ClipSpace` would change its record components, which is an API break, so it is a recorded follow-up.

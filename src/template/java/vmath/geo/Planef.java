@@ -1,5 +1,6 @@
 package vmath.geo;
 
+import vmath.annotations.DoubleOnly;
 import vmath.annotations.FloatOnly;
 import vmath.annotations.GenerateDouble;
 import vmath.annotations.ValueType;
@@ -70,5 +71,10 @@ public record Planef(float nx, float ny, float nz, float d) {
     @FloatOnly
     public Planed toDouble() {
         return new Planed(nx, ny, nz, d);
+    }
+
+    @DoubleOnly
+    public Planef toFloat() {
+        return new Planef((float) nx, (float) ny, (float) nz, (float) d);
     }
 }

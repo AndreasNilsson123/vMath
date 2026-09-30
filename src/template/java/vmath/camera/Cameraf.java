@@ -24,7 +24,7 @@ import vmath.geo.Rayf;
  * always uses an infinite far plane and ignores {@code far}. A finite {@code far} of {@code +Infinity} with the other two
  * conventions gives an infinite projection as well.
  *
- * <p>For scenes measured in double precision use the generated double twin and {@link #cameraRelative()}: render everything
+ * <p>For scenes measured in double precision use the generated double twin and {@code cameraRelative()}: render everything
  * relative to the camera position so float precision is spent near the eye.
  */
 @GenerateDouble
@@ -212,7 +212,7 @@ public record Cameraf(Vec3f position, Quatf orientation, float fovy, float aspec
         return new Camerad(position.toDouble(), orientation.toDouble(), fovy, aspect, near, far, depth);
     }
 
-    /** Narrows every value to float. Prefer {@link #cameraRelative()} for world-scale positions. */
+    /** Narrows every value to float. Prefer {@code cameraRelative()} for world-scale positions. */
     @DoubleOnly
     public Cameraf toFloat() {
         return new Cameraf(position.toFloat(), orientation.toFloat(), (float) fovy, (float) aspect, (float) near, (float) far, depth);

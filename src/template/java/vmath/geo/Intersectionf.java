@@ -1,6 +1,8 @@
 package vmath.geo;
 
+import vmath.annotations.Eps;
 import vmath.annotations.GenerateDouble;
+import vmath.core.Mat3f;
 import vmath.core.Vec3f;
 
 /**
@@ -158,5 +160,289 @@ public final class Intersectionf {
     /** True when the sphere touches the triangle. */
     public static boolean sphereTriangle(Spheref s, Trianglef tri) {
         return pointTriangleDistanceSquared(s.center(), tri) <= s.radius() * s.radius();
+    }
+
+    // ---------------------------------------------------------------- segments and capsules
+    //
+    // Overlap predicates below return true when they cannot exclude an overlap (a NaN input, for example), like the culling code: they are
+    // written as "not separated", never as "overlapping".
+
+    /**
+     * Squared distance between two segments (Ericson, Real-Time Collision Detection 5.1.9). Segments that are points, parallel, or end-to-end are
+     * handled.
+     */
+    public static float segmentSegmentDistanceSquared(Segmentf s, Segmentf t) {
+        return closestSegmentPoints(s, t, null);
+    }
+
+    /**
+     * Like {@link #segmentSegmentDistanceSquared}, and also writes the parameters of the two nearest points to {@code st[0]} (on {@code s}) and
+     * {@code st[1]} (on {@code t}), each in [0, 1]. Returns the squared distance.
+     */
+    public static float segmentSegmentClosestParameters(Segmentf s, Segmentf t, float[] st) {
+        return closestSegmentPoints(s, t, st);
+    }
+
+    private static float closestSegmentPoints(Segmentf s, Segmentf t, float[] st) {
+        float d1x = s.bx() - s.ax(), d1y = s.by() - s.ay(), d1z = s.bz() - s.az();
+        float d2x = t.bx() - t.ax(), d2y = t.by() - t.ay(), d2z = t.bz() - t.az();
+        float rx = s.ax() - t.ax(), ry = s.ay() - t.ay(), rz = s.az() - t.az();
+        float a = d1x * d1x + d1y * d1y + d1z * d1z;
+        float e = d2x * d2x + d2y * d2y + d2z * d2z;
+        float f = d2x * rx + d2y * ry + d2z * rz;
+        float u, v; // parameters on s and t
+        if (!(a > 0f) && !(e > 0f)) {
+            u = 0f;
+            v = 0f;
+        } else if (!(a > 0f)) {
+            u = 0f;
+            v = Math.min(Math.max(f / e, 0f), 1f);
+        } else {
+            float c = d1x * rx + d1y * ry + d1z * rz;
+            if (!(e > 0f)) {
+                v = 0f;
+                u = Math.min(Math.max(-c / a, 0f), 1f);
+            } else {
+                float b = d1x * d2x + d1y * d2y + d1z * d2z;
+                float denom = a * e - b * b;
+                u = denom > 0f ? Math.min(Math.max((b * f - c * e) / denom, 0f), 1f) : 0f;
+                v = (b * u + f) / e;
+                if (v < 0f) {
+                    v = 0f;
+                    u = Math.min(Math.max(-c / a, 0f), 1f);
+                } else if (v > 1f) {
+                    v = 1f;
+                    u = Math.min(Math.max((b - c) / a, 0f), 1f);
+                }
+            }
+        }
+        if (st != null) {
+            st[0] = u;
+            st[1] = v;
+        }
+        float px = s.ax() + d1x * u - (t.ax() + d2x * v);
+        float py = s.ay() + d1y * u - (t.ay() + d2y * v);
+        float pz = s.az() + d1z * u - (t.az() + d2z * v);
+        return px * px + py * py + pz * pz;
+    }
+
+    /** True when the two capsules share a point. */
+    public static boolean capsuleCapsule(Capsulef a, Capsulef b) {
+        float r = a.radius() + b.radius();
+        return !(segmentSegmentDistanceSquared(a.segment(), b.segment()) > r * r);
+    }
+
+    /** True when the sphere and the capsule share a point. */
+    public static boolean sphereCapsule(Spheref s, Capsulef c) {
+        float r = s.radius() + c.radius();
+        return !(c.segment().distanceSquared(s.center()) > r * r);
+    }
+
+    /**
+     * Squared distance between a segment and an axis-aligned box (0 when they touch or the segment is inside). Exact: the squared distance from a point
+     * moving along the segment to the box is a convex, piecewise quadratic function of the parameter, with pieces that change only where the segment
+     * crosses one of the six planes of the box, so each piece is minimised in closed form.
+     */
+    public static float segmentAabbDistanceSquared(Segmentf seg, Aabbf box) {
+        float[] p0 = {seg.ax(), seg.ay(), seg.az()};
+        float[] d = {seg.bx() - seg.ax(), seg.by() - seg.ay(), seg.bz() - seg.az()};
+        float[] lo = {box.minX(), box.minY(), box.minZ()};
+        float[] hi = {box.maxX(), box.maxY(), box.maxZ()};
+        float[] ts = new float[8];
+        int n = 0;
+        ts[n++] = 0f;
+        for (int k = 0; k < 3; k++) {
+            if (d[k] != 0f) {
+                float t1 = (lo[k] - p0[k]) / d[k], t2 = (hi[k] - p0[k]) / d[k];
+                if (t1 > 0f && t1 < 1f) {
+                    ts[n++] = t1;
+                }
+                if (t2 > 0f && t2 < 1f) {
+                    ts[n++] = t2;
+                }
+            }
+        }
+        ts[n++] = 1f;
+        for (int i = 1; i < n; i++) { // insertion sort of at most 8 values
+            float key = ts[i];
+            int j = i - 1;
+            while (j >= 0 && ts[j] > key) {
+                ts[j + 1] = ts[j];
+                j--;
+            }
+            ts[j + 1] = key;
+        }
+        float best = Float.POSITIVE_INFINITY;
+        for (int i = 0; i + 1 < n; i++) {
+            float t0 = ts[i], t1 = ts[i + 1];
+            float mid = (t0 + t1) * 0.5f;
+            // on this piece each axis contributes a linear excess u + v t (or nothing, when the segment is inside the slab)
+            float su = 0f, sv = 0f;
+            float[] u = new float[3], v = new float[3];
+            for (int k = 0; k < 3; k++) {
+                float c = p0[k] + d[k] * mid;
+                if (c > hi[k]) {
+                    u[k] = p0[k] - hi[k];
+                    v[k] = d[k];
+                } else if (c < lo[k]) {
+                    u[k] = lo[k] - p0[k];
+                    v[k] = -d[k];
+                }
+                su += u[k] * v[k];
+                sv += v[k] * v[k];
+            }
+            float tStar = sv > 0f ? Math.min(Math.max(-su / sv, t0), t1) : t0;
+            best = Math.min(best, Math.min(excessSquared(u, v, tStar), Math.min(excessSquared(u, v, t0), excessSquared(u, v, t1))));
+        }
+        return best;
+    }
+
+    private static float excessSquared(float[] u, float[] v, float t) {
+        float x = u[0] + v[0] * t, y = u[1] + v[1] * t, z = u[2] + v[2] * t;
+        return x * x + y * y + z * z;
+    }
+
+    /** True when the capsule and the box share a point. */
+    public static boolean capsuleAabb(Capsulef c, Aabbf box) {
+        return !(segmentAabbDistanceSquared(c.segment(), box) > c.radius() * c.radius());
+    }
+
+    /**
+     * The first hit of the ray with the solid capsule within {@code [0, tMax]} (the smallest {@code t}, in units of the ray direction), or
+     * {@link Float#POSITIVE_INFINITY}; 0 when the ray starts inside. The capsule is its cylinder wall and two end spheres; the nearest of the three wins.
+     */
+    public static float rayCapsule(Rayf ray, Capsulef cap, float tMax) {
+        if (cap.contains(ray.origin())) {
+            return 0f; // starting inside the solid (including inside the cylinder part, which neither end sphere covers)
+        }
+        float best = Math.min(raySphere(ray, Spheref.of(cap.a(), cap.radius()), tMax), raySphere(ray, Spheref.of(cap.b(), cap.radius()), tMax));
+        // the cylinder wall: the infinite cylinder around the axis, valid only between the two end planes
+        float dx = cap.bx() - cap.ax(), dy = cap.by() - cap.ay(), dz = cap.bz() - cap.az();
+        float mx = ray.ox() - cap.ax(), my = ray.oy() - cap.ay(), mz = ray.oz() - cap.az();
+        float dd = dx * dx + dy * dy + dz * dz;
+        if (dd > 0f) {
+            float nd = ray.dx() * dx + ray.dy() * dy + ray.dz() * dz;
+            float md = mx * dx + my * dy + mz * dz;
+            float nn = ray.dx() * ray.dx() + ray.dy() * ray.dy() + ray.dz() * ray.dz();
+            float mn = mx * ray.dx() + my * ray.dy() + mz * ray.dz();
+            float mm = mx * mx + my * my + mz * mz;
+            float a = dd * nn - nd * nd;
+            float b = dd * mn - nd * md;
+            float c = dd * (mm - cap.radius() * cap.radius()) - md * md;
+            if (a > 0f) { // a ray parallel to the axis cannot hit the wall; the end spheres cover it
+                float disc = b * b - a * c;
+                if (disc >= 0f) {
+                    float t = (-b - (float) Math.sqrt(disc)) / a;
+                    float y = md + t * nd; // position along the axis, scaled by |axis|^2
+                    if (t >= 0f && t <= tMax && y >= 0f && y <= dd) {
+                        best = Math.min(best, t);
+                    }
+                }
+            }
+        }
+        return best;
+    }
+
+    // ---------------------------------------------------------------- separating axis tests
+
+    @Eps(d = 1e-12)
+    private static final float SAT_EPS = 1e-6f;
+
+    /**
+     * True when the two oriented boxes share a point: the 15-axis separating axis test (Gottschalk; Ericson 4.4.1), where a small epsilon keeps the
+     * cross-product axes of (nearly) parallel edges from reporting a false separation.
+     */
+    public static boolean obbObb(Obbf a, Obbf b) {
+        Mat3f ra = a.axes(), rb = b.axes();
+        float[] au = {ra.m00(), ra.m01(), ra.m02(), ra.m10(), ra.m11(), ra.m12(), ra.m20(), ra.m21(), ra.m22()};
+        float[] bu = {rb.m00(), rb.m01(), rb.m02(), rb.m10(), rb.m11(), rb.m12(), rb.m20(), rb.m21(), rb.m22()};
+        float[] ae = {a.hx(), a.hy(), a.hz()}, be = {b.hx(), b.hy(), b.hz()};
+        // R[i][j] = Au[i] . Bu[j] is B's axes expressed in A's frame
+        float[] r = new float[9], ar = new float[9];
+        for (int i = 0; i < 3; i++) {
+            for (int j = 0; j < 3; j++) {
+                float v = au[i * 3] * bu[j * 3] + au[i * 3 + 1] * bu[j * 3 + 1] + au[i * 3 + 2] * bu[j * 3 + 2];
+                r[i * 3 + j] = v;
+                ar[i * 3 + j] = Math.abs(v) + SAT_EPS;
+            }
+        }
+        float tx = b.cx() - a.cx(), ty = b.cy() - a.cy(), tz = b.cz() - a.cz();
+        float[] t = new float[3];
+        for (int i = 0; i < 3; i++) {
+            t[i] = tx * au[i * 3] + ty * au[i * 3 + 1] + tz * au[i * 3 + 2]; // the centre offset in A's frame
+        }
+        for (int i = 0; i < 3; i++) { // A's three axes
+            float ra0 = ae[i];
+            float rb0 = be[0] * ar[i * 3] + be[1] * ar[i * 3 + 1] + be[2] * ar[i * 3 + 2];
+            if (Math.abs(t[i]) > ra0 + rb0) {
+                return false;
+            }
+        }
+        for (int j = 0; j < 3; j++) { // B's three axes
+            float ra0 = ae[0] * ar[j] + ae[1] * ar[3 + j] + ae[2] * ar[6 + j];
+            float rb0 = be[j];
+            if (Math.abs(t[0] * r[j] + t[1] * r[3 + j] + t[2] * r[6 + j]) > ra0 + rb0) {
+                return false;
+            }
+        }
+        for (int i = 0; i < 3; i++) { // the nine edge-edge axes A_i x B_j
+            int i1 = (i + 1) % 3, i2 = (i + 2) % 3;
+            for (int j = 0; j < 3; j++) {
+                int j1 = (j + 1) % 3, j2 = (j + 2) % 3;
+                float raa = ae[i1] * ar[i2 * 3 + j] + ae[i2] * ar[i1 * 3 + j];
+                float rbb = be[j1] * ar[i * 3 + j2] + be[j2] * ar[i * 3 + j1];
+                float proj = t[i2] * r[i1 * 3 + j] - t[i1] * r[i2 * 3 + j];
+                if (Math.abs(proj) > raa + rbb) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    /**
+     * True when the axis-aligned box and the triangle share a point: the 13-axis separating axis test (Akenine-Moller): the three box axes, the triangle's
+     * plane normal, and the nine cross products of a box axis with a triangle edge.
+     */
+    public static boolean aabbTriangle(Aabbf box, Trianglef tri) {
+        float cx = (box.minX() + box.maxX()) * 0.5f, cy = (box.minY() + box.maxY()) * 0.5f, cz = (box.minZ() + box.maxZ()) * 0.5f;
+        float[] e = {(box.maxX() - box.minX()) * 0.5f, (box.maxY() - box.minY()) * 0.5f, (box.maxZ() - box.minZ()) * 0.5f};
+        // the triangle's vertices relative to the box centre
+        float[][] v = {
+                {tri.ax() - cx, tri.ay() - cy, tri.az() - cz},
+                {tri.bx() - cx, tri.by() - cy, tri.bz() - cz},
+                {tri.cx() - cx, tri.cy() - cy, tri.cz() - cz}};
+        for (int k = 0; k < 3; k++) { // box axes: the triangle's extent along each must reach the box
+            float lo = Math.min(v[0][k], Math.min(v[1][k], v[2][k])), hi = Math.max(v[0][k], Math.max(v[1][k], v[2][k]));
+            if (lo > e[k] || hi < -e[k]) {
+                return false;
+            }
+        }
+        float[][] f = {sub(v[1], v[0]), sub(v[2], v[1]), sub(v[0], v[2])};
+        for (int k = 0; k < 3; k++) { // axis = box axis i x edge k
+            for (int i = 0; i < 3; i++) {
+                float ax = i == 0 ? 0f : i == 1 ? f[k][2] : -f[k][1];
+                float ay = i == 0 ? -f[k][2] : i == 1 ? 0f : f[k][0];
+                float az = i == 0 ? f[k][1] : i == 1 ? -f[k][0] : 0f;
+                float p0 = v[0][0] * ax + v[0][1] * ay + v[0][2] * az;
+                float p1 = v[1][0] * ax + v[1][1] * ay + v[1][2] * az;
+                float p2 = v[2][0] * ax + v[2][1] * ay + v[2][2] * az;
+                float rad = e[0] * Math.abs(ax) + e[1] * Math.abs(ay) + e[2] * Math.abs(az);
+                if (Math.min(p0, Math.min(p1, p2)) > rad || Math.max(p0, Math.max(p1, p2)) < -rad) {
+                    return false;
+                }
+            }
+        }
+        // the triangle's plane against the box
+        float nx = f[0][1] * f[1][2] - f[0][2] * f[1][1];
+        float ny = f[0][2] * f[1][0] - f[0][0] * f[1][2];
+        float nz = f[0][0] * f[1][1] - f[0][1] * f[1][0];
+        float dist = nx * v[0][0] + ny * v[0][1] + nz * v[0][2];
+        float rad = e[0] * Math.abs(nx) + e[1] * Math.abs(ny) + e[2] * Math.abs(nz);
+        return !(Math.abs(dist) > rad);
+    }
+
+    private static float[] sub(float[] a, float[] b) {
+        return new float[] {a[0] - b[0], a[1] - b[1], a[2] - b[2]};
     }
 }

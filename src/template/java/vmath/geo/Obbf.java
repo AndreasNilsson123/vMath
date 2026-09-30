@@ -1,5 +1,6 @@
 package vmath.geo;
 
+import vmath.annotations.DoubleOnly;
 import vmath.annotations.FloatOnly;
 import vmath.annotations.GenerateDouble;
 import vmath.annotations.ValueType;
@@ -79,5 +80,10 @@ public record Obbf(float cx, float cy, float cz, float hx, float hy, float hz,
     @FloatOnly
     public Obbd toDouble() {
         return new Obbd(cx, cy, cz, hx, hy, hz, qx, qy, qz, qw);
+    }
+
+    @DoubleOnly
+    public Obbf toFloat() {
+        return new Obbf((float) cx, (float) cy, (float) cz, (float) hx, (float) hy, (float) hz, (float) qx, (float) qy, (float) qz, (float) qw);
     }
 }

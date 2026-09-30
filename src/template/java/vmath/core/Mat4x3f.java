@@ -82,6 +82,43 @@ public record Mat4x3f(
         return translationRotateScale(Vec3f.ZERO, q, Vec3f.ONE);
     }
 
+    /** Rotation about the X axis by {@code angle} radians (right-handed, counter-clockwise seen from +X). */
+    public static Mat4x3f rotationX(float angle) {
+        return ofRotation(Mat3f.rotationX(angle));
+    }
+
+    /** Rotation about the Y axis by {@code angle} radians. */
+    public static Mat4x3f rotationY(float angle) {
+        return ofRotation(Mat3f.rotationY(angle));
+    }
+
+    /** Rotation about the Z axis by {@code angle} radians. */
+    public static Mat4x3f rotationZ(float angle) {
+        return ofRotation(Mat3f.rotationZ(angle));
+    }
+
+    /** Rotation about a unit {@code axis} by {@code angle} radians. */
+    public static Mat4x3f rotationAxis(float angle, Vec3f axis) {
+        return ofRotation(Mat3f.rotationAxis(angle, axis));
+    }
+
+    private static Mat4x3f ofRotation(Mat3f r) {
+        return new Mat4x3f(
+                r.m00(), r.m01(), r.m02(),
+                r.m10(), r.m11(), r.m12(),
+                r.m20(), r.m21(), r.m22(),
+                0f, 0f, 0f);
+    }
+
+    /** Transforms a homogeneous vector: the translation is scaled by {@code v.w}, and {@code w} is returned unchanged (the bottom row is 0, 0, 0, 1). */
+    public Vec4f transform(Vec4f v) {
+        return new Vec4f(
+                m00 * v.x() + m10 * v.y() + m20 * v.z() + m30 * v.w(),
+                m01 * v.x() + m11 * v.y() + m21 * v.z() + m31 * v.w(),
+                m02 * v.x() + m12 * v.y() + m22 * v.z() + m32 * v.w(),
+                v.w());
+    }
+
     /** Model matrix {@code T * R * S}: scales first, then rotates, then translates. */
     public static Mat4x3f translationRotateScale(Vec3f t, Quatf q, Vec3f s) {
         Mat3f r = Mat3f.rotation(q);

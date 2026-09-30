@@ -59,10 +59,28 @@ tasks.withType<JavaCompile>().configureEach {
     options.compilerArgs.addAll(listOf("-Xlint:all", "-Xlint:-preview"))
 }
 
+// Javadoc is linted as part of `check`: broken references, bad HTML and malformed tags fail the build. Missing comments and missing @param tags on
+// record components are not checked yet (see docs/ROADMAP.md INF-5): "-missing" keeps the lint to what is wrong rather than what is absent.
+tasks.javadoc {
+    (options as StandardJavadocDocletOptions).apply {
+        encoding = "UTF-8"
+        addBooleanOption("Xdoclint:all,-missing", true)
+        addBooleanOption("Xwerror", true)
+        if (valhalla) {
+            addBooleanOption("-enable-preview", true)
+            addStringOption("source", valhallaJdk.toString())
+        }
+    }
+}
+
 tasks.test {
     useJUnitPlatform()
     // JOML's Unsafe fast path segfaults on heap buffers (Matrix3d.get(int, DoubleBuffer)); the oracle doesn't need it.
     systemProperty("joml.nounsafe", "true")
+    // AllocationContractTest relaxes the paths that cross a non-inlined call with a value record on the -Pvalhalla build (see Alloc.assertNoAllocationPerElement)
+    if (valhalla) {
+        systemProperty("vmath.valhalla", "true")
+    }
     // ModuleDescriptorTest inspects the real jar: the module path is what consumers use.
     dependsOn(tasks.jar)
     systemProperty("vmath.jar", tasks.jar.get().archiveFile.get().asFile.absolutePath)
@@ -265,4 +283,5 @@ val japicmp = tasks.register<JavaExec>("japicmp") {
 
 tasks.check {
     dependsOn(japicmp)
+    dependsOn(tasks.javadoc)
 }

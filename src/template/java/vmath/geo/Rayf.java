@@ -1,5 +1,6 @@
 package vmath.geo;
 
+import vmath.annotations.DoubleOnly;
 import vmath.annotations.FloatOnly;
 import vmath.annotations.GenerateDouble;
 import vmath.annotations.ValueType;
@@ -35,6 +36,19 @@ public record Rayf(float ox, float oy, float oz, float dx, float dy, float dz) {
         return new Vec3f(ox + dx * t, oy + dy * t, oz + dz * t);
     }
 
+    /**
+     * The point of the ray ({@code t >= 0}) nearest to {@code p}: the projection of {@code p} onto the ray's line, clamped to the origin when it
+     * falls behind it. A ray with a zero direction is a point and returns its origin.
+     */
+    public Vec3f closestPoint(Vec3f p) {
+        float len2 = dx * dx + dy * dy + dz * dz;
+        if (!(len2 > 0f)) {
+            return origin();
+        }
+        float t = ((p.x() - ox) * dx + (p.y() - oy) * dy + (p.z() - oz) * dz) / len2;
+        return pointAt(Math.max(0f, t));
+    }
+
     /** The ray after transforming space by {@code m}. The direction keeps its transformed length. */
     public Rayf transform(Mat4f m) {
         return of(m.transformPosition(origin()), m.transformDirection(direction()));
@@ -43,5 +57,10 @@ public record Rayf(float ox, float oy, float oz, float dx, float dy, float dz) {
     @FloatOnly
     public Rayd toDouble() {
         return new Rayd(ox, oy, oz, dx, dy, dz);
+    }
+
+    @DoubleOnly
+    public Rayf toFloat() {
+        return new Rayf((float) ox, (float) oy, (float) oz, (float) dx, (float) dy, (float) dz);
     }
 }

@@ -264,3 +264,21 @@ build and refit.
 
 Occlusion culling (software Hi-Z, GPU two-phase), LOD selection, portals, shadow-cascade helpers and a SIMD BVH traversal.
 They are in `docs/ROADMAP.md`.
+
+## Segments, capsules and the remaining overlap tests
+
+`Segmentf` and `Capsulef` (and their `d` twins) are plain records with `closestPoint`, `aabb`, `transform`. A capsule transforms exactly under uniform scale and
+conservatively otherwise (radius times the largest axis scale). `Intersectionf` gained:
+
+| Query | Method | Notes |
+| --- | --- | --- |
+| segment-segment | `segmentSegmentDistanceSquared`, `segmentSegmentClosestParameters` | parallel and degenerate (point) segments handled |
+| segment-AABB | `segmentAabbDistanceSquared` | exact: convex piecewise quadratic in the segment parameter, minimised per slab piece |
+| sphere-capsule, capsule-capsule, capsule-AABB | `sphereCapsule`, `capsuleCapsule`, `capsuleAabb` | distance to the axis against the radius sum |
+| ray-capsule | `rayCapsule` | end spheres plus cylinder wall; origin inside gives `t = 0` |
+| OBB-OBB | `obbObb` | 15-axis SAT with an epsilon on the edge-cross terms |
+| AABB-triangle | `aabbTriangle` | 13-axis SAT |
+
+All overlap predicates are written as "not separated", so a NaN input reports an overlap (conservative). `obbObb` and `aabbTriangle` are tested against a
+vertex-projection SAT with generic axes, skipping pairs within a touching margin where the two may legitimately differ by the epsilon.
+`aabbTriangle` allocates small temporary arrays (relies on escape analysis); it is not in the zero-allocation contract test.

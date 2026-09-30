@@ -115,6 +115,30 @@ public record Mat4f(
                 0f, 0f, m32, 0f);
     }
 
+    /** Symmetric perspective projection for a graphics API's {@link ClipSpace} (depth range and Y direction). */
+    public static Mat4f perspective(float fovy, float aspect, float near, float far, ClipSpace space) {
+        Mat4f m = perspective(fovy, aspect, near, far, space.zeroToOne());
+        return space.yDown() ? m.flipY() : m;
+    }
+
+    /** Infinite-far perspective (conventional depth) for a {@link ClipSpace}. */
+    public static Mat4f perspectiveInfinite(float fovy, float aspect, float near, ClipSpace space) {
+        Mat4f m = perspectiveInfinite(fovy, aspect, near, space.zeroToOne());
+        return space.yDown() ? m.flipY() : m;
+    }
+
+    /**
+     * Reversed-Z infinite perspective for a {@link ClipSpace}. Reversed depth needs a [0, 1] range, so {@link ClipSpace#OPENGL} is rejected
+     * (in OpenGL use {@link ClipSpace#D3D} together with {@code glClipControl(GL_LOWER_LEFT, GL_ZERO_TO_ONE)}).
+     */
+    public static Mat4f perspectiveReversedZ(float fovy, float aspect, float near, ClipSpace space) {
+        if (!space.zeroToOne()) {
+            throw new IllegalArgumentException("reversed-Z needs a [0, 1] depth range; use ClipSpace.D3D with glClipControl in OpenGL");
+        }
+        Mat4f m = perspectiveReversedZ(fovy, aspect, near);
+        return space.yDown() ? m.flipY() : m;
+    }
+
     /**
      * Reversed-Z perspective with an infinite far plane and NDC depth [0, 1]: the near plane maps
      * to depth 1 and infinity to depth 0. Pair with a floating-point depth buffer,
@@ -141,6 +165,30 @@ public record Mat4f(
                 (top + bottom) / (bottom - top),
                 (zZeroToOne ? near : far + near) / (near - far),
                 1f);
+    }
+
+    /** Orthographic projection for a {@link ClipSpace}. */
+    public static Mat4f ortho(float left, float right, float bottom, float top, float near, float far, ClipSpace space) {
+        Mat4f m = ortho(left, right, bottom, top, near, far, space.zeroToOne());
+        return space.yDown() ? m.flipY() : m;
+    }
+
+    /** Asymmetric perspective frustum for a {@link ClipSpace}. */
+    public static Mat4f frustum(float left, float right, float bottom, float top, float near, float far, ClipSpace space) {
+        Mat4f m = frustum(left, right, bottom, top, near, far, space.zeroToOne());
+        return space.yDown() ? m.flipY() : m;
+    }
+
+    /**
+     * This matrix with the output {@code y} mirrored: {@code diag(1, -1, 1, 1) * this}, that is, row 1 negated. Turns a y-up projection into the y-down
+     * clip space of Vulkan. Flipping twice gives the original; a matrix applied to a view-space point and then flipped has the same {@code x, z, w}.
+     */
+    public Mat4f flipY() {
+        return new Mat4f(
+                m00, -m01, m02, m03,
+                m10, -m11, m12, m13,
+                m20, -m21, m22, m23,
+                m30, -m31, m32, m33);
     }
 
     /** Right-handed view matrix looking from {@code eye} towards {@code center}. */

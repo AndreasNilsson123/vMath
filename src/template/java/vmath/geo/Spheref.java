@@ -26,6 +26,17 @@ public record Spheref(float cx, float cy, float cz, float radius) {
         return dx * dx + dy * dy + dz * dz <= radius * radius;
     }
 
+    /** The point of the solid sphere nearest to {@code p} ({@code p} itself when inside). */
+    public Vec3f closestPoint(Vec3f p) {
+        float dx = p.x() - cx, dy = p.y() - cy, dz = p.z() - cz;
+        float d2 = dx * dx + dy * dy + dz * dz;
+        if (d2 <= radius * radius) {
+            return p;
+        }
+        float s = radius / (float) Math.sqrt(d2);
+        return new Vec3f(cx + dx * s, cy + dy * s, cz + dz * s);
+    }
+
     /** True when the spheres share at least a point. */
     public boolean overlaps(Spheref o) {
         float dx = o.cx - cx, dy = o.cy - cy, dz = o.cz - cz;

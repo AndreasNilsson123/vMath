@@ -1,0 +1,482 @@
+package vmath;
+
+import static vmath.Alloc.assertNoAllocation;
+
+import java.util.SplittableRandom;
+import org.junit.jupiter.api.Test;
+import vmath.anim.AnimationClip;
+import vmath.anim.ClipSampler;
+import vmath.anim.Pose;
+import vmath.anim.Skeleton;
+import vmath.anim.Skinning;
+import vmath.anim.TransformHierarchy;
+import vmath.bulk.BoundsArray;
+import vmath.bulk.IntList;
+import vmath.bulk.Mat4fArray;
+import vmath.bulk.VisibilitySet;
+import vmath.camera.Cameraf;
+import vmath.camera.Cascades;
+import vmath.core.Mat4f;
+import vmath.core.Vec3f;
+import vmath.geo.Aabbf;
+import vmath.geo.DepthRange;
+import vmath.geo.Frustumf;
+import vmath.geo.Rayf;
+import vmath.geo.Spheref;
+import vmath.occlusion.DepthBuffer;
+import vmath.occlusion.OcclusionStage;
+import vmath.spatial.BvhQuery;
+import vmath.spatial.CascadeCasters;
+import vmath.spatial.ConeCull;
+import vmath.spatial.CullContext;
+import vmath.spatial.CullPipeline;
+import vmath.spatial.CullStages;
+import vmath.spatial.DynamicAabbTree;
+import vmath.spatial.FrustumKernels;
+import vmath.spatial.LightCull;
+import vmath.spatial.LodSelector;
+import vmath.spatial.LooseOctree;
+import vmath.spatial.Neighbors;
+import vmath.spatial.StaticBvh;
+import vmath.spatial.UniformGrid;
+
+/**
+ * The library promises that its hot paths allocate nothing once set up (docs/PERFORMANCE.md). This test holds it to that: each test method runs one
+ * path in a loop and fails if it allocates, naming the path.
+ *
+ * <p><b>Deliberately not covered:</b>
+ * <ul>
+ *   <li>APIs that return value records ({@code Vec3f}, {@code Mat4f}, {@code Aabbf}, ...): they allocate unless the JIT inlines and scalar-replaces
+ *       them, which depends on the caller, so it is measured in {@code CoreBench} rather than enforced here (and under Valhalla they do not allocate at all).</li>
+ *   <li>Offline tools that work on a whole mesh at load time ({@code MeshTools}, {@code MeshOptimizer}), which allocate working arrays by design.</li>
+ *   <li>The executor hand-off in {@code ParallelFrustumKernel}: the driver allocates nothing, the executor may.</li>
+ * </ul>
+ *
+ * <p>Each case warms up first so that the JIT has compiled the code, then allows a quarter of a byte per call on average.
+ */
+class AllocationContractTest {
+
+    private static final int N = 4000;
+    private static final int WARM = 30_000;
+    private static final int CALLS = 60_000;
+    private static final int WARM_BIG = 3_000;
+    private static final int CALLS_BIG = 6_000;
+
+    private static BoundsArray scene(int n, long seed) {
+        SplittableRandom r = new SplittableRandom(seed);
+        BoundsArray b = new BoundsArray(n);
+        for (int i = 0; i < n; i++) {
+            float cx = (float) (r.nextDouble() * 2 - 1) * 100f, cy = (float) (r.nextDouble() * 2 - 1) * 100f, cz = (float) (r.nextDouble() * 2 - 1) * 100f;
+            float h = 0.2f + (float) r.nextDouble();
+            b.add(cx - h, cy - h, cz - h, cx + h, cy + h, cz + h);
+        }
+        return b;
+    }
+
+    private static Mat4f viewProjection() {
+        Mat4f view = Mat4f.lookAt(Vec3f.ZERO, new Vec3f(0.3f, 0.1f, -1f), Vec3f.UNIT_Y);
+        return Mat4f.perspective(1.0f, 16f / 9f, 0.3f, 150f, true).mul(view);
+    }
+
+    private static Frustumf frustum() {
+        return Frustumf.fromViewProjection(viewProjection(), DepthRange.ZERO_TO_ONE);
+    }
+
+    // ------------------------------------------------------------ culling
+
+    @Test
+    void scalarFrustumKernel() {
+        BoundsArray b = scene(N, 1);
+        var kernel = FrustumKernels.scalar();
+        Frustumf f = frustum();
+        VisibilitySet vis = new VisibilitySet(N);
+        assertNoAllocation("FrustumCuller.cull", WARM_BIG, CALLS_BIG, () -> {
+            vis.setAll(N);
+            kernel.cull(f, b, vis);
+        });
+    }
+
+    @Test
+    void cullPipeline() {
+        BoundsArray b = scene(N, 2);
+        CullContext ctx = CullContext.perspective(frustum(), Vec3f.ZERO, 1.0f, 1080);
+        var distance = new CullStages.Distance(120f);
+        var frustumStage = new CullStages.Frustum(FrustumKernels.scalar());
+        var smallFeature = new CullStages.SmallFeature(2f);
+        CullPipeline pipeline = CullPipeline.of(distance, frustumStage, smallFeature);
+        VisibilitySet vis = new VisibilitySet(N);
+        // each stage on its own first, so that a failure names the stage that allocates
+        assertNoAllocation("CullStages.Distance", WARM_BIG, CALLS_BIG, () -> {
+            vis.setAll(N);
+            distance.cull(ctx, b, vis);
+        });
+        assertNoAllocation("CullStages.SmallFeature", WARM_BIG, CALLS_BIG, () -> {
+            vis.setAll(N);
+            smallFeature.cull(ctx, b, vis);
+        });
+        // the frustum stage hands ctx.frustum() (a value record) to the kernel: free on a plain JVM, a constant per-call buffer on the Valhalla build
+        BoundsArray big = scene(N * 4, 22);
+        VisibilitySet bigVis = new VisibilitySet(N * 4);
+        Alloc.assertNoAllocationPerElement("CullStages.Frustum", WARM_BIG, CALLS_BIG / 2, () -> {
+            vis.setAll(N);
+            frustumStage.cull(ctx, b, vis);
+        }, () -> {
+            bigVis.setAll(N * 4);
+            frustumStage.cull(ctx, big, bigVis);
+        });
+        Alloc.assertNoAllocationPerElement("CullPipeline.run", WARM_BIG, CALLS_BIG / 2, () -> pipeline.run(ctx, b, vis), () -> pipeline.run(ctx, big, bigVis));
+    }
+
+    @Test
+    void staticBvhQueries() {
+        BoundsArray b = scene(N, 3);
+        BvhQuery q = new BvhQuery(StaticBvh.build(b));
+        Frustumf f = frustum();
+        VisibilitySet vis = new VisibilitySet(N);
+        IntList out = new IntList(N);
+        Aabbf probe = new Aabbf(-20f, -20f, -20f, 20f, 20f, 20f);
+        Spheref sphere = new Spheref(10f, 10f, 10f, 25f);
+        Rayf ray = new Rayf(0f, 0f, 0f, 0.3f, 0.1f, -1f);
+        var hit = new BvhQuery.BvhHit();
+        Neighbors nn = new Neighbors(8);
+        assertNoAllocation("BvhQuery.frustum", WARM, CALLS, () -> {
+            vis.clearAll();
+            q.frustum(f, b, vis);
+        });
+        assertNoAllocation("BvhQuery.overlapAabb", WARM, CALLS, () -> {
+            out.clear();
+            q.overlapAabb(probe, b, out);
+        });
+        assertNoAllocation("BvhQuery.overlapSphere", WARM, CALLS, () -> {
+            out.clear();
+            q.overlapSphere(sphere, b, out);
+        });
+        assertNoAllocation("BvhQuery.raycastBounds", WARM, CALLS, () -> q.raycastBounds(ray, 500f, b, hit));
+        assertNoAllocation("BvhQuery.nearest", WARM, CALLS, () -> {
+            nn.reset(8);
+            q.nearest(5f, 5f, 5f, b, nn);
+        });
+    }
+
+    @Test
+    void dynamicTree() {
+        BoundsArray b = scene(N, 4);
+        DynamicAabbTree tree = new DynamicAabbTree(0.25f, N * 2);
+        int[] handles = new int[N];
+        for (int i = 0; i < N; i++) {
+            handles[i] = tree.insert(b.minX(i), b.minY(i), b.minZ(i), b.maxX(i), b.maxY(i), b.maxZ(i), i);
+        }
+        tree.optimize();
+        var q = tree.newQuery();
+        Frustumf f = frustum();
+        VisibilitySet vis = new VisibilitySet(N);
+        IntList out = new IntList(N);
+        Aabbf probe = new Aabbf(-20f, -20f, -20f, 20f, 20f, 20f);
+        Rayf ray = new Rayf(0f, 0f, 0f, 0.3f, 0.1f, -1f);
+        var hit = new BvhQuery.BvhHit();
+        Neighbors nn = new Neighbors(8);
+        assertNoAllocation("DynamicAabbTree.Query.frustum", WARM, CALLS, () -> {
+            vis.clearAll();
+            q.frustum(f, vis);
+        });
+        assertNoAllocation("DynamicAabbTree.Query.overlapAabb", WARM, CALLS, () -> {
+            out.clear();
+            q.overlapAabb(probe, out);
+        });
+        assertNoAllocation("DynamicAabbTree.Query.raycast", WARM, CALLS, () -> q.raycast(ray, 500f, null, hit));
+        assertNoAllocation("DynamicAabbTree.Query.nearest", WARM, CALLS, () -> {
+            nn.reset(8);
+            q.nearest(5f, 5f, 5f, nn);
+        });
+        int[] step = {0};
+        assertNoAllocation("DynamicAabbTree.move (reinserting)", WARM, CALLS, () -> {
+            int i = step[0]++ % N;
+            float dx = (step[0] & 1) == 0 ? 5f : -5f;
+            tree.move(handles[i], b.minX(i) + dx, b.minY(i), b.minZ(i), b.maxX(i) + dx, b.maxY(i), b.maxZ(i), 0f, 0f, 0f);
+        });
+        assertNoAllocation("DynamicAabbTree.insert + remove", WARM, CALLS, () -> {
+            int h = tree.insert(1f, 1f, 1f, 2f, 2f, 2f, -1);
+            tree.remove(h);
+        });
+        assertNoAllocation("DynamicAabbTree.optimize", 50, 2_000, tree::optimize);
+    }
+
+    @Test
+    void uniformGrid() {
+        BoundsArray b = scene(N, 5);
+        UniformGrid grid = new UniformGrid(4f, N);
+        int[] handles = new int[N];
+        for (int i = 0; i < N; i++) {
+            handles[i] = grid.insert(b.minX(i), b.minY(i), b.minZ(i), b.maxX(i), b.maxY(i), b.maxZ(i), i);
+        }
+        var q = grid.newQuery();
+        IntList out = new IntList(N);
+        Aabbf probe = new Aabbf(-20f, -20f, -20f, 20f, 20f, 20f);
+        Spheref sphere = new Spheref(10f, 10f, 10f, 25f);
+        Neighbors nn = new Neighbors(8);
+        assertNoAllocation("UniformGrid.Query.overlapAabb", WARM, CALLS, () -> {
+            out.clear();
+            q.overlapAabb(probe, out);
+        });
+        assertNoAllocation("UniformGrid.Query.overlapSphere", WARM, CALLS, () -> {
+            out.clear();
+            q.overlapSphere(sphere, out);
+        });
+        assertNoAllocation("UniformGrid.Query.nearest", WARM, CALLS, () -> {
+            nn.reset(8);
+            q.nearest(5f, 5f, 5f, nn);
+        });
+        int[] step = {0};
+        assertNoAllocation("UniformGrid.move (changing cells)", WARM, CALLS, () -> {
+            int i = step[0]++ % N;
+            float dx = (step[0] & 1) == 0 ? 9f : -9f;
+            grid.move(handles[i], b.minX(i) + dx, b.minY(i), b.minZ(i), b.maxX(i) + dx, b.maxY(i), b.maxZ(i));
+        });
+    }
+
+    @Test
+    void looseOctree() {
+        BoundsArray b = scene(N, 6);
+        LooseOctree tree = new LooseOctree(0f, 0f, 0f, 150f, 8);
+        int[] handles = new int[N];
+        for (int i = 0; i < N; i++) {
+            handles[i] = tree.insert(b.minX(i), b.minY(i), b.minZ(i), b.maxX(i), b.maxY(i), b.maxZ(i), i);
+        }
+        var q = tree.newQuery();
+        IntList out = new IntList(N);
+        Aabbf probe = new Aabbf(-20f, -20f, -20f, 20f, 20f, 20f);
+        Spheref sphere = new Spheref(10f, 10f, 10f, 25f);
+        Neighbors nn = new Neighbors(8);
+        assertNoAllocation("LooseOctree.Query.overlapAabb", WARM, CALLS, () -> {
+            out.clear();
+            q.overlapAabb(probe, out);
+        });
+        assertNoAllocation("LooseOctree.Query.overlapSphere", WARM, CALLS, () -> {
+            out.clear();
+            q.overlapSphere(sphere, out);
+        });
+        assertNoAllocation("LooseOctree.Query.nearest", WARM, CALLS, () -> {
+            nn.reset(8);
+            q.nearest(5f, 5f, 5f, nn);
+        });
+        int[] step = {0};
+        assertNoAllocation("LooseOctree.move (changing nodes)", WARM, CALLS, () -> {
+            int i = step[0]++ % N;
+            float dx = (step[0] & 1) == 0 ? 30f : -30f;
+            tree.move(handles[i], b.minX(i) + dx, b.minY(i), b.minZ(i), b.maxX(i) + dx, b.maxY(i), b.maxZ(i));
+        });
+    }
+
+    @Test
+    void occlusion() {
+        BoundsArray b = scene(N, 7);
+        DepthBuffer d = new DepthBuffer(128, 64);
+        Mat4f vp = viewProjection();
+        OcclusionStage stage = new OcclusionStage(d);
+        VisibilitySet vis = new VisibilitySet(N);
+        assertNoAllocation("DepthBuffer begin + addBox + finish", WARM_BIG, CALLS_BIG, () -> {
+            d.begin(vp, 0.3f);
+            d.addBox(-5f, -5f, -40f, 5f, 5f, -39f);
+            d.addBox(10f, -5f, -60f, 20f, 5f, -58f);
+            d.finish();
+        });
+        assertNoAllocation("DepthBuffer.isHidden", WARM_BIG, CALLS_BIG, () -> d.isHidden(-1f, -1f, -80f, 1f, 1f, -78f));
+        assertNoAllocation("OcclusionStage.cull", WARM_BIG, CALLS_BIG, () -> {
+            vis.setAll(N);
+            stage.cull(null, b, vis);
+        });
+    }
+
+    @Test
+    void lodConeShadowAndLightCulling() {
+        BoundsArray b = scene(N, 8);
+        CullContext ctx = CullContext.perspective(frustum(), Vec3f.ZERO, 1.0f, 1080);
+        VisibilitySet vis = new VisibilitySet(N);
+        LodSelector lod = LodSelector.of(300f, 100f, 30f);
+        byte[] levels = new byte[N];
+        java.util.Arrays.fill(levels, LodSelector.NO_LEVEL);
+        float[] fade = new float[N];
+        assertNoAllocation("LodSelector.select", WARM_BIG, CALLS_BIG, () -> {
+            vis.setAll(N);
+            lod.select(ctx, b, vis, levels, fade);
+        });
+        var clusters = new ConeCull.Clusters();
+        for (int i = 0; i < N; i++) {
+            clusters.add(b.minX(i), b.minY(i), b.minZ(i), 1f, 0f, 1f, 0f, 0.3f);
+        }
+        assertNoAllocation("ConeCull.Clusters.cull", WARM_BIG, CALLS_BIG, () -> {
+            vis.setAll(N);
+            clusters.cull(0f, 0f, 0f, vis);
+        });
+        Cameraf camera = Cameraf.lookingAt(Vec3f.ZERO, new Vec3f(0f, 0f, -1f), Vec3f.UNIT_Y, 1f, 1.5f, 0.3f, 300f, DepthRange.ZERO_TO_ONE);
+        var cascade = Cascades.fit(camera, 0.3f, 60f, new Vec3f(0.3f, -1f, -0.2f), 1024, true, 100f, DepthRange.ZERO_TO_ONE);
+        CascadeCasters casters = new CascadeCasters(camera, cascade, 0.1f);
+        assertNoAllocation("CascadeCasters.cull", WARM_BIG, CALLS_BIG, () -> {
+            vis.setAll(N);
+            casters.cull(null, b, vis);
+        });
+        byte[] masks = new byte[N];
+        assertNoAllocation("LightCull.pointLight", WARM_BIG, CALLS_BIG, () -> {
+            vis.setAll(N);
+            LightCull.pointLight(b, vis, 0f, 0f, 0f, 60f);
+        });
+        assertNoAllocation("LightCull.spotLight", WARM_BIG, CALLS_BIG, () -> {
+            vis.setAll(N);
+            LightCull.spotLight(b, vis, 0f, 0f, 0f, 0f, 0f, -1f, 0.6f, 100f);
+        });
+        assertNoAllocation("LightCull.cubeFaces", WARM_BIG, CALLS_BIG, () -> {
+            vis.setAll(N);
+            LightCull.cubeFaces(b, vis, 0f, 0f, 0f, 80f, masks);
+        });
+    }
+
+    @Test
+    void boundsTransform() {
+        BoundsArray local = scene(N, 9);
+        BoundsArray world = new BoundsArray(N);
+        world.setSize(N);
+        Mat4fArray matrices = new Mat4fArray(N);
+        for (int i = 0; i < N; i++) {
+            matrices.add(Mat4f.IDENTITY);
+        }
+        assertNoAllocation("BoundsArray.transformFrom", WARM_BIG, CALLS_BIG, () -> world.transformFrom(local, matrices));
+    }
+
+    // ------------------------------------------------------------ bulk arrays
+
+    @Test
+    void bulkArrayKernels() {
+        int n = 2000;
+        vmath.bulk.Vec3fArray points = new vmath.bulk.Vec3fArray(n), moved = new vmath.bulk.Vec3fArray(n);
+        vmath.bulk.QuatArray qa = new vmath.bulk.QuatArray(n), qb = new vmath.bulk.QuatArray(n), qo = new vmath.bulk.QuatArray(n);
+        vmath.bulk.TransformArray ta = new vmath.bulk.TransformArray(n), tb = new vmath.bulk.TransformArray(n), to = new vmath.bulk.TransformArray(n);
+        Mat4fArray mats = new Mat4fArray(n);
+        for (int i = 0; i < n; i++) {
+            points.add(i, 2f * i, 3f);
+            float s = (float) Math.sin(i), c = (float) Math.cos(i);
+            qa.add(0f, s * 0.3f, 0f, 1f);
+            qb.add(0f, 0f, c * 0.3f, 1f);
+            ta.add(i, 0f, 0f, 0f, s * 0.2f, 0f, 1f, 1f, 1f, 1f);
+            tb.add(0f, i, 0f, 0f, 0f, c * 0.2f, 1f, 2f, 2f, 2f);
+        }
+        qa.normalizeAll();
+        qb.normalizeAll();
+        // a matrix passed to a bulk kernel is a value record read into locals: one call is one set of reads, so it stays zero under Valhalla too
+        Mat4f m = Mat4f.translation(1f, 2f, 3f);
+        assertNoAllocation("Vec3fArray.transformPositions", WARM_BIG, CALLS_BIG, () -> points.transformPositions(m, moved));
+        assertNoAllocation("Vec3fArray.transformDirections", WARM_BIG, CALLS_BIG, () -> points.transformDirections(m, moved));
+        assertNoAllocation("Vec3fArray.normalizeAll", WARM_BIG, CALLS_BIG, moved::normalizeAll);
+        assertNoAllocation("QuatArray.slerp", WARM_BIG, CALLS_BIG, () -> vmath.bulk.QuatArray.slerp(qa, qb, 0.3f, qo));
+        assertNoAllocation("QuatArray.multiply", WARM_BIG, CALLS_BIG, () -> vmath.bulk.QuatArray.multiply(qa, qb, qo));
+        assertNoAllocation("QuatArray.toMatrices", WARM_BIG, CALLS_BIG, () -> qa.toMatrices(mats));
+        assertNoAllocation("TransformArray.toMatrices", WARM_BIG, CALLS_BIG, () -> ta.toMatrices(mats));
+        assertNoAllocation("TransformArray.blend", WARM_BIG, CALLS_BIG, () -> vmath.bulk.TransformArray.blend(ta, tb, 0.5f, to));
+    }
+
+    // ------------------------------------------------------------ GPU buffers
+
+    @Test
+    void indirectDrawAndInstanceWriters() {
+        java.lang.foreign.MemorySegment seg = java.lang.foreign.MemorySegment.ofArray(new byte[64 * 1024]);
+        vmath.gl.DrawCommandBuffer commands = new vmath.gl.DrawCommandBuffer(seg, vmath.gl.DrawCommandBuffer.Kind.ELEMENTS, true);
+        int[] n = {0};
+        assertNoAllocation("DrawCommandBuffer.addElements", WARM, CALLS, () -> {
+            if (commands.count() == commands.capacity()) {
+                commands.clear();
+            }
+            int i = commands.addElements(n[0]++ & 0xFFFF, 4, 0, 0, 0);
+            commands.setInstanceCount(i, 0);
+        });
+        vmath.core.Mat4x3f transform = vmath.core.Mat4x3f.translation(1f, 2f, 3f);
+        assertNoAllocation("InstanceWriter.write", WARM, CALLS, () -> vmath.gl.InstanceWriter.write(seg, n[0]++ & 511, transform, 7));
+    }
+
+    // ------------------------------------------------------------ animation
+
+    @Test
+    void transformHierarchyUpdate() {
+        TransformHierarchy h = new TransformHierarchy(N);
+        for (int i = 0; i < N; i++) {
+            h.add(i == 0 ? -1 : Math.max(0, i - 1 - (i % 7)));
+        }
+        h.update();
+        float[] phase = {0f};
+        assertNoAllocation("TransformHierarchy.setTranslation + update", WARM_BIG, CALLS_BIG, () -> {
+            phase[0] += 0.01f;
+            for (int i = 0; i < N; i += 50) {
+                h.setTranslation(i, phase[0], 0f, 1f);
+            }
+            h.update();
+        });
+    }
+
+    @Test
+    void skeletalAnimation() {
+        int joints = 48;
+        int[] parents = new int[joints];
+        float[] bind = new float[joints * 10];
+        for (int j = 0; j < joints; j++) {
+            parents[j] = j == 0 ? -1 : Math.max(0, j - 1 - (j % 3));
+            bind[j * 10 + 1] = 0.3f;
+            bind[j * 10 + 6] = 1f;
+            bind[j * 10 + 7] = 1f;
+            bind[j * 10 + 8] = 1f;
+            bind[j * 10 + 9] = 1f;
+        }
+        Skeleton skeleton = new Skeleton(parents, bind);
+        AnimationClip.Builder cb = AnimationClip.builder(joints);
+        float[] times = {0f, 0.5f, 1f, 1.5f};
+        for (int j = 0; j < joints; j++) {
+            cb.translation(j, times, new float[] {0, 0, 0, 1, 0, 0, 2, 0, 0, 3, 0, 0});
+            cb.rotation(j, times, new float[] {0, 0, 0, 1, 0, 0.1f, 0, 1, 0, 0.2f, 0, 1, 0, 0.3f, 0, 1});
+        }
+        AnimationClip clip = cb.build();
+        ClipSampler sampler = new ClipSampler(clip);
+        Pose a = new Pose(skeleton), b = new Pose(skeleton), out = new Pose(skeleton), additive = new Pose(skeleton);
+        Mat4fArray matrices = new Mat4fArray(joints);
+        float[] scratch = new float[joints * 16];
+        float[] mask = new float[joints];
+        java.util.Arrays.fill(mask, 0.5f);
+        float[] t = {0f};
+        assertNoAllocation("ClipSampler.sample", WARM, CALLS, () -> {
+            t[0] += 0.016f;
+            sampler.sample(t[0], true, a);
+        });
+        sampler.sample(0.7f, true, b);
+        assertNoAllocation("Pose.lerp", WARM, CALLS, () -> Pose.lerp(a, b, 0.4f, out));
+        assertNoAllocation("Pose.blendMasked", WARM, CALLS, () -> Pose.blendMasked(a, b, mask, 0.8f, out));
+        assertNoAllocation("Pose.makeAdditive + applyAdditive", WARM, CALLS, () -> {
+            Pose.makeAdditive(a, b, additive);
+            Pose.applyAdditive(a, additive, 0.5f, out);
+        });
+        assertNoAllocation("Skinning.jointMatrices", WARM, CALLS, () -> Skinning.jointMatrices(skeleton, out, scratch, matrices));
+        int vc = 500;
+        float[] pos = new float[vc * 3], normals = new float[vc * 3], skinned = new float[vc * 3];
+        int[] ji = new int[vc * 4];
+        float[] w = new float[vc * 4];
+        for (int v = 0; v < vc; v++) {
+            normals[v * 3 + 1] = 1f;
+            for (int k = 0; k < 4; k++) {
+                ji[v * 4 + k] = (v + k) % joints;
+                w[v * 4 + k] = 0.25f;
+            }
+        }
+        assertNoAllocation("Skinning.skinPositions", WARM_BIG, CALLS_BIG, () -> Skinning.skinPositions(matrices.data(), pos, ji, w, vc, skinned));
+        assertNoAllocation("Skinning.skinNormals", WARM_BIG, CALLS_BIG, () -> Skinning.skinNormals(matrices.data(), normals, ji, w, vc, skinned));
+    }
+
+    // ------------------------------------------------------------ the helper itself
+
+    @Test
+    void theHelperCatchesARealAllocation() {
+        java.util.List<Object> sink = new java.util.ArrayList<>();
+        double bytes = Alloc.bytesPerCall(() -> {
+            sink.add(new long[16]);
+            if (sink.size() > 100) {
+                sink.clear();
+            }
+        }, 1_000, 10_000);
+        org.junit.jupiter.api.Assertions.assertTrue(bytes > 100.0, "a path that allocates a 16-long array per call must be seen, measured " + bytes);
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class, () -> assertNoAllocation("x", 10, 10, () -> { }));
+    }
+}

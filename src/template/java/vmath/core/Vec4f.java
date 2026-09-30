@@ -19,6 +19,10 @@ public record Vec4f(float x, float y, float z, float w) {
     public static final Vec4f ZERO = new Vec4f(0f, 0f, 0f, 0f);
     public static final Vec4f ONE = new Vec4f(1f, 1f, 1f, 1f);
 
+    public static Vec4f splat(float s) {
+        return new Vec4f(s, s, s, s);
+    }
+
     /** Point: {@code (v, 1)}. */
     public static Vec4f point(Vec3f v) {
         return new Vec4f(v.x(), v.y(), v.z(), 1f);
@@ -200,6 +204,40 @@ public record Vec4f(float x, float y, float z, float w) {
     /** Component perpendicular to {@code onto}: {@code this - project(onto)}. */
     public Vec4f reject(Vec4f onto) {
         return sub(project(onto));
+    }
+
+    /**
+     * Angle between this and {@code o} in radians, in [0, PI]; 0 if either is zero. There is no cross product in 4D, so this uses the
+     * numerically stable form {@code 2 atan2(|u - v|, |u + v|)} of the unit vectors, which stays accurate for nearly parallel and nearly opposite inputs
+     * where {@code acos(dot)} loses all precision.
+     */
+    public float angle(Vec4f o) {
+        float la = length(), lb = o.length();
+        if (la == 0f || lb == 0f) {
+            return 0f;
+        }
+        Vec4f u = mul(1f / la), v = o.mul(1f / lb);
+        return 2f * (float) Math.atan2(u.sub(v).length(), u.add(v).length());
+    }
+
+    /** Mirror around the unit normal {@code n}: {@code this - 2 (this . n) n}. */
+    public Vec4f reflect(Vec4f n) {
+        float d = 2f * dot(n);
+        return new Vec4f(x - d * n.x, y - d * n.y, z - d * n.z, w - d * n.w);
+    }
+
+    /**
+     * Refraction through a surface with unit normal {@code n} and index ratio {@code eta} (GLSL {@code refract}). This vector must be a unit
+     * incident direction. Returns {@link #ZERO} on total internal reflection.
+     */
+    public Vec4f refract(Vec4f n, float eta) {
+        float d = dot(n);
+        float k = 1f - eta * eta * (1f - d * d);
+        if (k < 0f) {
+            return ZERO;
+        }
+        float s = eta * d + (float) Math.sqrt(k);
+        return new Vec4f(eta * x - s * n.x, eta * y - s * n.y, eta * z - s * n.z, eta * w - s * n.w);
     }
 
     /** GLSL {@code faceforward}: this vector, flipped when {@code ref . incident >= 0}. */

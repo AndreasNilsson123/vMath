@@ -5,7 +5,7 @@ import java.util.List;
 
 /**
  * How the vertices of a {@link Mesh} are laid out in one interleaved buffer: which attributes, in which order, in which format.
- * Build one with the fluent methods, then pass it to {@link MeshExport#write}. The offsets and the stride are computed as attributes are
+ * Build one with the fluent methods, then pass it to {@link MeshExport#writeVertices}. The offsets and the stride are computed as attributes are
  * added, so they can be handed straight to a vertex-array or pipeline description.
  *
  * <pre>{@code

@@ -68,8 +68,27 @@ How it works: `vmath-codegen` reads only component **names and types** from the 
 `StructLayout` when the class loads (from the layout engine above), so the layout rules are not duplicated in the generator and
 `vmath` still needs nothing beyond `java.base`. The offsets are `static final`, which the JIT treats as constants.
 
+## Indirect draws, dispatches and instance data
+
+Three `@GpuStruct` records are part of the library, so their generated `...Gpu` classes carry the layout constants and the GLSL text:
+
+| Record | GL | Vulkan | Bytes |
+|---|---|---|---|
+| `DrawArraysIndirect(count, instanceCount, first, baseInstance)` | `DrawArraysIndirectCommand` | `VkDrawIndirectCommand` | 16 |
+| `DrawElementsIndirect(count, instanceCount, firstIndex, baseVertex, baseInstance)` | `DrawElementsIndirectCommand` | `VkDrawIndexedIndirectCommand` | 20 |
+| `DispatchIndirect(x, y, z)` | `DispatchIndirectCommand` | `VkDispatchIndirectCommand` | 12 |
+
+Every member is a 4-byte scalar, so std430 and scalar layouts agree and there is no padding (tested). `baseVertex` is the only signed member.
+
+`DrawCommandBuffer` writes a run of one kind of command into a `MemorySegment` at a fixed stride (optionally rounded up to 16 bytes, with the padding never
+touched) and keeps the draw count for `glMultiDraw*Indirect` / `vkCmdDrawIndirect`. `instanceCount(i)` and `setInstanceCount(i, n)` read and zero the
+instance count of one command, which is how a culling pass hides a draw without changing the draw count. `InstanceWriter` writes 64 bytes per instance:
+an affine transform as three `vec4` rows (48 bytes instead of the 64 of a padded `mat4x3`; the shader computes
+`vec3(dot(row0, p), dot(row1, p), dot(row2, p))` with `p = vec4(position, 1)`) and a `uint` of user data. Nothing in these writers allocates
+(`AllocationContractTest`).
+
 ## Not covered yet
 
-Checking a layout against a shader's reflection data (GPU-2), indirect-draw and dispatch structs (GPU-3), vertex-format builders
+Checking a layout against a shader's reflection data (GPU-2), vertex-format builders
 (GPU-4), and generating a shared GLSL header file from the records (the `GLSL` string is available per struct today).
 The older `Std140` class (`vec3`/`mat3`/`mat4` into a `FloatBuffer`) still works, but the layout engine and writers above supersede it.

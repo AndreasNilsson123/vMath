@@ -85,48 +85,9 @@ final class TransformMath {
         out[oo + 15] = 1f;
     }
 
-    /**
-     * Spherical interpolation of the quaternions at {@code a[ao..ao+3]} and {@code b[bo..bo+3]} along the shortest arc, into
-     * {@code out[oo..oo+3]} (the same formula as {@code Quatf.slerp}, without allocating). The result is renormalised, which also keeps
-     * long chains of blends from drifting off unit length.
-     */
+    /** Spherical interpolation along the shortest arc, see {@link vmath.bulk.QuatArray#slerp(float[], int, float[], int, float, float[], int)}: one implementation for bulk and animation code. */
     static void slerp(float[] a, int ao, float[] b, int bo, float t, float[] out, int oo) {
-        float ax = a[ao], ay = a[ao + 1], az = a[ao + 2], aw = a[ao + 3];
-        float bx = b[bo], by = b[bo + 1], bz = b[bo + 2], bw = b[bo + 3];
-        float cos = ax * bx + ay * by + az * bz + aw * bw;
-        float abs = Math.abs(cos);
-        float s0, s1;
-        if (1f - abs > 1e-6f) {
-            float sinSqr = 1f - abs * abs;
-            float sinom = 1f / (float) Math.sqrt(sinSqr);
-            float omega = (float) Math.atan2(sinSqr * sinom, abs);
-            s0 = (float) (Math.sin((1.0 - t) * omega) * sinom);
-            s1 = (float) (Math.sin(t * omega) * sinom);
-        } else {
-            s0 = 1f - t;
-            s1 = t;
-        }
-        if (cos < 0f) {
-            s1 = -s1;
-        }
-        float x = s0 * ax + s1 * bx, y = s0 * ay + s1 * by, z = s0 * az + s1 * bz, w = s0 * aw + s1 * bw;
-        float len = (float) Math.sqrt(x * x + y * y + z * z + w * w);
-        if (len > 1e-20f) {
-            float inv = 1f / len;
-            x *= inv;
-            y *= inv;
-            z *= inv;
-            w *= inv;
-        } else {
-            x = 0f;
-            y = 0f;
-            z = 0f;
-            w = 1f;
-        }
-        out[oo] = x;
-        out[oo + 1] = y;
-        out[oo + 2] = z;
-        out[oo + 3] = w;
+        vmath.bulk.QuatArray.slerp(a, ao, b, bo, t, out, oo);
     }
 
     /**

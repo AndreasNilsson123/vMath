@@ -1,5 +1,6 @@
 package vmath.geo;
 
+import vmath.annotations.DoubleOnly;
 import vmath.annotations.FloatOnly;
 import vmath.annotations.GenerateDouble;
 import vmath.annotations.ValueType;
@@ -164,5 +165,10 @@ public record Frustumf(Planef left, Planef right, Planef bottom, Planef top, Pla
     public Frustumd toDouble() {
         return new Frustumd(left.toDouble(), right.toDouble(), bottom.toDouble(), top.toDouble(),
                 near.toDouble(), far.toDouble());
+    }
+
+    @DoubleOnly
+    public Frustumf toFloat() {
+        return new Frustumf(left.toFloat(), right.toFloat(), bottom.toFloat(), top.toFloat(), near.toFloat(), far.toFloat());
     }
 }
