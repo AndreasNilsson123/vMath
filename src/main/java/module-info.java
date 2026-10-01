@@ -19,6 +19,7 @@ module vmath {
     exports vmath.anim;
     exports vmath.tex;
     exports vmath.gltf;
+    exports vmath.gpucull;
 
     uses vmath.spatial.FrustumKernelProvider;
 }

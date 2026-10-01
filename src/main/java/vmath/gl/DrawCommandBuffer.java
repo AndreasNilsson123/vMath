@@ -141,6 +141,15 @@ public final class DrawCommandBuffer {
         return GpuWriter.getInt(segment, index * stride + 4);
     }
 
+    /** Reads back the base instance of command {@code index} (the first instance slot of its draw: word 4 of elements commands, word 3 of arrays commands). */
+    public int baseInstance(int index) {
+        if (kind == Kind.DISPATCH) {
+            throw new UnsupportedOperationException("a dispatch command has no base instance");
+        }
+        checkIndex(index);
+        return GpuWriter.getInt(segment, index * stride + (kind == Kind.ELEMENTS ? 16 : 12));
+    }
+
     /** Overwrites the instance count of command {@code index}: zero makes the draw a no-op without changing the draw count. */
     public void setInstanceCount(int index, int instanceCount) {
         if (kind == Kind.DISPATCH) {

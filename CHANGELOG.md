@@ -6,6 +6,8 @@ Nothing has been released yet; the baseline for the compatibility check is the t
 ## Unreleased
 
 ### Added
+- Clustered lighting (experimental): `ClusterGrid`, `ClusterLights` (CPU reference of light assignment, tiled variant), `ClusterLight` struct.
+- GPU-driven culling (experimental, new package `vmath.gpucull`): layouts, `HiZPyramid`, `GpuCullReference`, `ClusterCullReference`, `GpuCullGlsl`; `DrawCommandBuffer.baseInstance`.
 - MIT `LICENSE`.
 - Core: `ClipSpace` (OpenGL, Vulkan, D3D) and `Mat4` projection overloads for it, `flipY`; `Vec4`, `Mat3`, `Mat4x3` operations found missing by the parity test;
   `toFloat` on the shapes.

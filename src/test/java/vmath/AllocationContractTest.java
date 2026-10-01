@@ -373,6 +373,96 @@ class AllocationContractTest {
         assertNoAllocation("TransformArray.blend", WARM_BIG, CALLS_BIG, () -> vmath.bulk.TransformArray.blend(ta, tb, 0.5f, to));
     }
 
+    // ------------------------------------------------------------ clustered lighting
+
+    @Test
+    void clusterLightAssignment() {
+        vmath.camera.ClusterGrid grid = vmath.camera.ClusterGrid.of(1.0f, 16f / 9f, 0.1f, 200f, 1280, 720, 64, 16, false);
+        vmath.camera.ClusterLights lights = new vmath.camera.ClusterLights();
+        for (int i = 0; i < 200; i++) {
+            float d = 2f + i * 0.5f;
+            if (i % 4 == 0) {
+                lights.addSpot((i % 7 - 3) * 0.5f, (i % 5 - 2) * 0.4f, -d, 0.1f, -0.2f, -1f, 0.6f, 20f);
+            } else {
+                lights.addPoint((i % 9 - 4) * 0.8f, (i % 3 - 1) * 0.7f, -d, 6f);
+            }
+        }
+        assertNoAllocation("ClusterLights.assign", WARM_BIG, CALLS_BIG, () -> lights.assign(grid));
+        assertNoAllocation("ClusterGrid.clusterOf", WARM, CALLS, () -> grid.clusterOf(400f, 300f, 12f));
+        assertNoAllocation("ClusterGrid.clusterOfViewPosition", WARM, CALLS, () -> grid.clusterOfViewPosition(0.3f, 0.2f, -9f));
+        float[] box = new float[6];
+        assertNoAllocation("ClusterGrid.bounds", WARM, CALLS, () -> grid.bounds(1234, box, 0));
+    }
+
+    // ------------------------------------------------------------ GPU-driven culling references
+
+    @Test
+    void gpuCullingReferences() {
+        int n = 4000;
+        java.lang.foreign.MemorySegment objects = java.lang.foreign.MemorySegment.ofArray(new byte[(int) (n * vmath.gpucull.CullObjectGpu.SIZE)]);
+        for (int i = 0; i < n; i++) {
+            float x = (i % 40 - 20) * 2f, y = (i / 40 % 20 - 10) * 1.5f, z = -5f - (i / 800) * 20f;
+            vmath.gpucull.CullObjectGpu.write(new vmath.gpucull.CullObject(new vmath.core.Vec3f(x - 0.5f, y - 0.5f, z - 0.5f), i % 4, new vmath.core.Vec3f(x + 0.5f, y + 0.5f, z + 0.5f), 0),
+                    objects, i * vmath.gpucull.CullObjectGpu.SIZE);
+        }
+        vmath.core.Mat4f vp = vmath.core.Mat4f.perspective(1.0f, 1.6f, 0.1f, 200f, vmath.core.ClipSpace.VULKAN);
+        vmath.geo.Frustumf f = vmath.geo.Frustumf.fromViewProjection(vp, vmath.geo.DepthRange.ZERO_TO_ONE);
+        vmath.core.Vec4f[] planes = new vmath.core.Vec4f[6];
+        for (int i = 0; i < 6; i++) {
+            planes[i] = new vmath.core.Vec4f(f.plane(i).nx(), f.plane(i).ny(), f.plane(i).nz(), f.plane(i).d());
+        }
+        float[] depth = new float[64 * 40];
+        java.util.Arrays.fill(depth, 0.9f);
+        vmath.gpucull.HiZPyramid hzb = vmath.gpucull.HiZPyramid.fromDepth(depth, 64, 40, vmath.geo.DepthRange.ZERO_TO_ONE, false);
+        java.lang.foreign.MemorySegment view = java.lang.foreign.MemorySegment.ofArray(new byte[(int) vmath.gpucull.CullViewGpu.SIZE]);
+        vmath.gpucull.CullViewGpu.write(new vmath.gpucull.CullView(planes, vp, n, 64, 40, hzb.levels(), 1e-4f, 1, 0), view, 0);
+        int[] capacity = {n, n, n, n};
+        vmath.gl.DrawCommandBuffer commands = new vmath.gl.DrawCommandBuffer(java.lang.foreign.MemorySegment.ofArray(new byte[4 * 20]), vmath.gl.DrawCommandBuffer.Kind.ELEMENTS, false);
+        for (int d = 0; d < 4; d++) {
+            commands.addElements(36, 0, 0, 0, d * n);
+        }
+        java.lang.foreign.MemorySegment visible = java.lang.foreign.MemorySegment.ofArray(new byte[4 * 4 * n]);
+        vmath.gpucull.GpuCullReference.Counters counters = new vmath.gpucull.GpuCullReference.Counters();
+        vmath.bulk.VisibilitySet last = new vmath.bulk.VisibilitySet(n), drawn = new vmath.bulk.VisibilitySet(n), now = new vmath.bulk.VisibilitySet(n);
+        last.setAll(n);
+        Runnable reset = () -> {
+            for (int d = 0; d < 4; d++) {
+                commands.setInstanceCount(d, 0);
+            }
+            counters.reset();
+        };
+        assertNoAllocation("GpuCullReference.cullSinglePass", 300, 2000, () -> {
+            reset.run();
+            vmath.gpucull.GpuCullReference.cullSinglePass(view, objects, hzb, commands, capacity, visible, counters);
+        });
+        assertNoAllocation("GpuCullReference.cullPhase1", 300, 2000, () -> {
+            reset.run();
+            vmath.gpucull.GpuCullReference.cullPhase1(view, objects, last, drawn, commands, capacity, visible, counters);
+        });
+        assertNoAllocation("GpuCullReference.cullPhase2", 300, 2000, () -> {
+            reset.run();
+            vmath.gpucull.GpuCullReference.cullPhase2(view, objects, hzb, drawn, now, commands, capacity, visible, counters);
+        });
+        assertNoAllocation("HiZPyramid.isHidden", WARM, CALLS, () -> hzb.isHidden(-0.3f, -0.2f, 0.4f, 0.3f, 0.95f));
+        // the cluster pass
+        vmath.mesh.Mesh sphere = vmath.mesh.Primitives.icoSphere(1f, 4);
+        vmath.mesh.MeshOptimizer.weld(sphere, 1e-6f, true);
+        vmath.mesh.ClusterHierarchy h = vmath.mesh.ClusterHierarchy.build(sphere, 64, 128, 4);
+        int nc = h.clusterCount();
+        java.lang.foreign.MemorySegment clusters = java.lang.foreign.MemorySegment.ofArray(new byte[(int) (nc * vmath.gpucull.ClusterCullObjectGpu.SIZE)]);
+        for (int c = 0; c < nc; c++) {
+            vmath.gpucull.ClusterCullObjectGpu.write(vmath.gpucull.ClusterCullObject.of(h, c, 0), clusters, c * vmath.gpucull.ClusterCullObjectGpu.SIZE);
+        }
+        java.lang.foreign.MemorySegment cview = java.lang.foreign.MemorySegment.ofArray(new byte[(int) vmath.gpucull.ClusterCullViewGpu.SIZE]);
+        vmath.gpucull.ClusterCullViewGpu.write(new vmath.gpucull.ClusterCullView(planes, vp, new vmath.core.Vec4f(0f, 0f, 4f, 800f), nc, 64, 40, hzb.levels(), 1e-4f, 1f, 1, 0), cview, 0);
+        vmath.gl.DrawCommandBuffer out = new vmath.gl.DrawCommandBuffer(java.lang.foreign.MemorySegment.ofArray(new byte[nc * 20]), vmath.gl.DrawCommandBuffer.Kind.ELEMENTS, false);
+        vmath.gpucull.ClusterCullReference.Counters cc = new vmath.gpucull.ClusterCullReference.Counters();
+        assertNoAllocation("ClusterCullReference.cull", 300, 2000, () -> {
+            cc.reset();
+            vmath.gpucull.ClusterCullReference.cull(cview, clusters, hzb, out, cc);
+        });
+    }
+
     // ------------------------------------------------------------ GPU buffers
 
     @Test

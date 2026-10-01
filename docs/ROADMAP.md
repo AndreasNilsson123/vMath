@@ -287,8 +287,10 @@ can be chained and composed, and they run on SoA bounds.
 - [x] **CULL-12 (P2, M)** Spatial queries: ray cast, k-NN, AABB/sphere/frustum overlap, all against BVH/grid, no allocation  
       *Done: AABB/sphere overlap, frustum and ray queries on the trees; k-NN (`Neighbors`) on the BVH, dynamic tree, grid and octree; overlap on the grid and octree.*
       (caller-provided result buffer).
-- [ ] **CULL-13 (P3, L)** GPU-driven culling support: compute-shader Hi-Z + frustum culling that writes indirect draw buffers,
+- [x] **CULL-13 (P3, L)** GPU-driven culling support: compute-shader Hi-Z + frustum culling that writes indirect draw buffers,
       with the CPU-side layouts from GPU-1/GPU-3 and a CPU reference implementation used as the test oracle.
+      *Done (experimental): `vmath.gpucull` with layouts, `HiZPyramid`, `GpuCullReference` (single pass and two-phase), `ClusterCullReference` and the shader text.
+      The shaders were never run on a GPU. See `docs/GPU.md`.*
 - [ ] **CULL-14 (P3, L)** Temporal coherence: per-object visibility history, coherent hierarchical culling with occlusion queries.
 
 ### Phase I. Camera and rendering math (P1/P2)
@@ -307,8 +309,9 @@ can be chained and composed, and they run on SoA bounds.
 - [ ] **CAM-6 (P2, M)** Oblique near-plane clipping (planar reflections), portal camera transforms, stereo/VR projection.
 - [ ] **CAM-7 (P2, S)** Physical camera model: exposure (EV100), FOV↔focal length, depth-of-field parameters.
 - [x] **CAM-8 (P2, M)** Depth utilities: linearize depth for all conventions, depth reconstruction of view position, Z-slice for clustered lighting.  
-      *Done: `linearizeDepth`, `viewPositionFromDepth`, `worldPositionFromDepth`; Z-slices for clustered lighting are not built. See `docs/CAMERA.md`.*
-- [ ] **CAM-9 (P2, M)** Clustered/tiled light assignment math (froxel bounds, light-vs-cluster tests) with CPU reference.
+      *Done: `linearizeDepth`, `viewPositionFromDepth`, `worldPositionFromDepth`, and the Z-slice of an NDC depth (`ClusterGrid.sliceOfNdcDepth`). See `docs/CAMERA.md`.*
+- [x] **CAM-9 (P2, M)** Clustered/tiled light assignment math (froxel bounds, light-vs-cluster tests) with CPU reference.  
+      *Done (experimental): `ClusterGrid` (exponential slices, froxel bounds, shader-matching lookup, all depth conventions), `ClusterLights` (point and spot assignment, tiled variant, GPU buffers), `gl.ClusterLight`; tested against an exact oracle (0 missing, 0.5% extra for points). The GLSL is text that is not compiled here. See `docs/CAMERA.md`.*
 - [ ] **CAM-10 (P3, M)** Sun/sky, atmosphere and time-of-day helpers (solar position).
 
 ### Phase J. Mesh and asset support (P2)

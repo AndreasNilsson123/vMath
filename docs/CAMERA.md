@@ -67,7 +67,7 @@ camera moves or turns, and that moving the camera advances the map origin in who
 ## Not covered yet
 
 Orthographic and off-center cameras (use `Mat4f.ortho`/`frustum` directly), oblique near-plane clipping, stereo/VR projections, cubemap
-face matrices, clustered-light froxel math, and the physical camera model (exposure, focal length). All are in `docs/ROADMAP.md`.
+face matrices, and the physical camera model (exposure, focal length). All are in `docs/ROADMAP.md`.
 
 ## Cube map faces
 
@@ -94,3 +94,53 @@ depth-0-to-1 matrix with its output `y` mirrored (`Mat4f.flipY()`). Reversed-Z n
 **What is not converted:** `Cameraf` and the screen-space helpers built on it (`toScreen`, `pickRay`, `project`/`unproject`) still assume a y-up NDC. With
 a Vulkan matrix from `Mat4f.perspective(..., ClipSpace.VULKAN)` use the matrix directly for rendering and flip `y` yourself when converting NDC to pixels.
 Teaching `Cameraf` about `ClipSpace` would change its record components, which is an API break, so it is a recorded follow-up.
+
+## Clustered and tiled lighting (`ClusterGrid`, `ClusterLights`)
+
+`ClusterGrid` cuts the view frustum into tiles in x and y and exponential slices in depth: `boundary(k) = near * (far / near)^(k / slices)`, so a fragment finds its slice
+with one logarithm, `floor(ln(depth) * sliceScale + sliceBias)`. `clusterOf(pixelX, pixelY, depth)`, `clusterOfViewPosition`, `sliceOfNdcDepth(camera, ndcDepth)` (all three
+depth conventions, finite or infinite far plane, through `Cameraf.linearizeDepth`) and `bounds(cluster)` (the view-space box around a cluster, for a compute shader or the CPU
+assignment) are the arithmetic; `glslLookup()` returns the matching GLSL (`clusterIndex(fragCoord, viewDepth)` with the grid constants filled in). Tile rows count in the
+direction pixel coordinates run (`yDown` for Vulkan and D3D window coordinates). The index is `(slice * tilesY + row) * tilesX + column`. Perspective only.
+
+`ClusterLights` is the CPU reference of the light assignment: point and spot lights in view space, assigned to the clusters they can reach as a compact index list
+(`offset(cluster)`, `count(cluster)`, `lightAt(cluster, i)`, ascending light order), with `writeRanges` (`uvec2(offset, count)` per cluster) and `writeIndices` for the two storage
+buffers a fragment shader reads, and `gl.ClusterLight` (three `vec4`s, 48 bytes) as the light record. For every light the columns, rows and slices it can touch are found first (screen extent of the
+bounding sphere by the tangent-angle method, depth extent directly) and only those clusters are tested: a sphere against the cluster box for a point light, the bounding sphere of
+the cone and then the cone against the sphere around the box for a spot light. `assignTiled` is the tiled variant: a single-slice grid whose depth range per tile (from a depth
+pre-pass) replaces the slice, which drops lights in front of or behind everything in the tile. A light at a NaN position is listed for every cluster (NaN is not a separation) and never
+dropped.
+
+**Tested.** The grid: boundaries and the shader formula for the slice, the depth conventions, that a view-space point lies inside the box of the cluster it maps to (both pixel
+directions, partial edge tiles, four viewport sizes, three tile sizes), that the pixel route and the view route agree, and that tiles cover the screen. The assignment against an
+**exact oracle** for point lights (the sphere against the true frustum slice: inside, or the distance to its twelve face triangles): 648 418 pairs touch exactly, **0 are missing**, and
+651 939 are listed, **0.5% extra**. For sampling oracles (random points inside a light and inside the frustum must be in a cluster that lists the light) on point and spot lights, over seeds
+1 to 4. For spot lights, sampling the slices (96 points each) found 13 111 pairs where the assignment lists 24 764, none missing, so **at most 47% of the spot pairs are unnecessary**
+(sampling only finds a lower bound, so the true figure is lower; the cone test against the sphere around the box is the loose part). The six-plane test of the sphere against the cluster's own
+side and depth planes was tried as a tighter second test: it removed 320 of 650 000 pairs and was dropped.
+
+**Measured** (`ClusterLightBench`, 1920 x 1080, 64-pixel tiles, 24 slices = 12 240 clusters, lights scattered through the frustum, JDK 25, one machine; the thread-level allocation contract test
+shows 0 bytes per call, the 0.2 to 2 KB/op that `-prof gc` prints is the JVM's background allocation divided by long operations):
+
+| Lights | range scale 0.25 (typical), points | range scale 0.25, 25% spots | range scale 1 (stress), points | range scale 1, 25% spots |
+|---|---|---|---|---|
+| 256 | 3.5 ms | 3.2 ms | 14.6 ms | 12.2 ms |
+| 1 024 | 11.5 ms | 11.6 ms | 61.7 ms | 55.4 ms |
+| 4 096 | 57.9 ms | 56.0 ms | 238.8 ms | 215.7 ms |
+
+In the stress scene every light touches about 2 500 clusters (10.1 million pairs for 4 096 point lights: about 22 ns per listed pair, all passes). A single visiting pass that records
+(cluster, light) pairs and counting-sorts them replaced a count pass and a fill pass and made it 2.2 times faster (4 096 lights, range 1: 488 ms before, 223 to 239 ms after), as did
+precomputing the per-tile slopes. This is a reference and an oracle, not a production path: the assignment belongs in a compute shader, one thread per light or cluster.
+
+GLSL sketch of the assignment pass for one cluster (the cluster boxes from `fillBounds` uploaded as `clusterBounds[]`; **not compiled or run here**, the Java above is what it was
+written from):
+
+```glsl
+// one invocation per cluster: test every light against the box, append survivors
+vec3 lo = clusterBounds[c].min, hi = clusterBounds[c].max;
+for (uint l = 0u; l < lightCount; ++l) {
+    vec4 pr = lights[l].positionRange;                  // view space
+    vec3 d = max(max(lo - pr.xyz, pr.xyz - hi), 0.0);
+    if (dot(d, d) <= pr.w * pr.w) { clusterLightIndices[base + n++] = l; }   // plus the cone test for spots
+}
+```

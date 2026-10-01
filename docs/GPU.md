@@ -139,3 +139,51 @@ A fixed, random visibility set (9.5% of 1M, the worst case for locality), the st
 Split of the cost on the same set: bit scan with `nextSetBit` 0.41 ms, word scan 0.20 ms, six-array gather about 0.8 to 0.9 ms, the 64 B writes alone
 0.16 to 0.19 ms. The gather (cache misses across six arrays) is the largest part and is what a packed layout would attack; it was not convincing here, so
 the bounds stay in the planar layout the SIMD cull needs.
+
+## GPU-driven culling (`vmath.gpucull`, experimental)
+
+CULL-13: the CPU-side layouts and a **CPU reference** of what a culling compute shader does, so that the shader has an exact oracle. Nothing here talks to a graphics API, and
+**the shaders in `GpuCullGlsl` were never compiled or run**: they are text written from the Java references step by step, and the tests only check the text for completeness and for
+consistency with the generated layouts. The first run on a GPU should be compared with the reference (as sets per draw: GPU atomics give no order).
+
+**Layouts** (generated writers and GLSL declarations): `CullObject` (32 bytes std430: box min, draw index, box max, flags), `CullView` (192 bytes std140: six planes, view-projection
+matrix, object count, pyramid size and level count, `nearW`, depth convention, flags), `ClusterCullObject` (80 bytes: geometry sphere, normal cone, level-of-detail sphere and error of the
+cluster and of its parent, index range) and `ClusterCullView` (208 bytes: as `CullView` plus eye, pixel scale and pixel budget). Draws are `DrawElementsIndirect` commands in a
+`DrawCommandBuffer` (which gained `baseInstance(index)`); surviving objects are a `uint` list.
+
+**`HiZPyramid`** models the Hi-Z texture: a depth image in any of the three conventions (-1..1, 0..1, reversed-Z) is converted to one "farness" order (larger is farther) and max-reduced
+into mip levels of any size (ceil sizes, edge texels cover the farthest of what they cover). `isHidden(rectangle, nearest)` picks the level where the rectangle is at most one texel wide,
+reads at most 2 x 2 texels and compares strictly. `yDown` means row 0 is at NDC y = +1 (the D3D convention; false for OpenGL, and for Vulkan when the projection is not flipped).
+Measured in `HiZPyramidTest`: of 31 259 random rectangle cases that a per-pixel test says are hidden, the pyramid reports 49.5% hidden, and **0 cases that are visible**.
+The 40% in the test is a regression guard, not a promise.
+
+**`GpuCullReference`** (one invocation per object): frustum test of the box (positive vertex; NaN never rejects), then, unless the object has `OBJECT_NO_OCCLUSION`, the Hi-Z test of the
+projected box (a box with a corner at clip `w <= nearW` crosses the camera plane and is kept), then the append to the draw's instance list; slots beyond the capacity reserved for the draw
+are dropped and counted. Entry points: `cullSinglePass`, and the two phases of the usual two-pass scheme: `cullPhase1` draws the objects that were visible last frame (frustum test only), the
+renderer draws them and builds the pyramid, `cullPhase2` tests every object against the new pyramid, draws those that pass and were not drawn in phase 1, and records the new visibility.
+Tested: frustum results agree with `Frustumf` in every clip-space convention; each draw lists exactly its own visible objects; overflow is counted; **in every convention and with reversed-Z the
+reference never hides an object that an independent per-pixel test says is visible** (it hid 5 172 of 10 160 objects that are exactly hidden, 0 wrong); flagged objects and objects crossing
+the camera plane are kept; the two phases never draw an object twice and together equal the single-pass result. Seeds 1 to 4 pass.
+
+**`ClusterCullReference`** (one invocation per cluster of a `ClusterHierarchy`): select the cluster when its projected error is within the pixel budget and its parent's is not, test its
+sphere against the frustum, back-face test it with its cone (`ConeCull.backfacing`), Hi-Z test the box around its sphere, and append one indirect command (`firstIndex`, `indexCount`,
+one instance, `baseInstance` = cluster index) for a multi-draw-indirect-count call. Tested: over 120 random views the selected set equals the one computed from the hierarchy's own accessors,
+`Frustumf` and `ConeCull` (8 485 expected clusters, **0 differences**); with frustum, cone and occlusion out of the way, the commands draw a closed, crack-free surface at budgets from 0 to
+unlimited; a wall in front hides everything; a short command buffer drops and counts the rest.
+
+**Allocation**: zero bytes per call for all passes and `HiZPyramid.isHidden` (`AllocationContractTest`). An early version allocated 91 KB per pass because `DepthRange.values()` clones its
+array on every call.
+
+**Measured** (`GpuCullBench`, JDK 25, one machine; boxes scattered in front of the camera, about a third in the frustum; Hi-Z against 40 random occluder rectangles at 480 x 270;
+the pass reads the same bytes a shader would):
+
+| Objects | frustum only | frustum and Hi-Z |
+|---|---|---|
+| 100 000 | 3.44 ms (about 35 ns per object) | 15.0 ms (about 150 ns per object) |
+| 1 000 000 | 36.8 ms | 158.1 ms |
+
+Loading the matrix and depth convention once per pass instead of once per object made the Hi-Z pass faster (179 ms to 158 ms at 1M objects). The references are oracles, not production
+paths; this work belongs on the GPU.
+
+**Not covered**: building the pyramid and the depth pre-pass (the renderer's job); hardware runs of the shaders; skinned meshes (`ClusterHierarchy` has no attribute support); oriented boxes
+and spheres in the object pass; the per-cluster Hi-Z box is the box around the bounding sphere, which is loose. Instance order inside a draw is ascending in the reference and atomic order on a GPU.
