@@ -64,17 +64,40 @@ for (Cascade c : cascades) {
 Property tests check that every cascade contains its slice in all three depth conventions, that a stabilized cascade keeps its size when the
 camera moves or turns, and that moving the camera advances the map origin in whole texels only.
 
-## Not covered yet
-
-Orthographic and off-center cameras (use `Mat4f.ortho`/`frustum` directly), oblique near-plane clipping, stereo/VR projections, cubemap
-face matrices, and the physical camera model (exposure, focal length). All are in `docs/ROADMAP.md`.
-
 ## Cube map faces
 
 `CubeFaces` describes the six faces of a cube map in the GL/Vulkan orientation (layer order +X, -X, +Y, -Y, +Z, -Z): `direction`,
 `up`, `view(face, position)`, the shared 90 degree aspect-1 `projection(near, far, depth)`, `viewProjection`, `frustum` and
 `faceOf(direction)` (the face a cube lookup reads). Use the frusta to cull per face, or `LightCull.cubeFaces` (see
 `docs/CULLING.md`) to get a per-object face mask in one pass. With `REVERSED_ZERO_TO_ONE` the far plane is infinite.
+
+## Planar reflections, portals, stereo and dual paraboloids
+
+`PlanarViews` (experimental) covers planar reflections and portals. `reflection(plane)` is the mirror matrix (its own inverse, determinant -1, so draw with the
+triangle winding flipped), and `reflectedView(view, plane)` the mirrored camera. `obliqueNearPlane(projection, clipPlane, depth)` replaces the near plane of a
+projection by a plane in view space (Lengyel's oblique frustum clipping, for all three depth conventions and with a Y flip), so geometry behind the mirror is
+clipped by the hardware: the side planes are untouched, the far plane keeps its corner on the kept side, and depth precision degrades the more the plane is tilted
+against the view direction. It throws if the camera is not on the clipped side or if the plane clips the whole frustum. `portalTransform(source, destination)` and
+`portalView(view, source, destination)` move the camera through a portal: portal frames are portal-to-world matrices (+Z is the side the portal is seen from) and the
+destination is entered with a half turn about the up axis. Measured in `PlanarViewsTest`: in every depth convention, with and without a Y flip, 60 random planes
+and about 15 000 random points per case pass the new near plane exactly when they are on the positive side of the plane, and the far-plane corner stays at its depth.
+
+`Stereo` (experimental) builds the pieces of a head-mounted display: `eyeView(headView, ipd, eye)`, an asymmetric `projection` from the four half angles an
+HMD runtime reports (and `projectionReversedZ`, infinite far), and `offAxis(halfWidth, halfHeight, screenDistance, eyeOffset, ...)` for a physical screen. The tests
+check that symmetric angles give the ordinary perspective, that the eye positions are `+-ipd/2` along the head's X axis, and that for the off-axis projection a point on
+the screen plane lands at the same place in both eyes (no parallax at the screen). There is no combined frustum for culling both eyes once; cull per eye or with a
+union you build yourself.
+
+`DualParaboloid` (experimental) maps a direction to the unit disc of a hemisphere image, `(x, y) / (1 - z)`, with the distance from the centre as depth
+(`project`, `direction`, `view`, `hemisphereOf`, `halfSpace` for culling, and the GLSL of the vertex transform). The mapping is not projective, so geometry must be
+tessellated finely and the seam needs a small overlap; against a cube map it costs two renders instead of six. Tested: projection and inverse agree to 2e-5 over
+15 000 random points, the rim of the disc is the equator, and every direction belongs to the half-space of exactly the hemisphere `hemisphereOf` names. The GLSL is
+text that is not compiled here.
+
+## Not covered yet
+
+Orthographic and off-center cameras (use `Mat4f.ortho`/`frustum` directly), the physical camera model (exposure, focal length), a single culling frustum for both
+eyes, and the quality of a dual-paraboloid shadow map compared with a cube map (not measured). All are in `docs/ROADMAP.md`.
 
 ## Clip-space conventions (`ClipSpace`)
 

@@ -220,14 +220,17 @@ Consistency first, then features. All new features are written once in float and
 - [x] **GPU-1 (P1, L)** Layout framework `std140` / `std430` / `scalar` / tight, driven by a `@GpuStruct` annotation:  
       *Done: `GlslType`/`StructLayout`/`GpuWriter` for std140, std430 and scalar, and `@GpuStruct` generated `<Name>Gpu` writers with GLSL text; see `docs/GPU.md`.*
       generate layout computation, size/alignment constants and writers (scalars, vec2/3/4, mat2/3/4, arrays, nested structs). → AF-2
-- [ ] **GPU-2 (P1, S)** Layout validator that compares the generated layout to reflection data from the shader
+- [x] **GPU-2 (P1, S)** Layout validator that compares the generated layout to reflection data from the shader
       (SPIR-V reflection or GL introspection) in an opt-in test.
+      *Done (experimental): `LayoutValidator` compares a layout with reflection data supplied by the caller; checked against hand-derived reflection, not yet against a real driver. See `docs/GPU.md`.*
 - [x] **GPU-3 (P1, M)** Indirect draw command structs (`DrawArraysIndirect`, `DrawElementsIndirect`, multi-draw), compute
       dispatch structs, and packed instance-data writers.  
       *Done: `DrawArraysIndirect`, `DrawElementsIndirect`, `DispatchIndirect` (`@GpuStruct`, sizes 16/20/12 checked against the GL and Vulkan specs), `DrawCommandBuffer` (multi-draw runs, optional 16-byte stride, instance-count zeroing for culling), `InstanceWriter` (transform rows plus user data); `docs/GPU.md`.*
-- [ ] **GPU-4 (P2, M)** Vertex-format descriptions (attribute, stride, offsets) and interleaved-buffer builders that emit the
+- [x] **GPU-4 (P2, M)** Vertex-format descriptions (attribute, stride, offsets) and interleaved-buffer builders that emit the
       matching GL/Vulkan attribute specs.
-- [ ] **GPU-5 (P2, M)** GLSL/Slang shared-header generator so shader code and Java use one struct definition. → GPU-1
+      *Done (experimental): `VertexFormat`, `VertexBufferLayout` (GL, Vulkan and GLSL descriptions from one layout), `VertexLayout.toBufferLayout()`. See `docs/GPU.md`.*
+- [x] **GPU-5 (P2, M)** GLSL/Slang shared-header generator so shader code and Java use one struct definition. → GPU-1
+      *Done (experimental): `ShaderHeader` emits GLSL or Slang headers (structs, constants, blocks) from the `LAYOUT` constants; the text is not compiled here. See `docs/GPU.md`.*
 - [x] **GPU-6 (P2, M)** Clip-space conventions as a type (`GL`, `Vulkan` (Y-down), `D3D`), applied consistently by
       projection builders. Removes the boolean `zZeroToOne` parameter.  
       *Done for the matrix builders: `ClipSpace` (`OPENGL`, `VULKAN`, `D3D`), `ClipSpace` overloads of `Mat4f.perspective`/`perspectiveInfinite`/`perspectiveReversedZ`/`ortho`/`frustum`, `Mat4f.flipY`, `DepthRange.of`. The boolean overloads stay (japicmp). `Cameraf` and its screen helpers still assume y-up NDC (changing its record components would be an API break); see `docs/CAMERA.md`.*
@@ -304,9 +307,10 @@ can be chained and composed, and they run on SoA bounds.
       *Done: Halton `Jitter`, `jitteredProjection`, `reprojection` for motion vectors. See `docs/CAMERA.md`.*
 - [x] **CAM-4 (P1, M)** Cascaded shadow map splits (log/uniform/PSSM blend), stable texel-snapped fitting, light-space projection fit.  
       *Done: `Cascades`: split schemes, sphere-fit with texel snapping, per-cascade frustum and texture matrix. See `docs/CAMERA.md`.*
-- [ ] **CAM-5 (P2, S)** Cubemap face matrices, omnidirectional shadow/probe setup, dual-paraboloid.  
-      *Partial: `CubeFaces` (GL/Vulkan face orientation, view, projection, frustum, face-of-direction) done; dual-paraboloid is not.*
-- [ ] **CAM-6 (P2, M)** Oblique near-plane clipping (planar reflections), portal camera transforms, stereo/VR projection.
+- [x] **CAM-5 (P2, S)** Cubemap face matrices, omnidirectional shadow/probe setup, dual-paraboloid.  
+      *Done (experimental): `CubeFaces` plus `DualParaboloid` (mapping, inverse, hemisphere views and half-spaces, GLSL). See `docs/CAMERA.md`.*
+- [x] **CAM-6 (P2, M)** Oblique near-plane clipping (planar reflections), portal camera transforms, stereo/VR projection.
+      *Done (experimental): `PlanarViews` (reflection, oblique near plane for all depth conventions, portal views) and `Stereo` (eye views, asymmetric and off-axis projections). A single culling frustum for both eyes is not built. See `docs/CAMERA.md`.*
 - [ ] **CAM-7 (P2, S)** Physical camera model: exposure (EV100), FOV↔focal length, depth-of-field parameters.
 - [x] **CAM-8 (P2, M)** Depth utilities: linearize depth for all conventions, depth reconstruction of view position, Z-slice for clustered lighting.  
       *Done: `linearizeDepth`, `viewPositionFromDepth`, `worldPositionFromDepth`, and the Z-slice of an NDC depth (`ClusterGrid.sliceOfNdcDepth`). See `docs/CAMERA.md`.*

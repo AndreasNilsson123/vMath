@@ -2,6 +2,8 @@ package vmath.mesh;
 
 import java.util.ArrayList;
 import java.util.List;
+import vmath.gl.VertexBufferLayout;
+import vmath.gl.VertexFormat;
 
 /**
  * How the vertices of a {@link Mesh} are laid out in one interleaved buffer: which attributes, in which order, in which format.
@@ -63,6 +65,32 @@ public final class VertexLayout {
     /** Bytes from the start of one vertex to the start of the next (padded to a multiple of 4). */
     public int stride() {
         return stride;
+    }
+
+    /**
+     * The same layout as a {@link VertexBufferLayout}, ready to turn into OpenGL, Vulkan and GLSL descriptions: shader locations 0, 1, 2, ... in attribute order and
+     * the names {@code position}, {@code normal}, {@code tangent} and {@code uv<set>} (the second uv set is {@code uv1}).
+     */
+    public VertexBufferLayout toBufferLayout() {
+        VertexBufferLayout.Builder b = VertexBufferLayout.builder();
+        int location = 0;
+        for (Attribute a : attributes) {
+            String name = switch (a.format()) {
+                case POSITION_F32X3 -> "position";
+                case NORMAL_F32X3, NORMAL_OCT16 -> "normal";
+                case TANGENT_F32X4 -> "tangent";
+                case UV_F32X2, UV_HALF2 -> "uv" + a.uvSet();
+            };
+            VertexFormat f = switch (a.format()) {
+                case POSITION_F32X3, NORMAL_F32X3 -> VertexFormat.FLOAT32X3;
+                case NORMAL_OCT16 -> VertexFormat.SNORM16X2;
+                case TANGENT_F32X4 -> VertexFormat.FLOAT32X4;
+                case UV_F32X2 -> VertexFormat.FLOAT32X2;
+                case UV_HALF2 -> VertexFormat.FLOAT16X2;
+            };
+            b.attributeAt(name, location++, f, a.offset());
+        }
+        return b.build(stride);
     }
 
     /** Fluent builder for {@link VertexLayout}. */

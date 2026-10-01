@@ -87,11 +87,31 @@ an affine transform as three `vec4` rows (48 bytes instead of the 64 of a padded
 `vec3(dot(row0, p), dot(row1, p), dot(row2, p))` with `p = vec4(position, 1)`) and a `uint` of user data. Nothing in these writers allocates
 (`AllocationContractTest`).
 
+## Vertex buffers, shader headers and layout validation (experimental)
+
+**Vertex formats** (`VertexFormat`, `VertexBufferLayout`). `VertexFormat` names the attribute formats a renderer meets (`FLOAT32X3`, `FLOAT16X2`, `SNORM16X2`, `UNORM8X4`,
+`UINT8X4`, `UINT32`, ...) with the OpenGL component count, type and normalization, the Vulkan `VkFormat` value and the GLSL type; the numbers are the registry values and
+the test pins them. `VertexBufferLayout` places named attributes (location, format, offset aligned to the component size, stride rounded up to 4, `perInstance`) and turns
+the one description into `glFormats()` (the arguments of `glVertexAttribFormat`/`glVertexAttribIFormat`), `vkAttributes(binding)` and `vkBinding(binding)` (the Vulkan
+input structs' values) and `glslInputs()` (the `layout(location = n) in ...` lines), so the three cannot disagree. `VertexLayout.toBufferLayout()` converts the mesh export
+layouts (`position`, `normal`, `tangent`, `uv0`, ...). It describes; it calls no graphics API.
+
+**Shared shader headers** (`ShaderHeader`). Generates the include file for a set of `StructLayout`s (the `LAYOUT` constant of every generated `XxxGpu`): guard, structs
+with nested structs first and each once, `uint`/`int`/`float` constants for flag bits and sizes, optional GLSL interface blocks, and a comment per struct with its size and
+member offsets so a layout change shows in a diff. GLSL and Slang output (`float3`, `float4x4`, ...); the output is deterministic, so a build can regenerate and compare.
+The text is never compiled by the library's tests; it is checked for structure, ordering, deduplication and name conflicts. Matrices are column-major in the data, and Slang
+needs the matching layout option (see the class comment).
+
+**Layout validation** (`LayoutValidator`). Compares a Java `StructLayout` with reflection data (GL program introspection or SPIR-V decorations) that the caller reduces to
+`Reflected(name, offset, arrayStride, matrixStride)`: offsets, array strides, matrix strides, unexpected members, optionally missing members (compilers drop unused ones) and the
+block size, as a list of plain-text differences. `expected(layout)` gives the list the Java side implies. Tested against reflection of the `CullView` block worked out by hand
+from the std140 rules (agrees), against nested-struct layouts worked out by hand, and against six deliberately wrong inputs (each reported). It has not been run against a real
+driver or compiler; that is the opt-in test the roadmap item describes, and it needs a GPU or a SPIR-V toolchain.
+
 ## Not covered yet
 
-Checking a layout against a shader's reflection data (GPU-2), vertex-format builders
-(GPU-4), and generating a shared GLSL header file from the records (the `GLSL` string is available per struct today).
-The older `Std140` class (`vec3`/`mat3`/`mat4` into a `FloatBuffer`) still works, but the layout engine and writers above supersede it.
+Running the validator against a real compiler (it takes reflection data as input), compiling the generated headers, and Slang-specific buffer declarations. The older
+`Std140` class (`vec3`/`mat3`/`mat4` into a `FloatBuffer`) still works, but the layout engine and writers above supersede it.
 
 ## End-to-end sample
 

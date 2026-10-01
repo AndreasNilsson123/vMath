@@ -6,6 +6,8 @@ Nothing has been released yet; the baseline for the compatibility check is the t
 ## Unreleased
 
 ### Added
+- Camera (experimental): `PlanarViews` (reflections, oblique near-plane clipping, portal views), `Stereo`, `DualParaboloid`.
+- GPU (experimental): `VertexFormat`, `VertexBufferLayout`, `VertexLayout.toBufferLayout()`, `ShaderHeader` (GLSL/Slang headers from layouts), `LayoutValidator`.
 - Clustered lighting (experimental): `ClusterGrid`, `ClusterLights` (CPU reference of light assignment, tiled variant), `ClusterLight` struct.
 - GPU-driven culling (experimental, new package `vmath.gpucull`): layouts, `HiZPyramid`, `GpuCullReference`, `ClusterCullReference`, `GpuCullGlsl`; `DrawCommandBuffer.baseInstance`.
 - MIT `LICENSE`.
