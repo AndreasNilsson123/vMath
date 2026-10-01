@@ -82,10 +82,28 @@ public record Vec2f(float x, float y) {
         return sub(o).length();
     }
 
-    /** Unit vector in the same direction. A zero vector yields NaN components. */
+    /**
+     * Unit vector in the same direction. A zero, NaN or infinite input yields NaN components. A very large or very small vector, whose squared length would
+     * overflow or underflow, is scaled first and still gives the right direction (the plain formula would return zeros or infinities for it).
+     */
     public Vec2f normalize() {
-        float inv = 1f / length();
-        return new Vec2f(x * inv, y * inv);
+        float len2 = x * x + y * y;
+        if (len2 >= Float.MIN_NORMAL && len2 <= Float.MAX_VALUE) {
+            float inv = 1f / (float) Math.sqrt(len2);
+            return new Vec2f(x * inv, y * inv);
+        }
+        return normalizeScaled();
+    }
+
+    /** The slow path of {@link #normalize()}: divide by the largest component first so that the squares neither overflow nor underflow. */
+    private Vec2f normalizeScaled() {
+        float m = Math.max(Math.abs(x), Math.abs(y));
+        if (!(m > 0f) || m == Float.POSITIVE_INFINITY) {
+            return new Vec2f(Float.NaN, Float.NaN);
+        }
+        float a = x / m, b = y / m;
+        float inv = 1f / (float) Math.sqrt(a * a + b * b);
+        return new Vec2f(a * inv, b * inv);
     }
 
     public Vec2f lerp(Vec2f o, float t) {
@@ -114,6 +132,9 @@ public record Vec2f(float x, float y) {
         float len2 = lengthSquared();
         if (len2 <= 1e-30f) {
             return ZERO;
+        }
+        if (!(len2 <= Float.MAX_VALUE)) { // overflowed (a huge vector keeps its direction) or NaN (stays NaN)
+            return normalizeScaled();
         }
         float inv = 1f / (float) Math.sqrt(len2);
         return new Vec2f(x * inv, y * inv);

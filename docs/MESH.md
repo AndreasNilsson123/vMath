@@ -160,6 +160,24 @@ The **estimate** (the root of the largest quadric cost of any collapse, which su
 larger than the measured distance in every row, so as an error bound for LOD selection it errs toward more detail. It is an estimate, not a Hausdorff distance,
 and these are two closed smooth shapes; a sharp-featured model may differ. The volume of the sphere stays within 3% even at 3% of the triangles.
 
+### Skin weights and other attributes
+
+A geometry-only simplifier ruins a skinned mesh: a cylinder collapses along its length for free, so vertices with very different joint weights get merged and the
+mesh deforms wrongly. `simplify(mesh, target, maxError, lockBorder, locked, attributes, stride, attributeWeight)` takes per-vertex attributes (for skin weights, one
+float per joint, dense) and adds to the cost of a collapse Ward's clustering term, `attributeWeight * n_a n_b / (n_a + n_b) * |mean_a - mean_b|^2`, where `n` counts the
+vertices already merged into each side; it works on running means, so a chain of small steps cannot hide a large drift. The merged means come back in `Result.attributes()`
+(skin weights stay normalised). `Result.remap()` always maps each output vertex to the input vertex it came from.
+
+Measured on the generated skinned tube (768 triangles, 4 bones, bent 40 degrees at every joint; weight 0.0625; the distance is from the simplified skinned vertices to the
+skinned original surface, tube radius 0.25 and length 1.5):
+
+| Target | skin-blind deviation | skin-aware deviation |
+|---|---|---|
+| 384 triangles (50%) | 0.263 | 0.025 |
+| 192 triangles (25%) | 0.897 | 0.029 |
+
+A mesh that is skinned should always be simplified with its weights. `ClusterHierarchy` does not take attributes yet, so it is not suitable for skinned meshes.
+
 ## `Meshlets` (experimental)
 
 `Meshlets.build(mesh, maxVertices, maxTriangles)` (default 64 and 124) cuts a mesh into small clusters for mesh shaders and cluster culling. The layout is
@@ -180,7 +198,10 @@ cone test culls has a front-facing triangle** (40 random eyes per shape). Measur
 | torus 128 x 64 | 64 / 124 | 16 384 | 213 | 76.9 | 52.8 | 1.34 | 19 ms |
 | plane 100 x 100 | 64 / 124 | 20 000 | 255 | 78.4 | 53.3 | 1.33 | 21 ms |
 
-So meshlets are filled to roughly 60% of the triangle limit and 80% of the vertex limit; meshoptimizer's builder is tighter, and this one is a first cut.
+So meshlets are filled to roughly 60% of the triangle limit and 80% of the vertex limit. The vertex limit is what binds: a square patch of a regular grid with 8 x 8 = 64
+vertices has 98 triangles, so about 100 is the practical ceiling for 64 vertices, not 124, and the builder reaches about three quarters of that. A post-pass that merges a small
+meshlet into the neighbour it shares most vertices with, whenever the union keeps within both limits (up to four rounds), was built and measured on the four meshes above and
+**changed nothing** (not one merge fitted, identical meshlet counts), so it was removed.
 Seen from 6 radii away, 52% of the meshlets of an icosphere are back-face culled by the cone test. The first seed rule (next unused triangle in index order) gave 60.6
 triangles per meshlet on the icosphere; the edge-first seed gave 74.2 and is what remains.
 
@@ -211,23 +232,28 @@ places vertices slightly outside a convex surface, so the area can exceed it) an
 selected twice; a zero budget gives exactly the original triangles; an unlimited budget gives roots only; the number of selected triangles never grows with the budget or
 with distance; level 0 is exactly the welded input; construction is deterministic.
 
-Measured (JDK 25, one machine, positions only, 64 vertices and 128 triangles per cluster, groups of 4, pixel scale 1000 and a budget of 1 pixel, eye on the axis):
+Measured (JDK 25, one machine, positions only, 64 vertices and 128 triangles per cluster, groups of 4, pixel scale 1000 and a budget of 1 pixel, eye on the axis; build times
+are of a second build in the same JVM, after warm-up):
 
 | Mesh | triangles | levels | clusters | build | triangles per level |
 |---|---|---|---|---|---|
-| icosphere 5 | 20 480 | 11 | 802 | 362 ms | 20 480, 10 212, 5 154, 2 792, 1 582, 1 038, 630, 382, 190, 94, 46 |
-| torus 128 x 64 | 16 384 | 12 | 703 | 291 ms | 16 384, 8 170, 4 114, 2 338, 1 478, 982, 612, 392, 202, 110, 54, 26 |
-| icosphere 7 | 327 680 | 27 | 14 331 | **14.3 s** | halves for the first levels, then 30 to 40% per level |
+| icosphere 5 | 20 480 | 12 | 822 | 426 ms | 20 480, 10 204, 5 116, 2 766, 1 600, 1 022, 658, 452, 250, 132, 68, 34 |
+| torus 128 x 64 | 16 384 | 11 | 692 | 325 ms | 16 384, 8 156, 4 132, 2 250, 1 446, 910, 598, 454, 258, 136, 68 |
+| icosphere 7 | 327 680 | 27 | 14 227 | **3.98 s** | halves for the first levels, then 30 to 40% per level |
 
 | Eye distance (icosphere 5) | 1.5 | 3 | 6 | 12 | 25 | 50 | 100 | 400 |
 |---|---|---|---|---|---|---|---|---|
-| selected clusters | 276 | 215 | 187 | 145 | 122 | 104 | 83 | 61 |
-| selected triangles | 20 478 | 13 480 | 10 212 | 7 050 | 5 470 | 4 322 | 3 236 | 2 076 |
+| selected clusters | 275 | 212 | 178 | 148 | 124 | 106 | 90 | 57 |
+| selected triangles | 20 130 | 13 476 | 10 204 | 6 634 | 5 238 | 4 292 | 3 364 | 1 810 |
 
-The build is slow for big meshes (quadratic parts in grouping and hash-map bookkeeping; it was not optimised) and is meant for load or bake time. `select` is a linear
-scan over the clusters (0.1 to 0.25 ms for 800 clusters, 0.5 to 3 ms for 14 000); a real renderer would run the same test per cluster on the GPU or walk the DAG.
-Limits: the upper levels shrink slowly (locked borders), attribute seams of the input never simplify, and the error is the conservative estimate of `MeshSimplifier`, not a
-Hausdorff distance. The pool of vertices (`vertices()`) carries attributes; nothing here draws or uploads.
+**Build speed.** The first version took 14.3 s for the 328 000-triangle sphere. Two things were responsible: copying the whole `posIds` array for every new vertex
+(quadratic; the 82 000-triangle sphere spent 0.59 of its 2.5 s there) and boxed `HashMap<Long, ...>`/`HashMap<Integer, ...>` structures in the grouping, the border detection and
+the per-group local meshes, now replaced by primitive open-addressing maps (`FastMaps`) and arrays. That gives 3.98 s (a cold first build is a little slower), and the remaining time is
+spread over the simplifier (a few milliseconds per group), grouping, border detection, local mesh building and meshlets, none of it dominant. Small meshes did not get faster
+(0.3 to 0.4 s). The seed search in the grouping is still quadratic in the number of clusters per level, which only matters for meshes of several million triangles.
+The build is meant for load or bake time. `select` is a linear scan over the clusters; a real renderer would run the same test per cluster on the GPU or walk the DAG.
+Limits: the upper levels shrink slowly (locked borders), attribute seams of the input never simplify, the error is the conservative estimate of `MeshSimplifier`, not a Hausdorff
+distance, and skinned meshes are not supported (no attribute-aware cost here). The pool of vertices (`vertices()`) carries attributes; nothing here draws or uploads.
 
 ## `MeshExport` and `VertexLayout`
 

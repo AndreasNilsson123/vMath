@@ -36,3 +36,13 @@ for a known format. `levelCount == 0` is reported as stored (the loader is meant
 It does **not** decompress: supercompressed files (Basis LZ, Zstandard, ZLIB) are reported through `supercompressionScheme` and the raw level ranges, and
 the key/value data and the data format descriptor are given as byte ranges, not parsed. `writeHeader` writes a header and level index, which is how the
 tests build their files; the tests use hand-built files, not files from a real encoder.
+
+## Tested against generated files
+
+`src/test/resources/assets/ktx2` holds four files written by `AssetFactory` with the layout the specification prescribes (header, level index, a basic data format
+descriptor, sorted key/value data, levels stored smallest first at 16-byte boundaries): a 64 x 64 BC1 sRGB texture with 7 levels (encoded by a small block encoder, decoded
+back by a decoder in the tests, every level within the RGB565 quantisation of the source), a 16 x 16 RGBA8 cube map with 5 levels, an 8 x 8 R8 array of 3 layers with 4
+levels, and a 4 x 4 file that declares 0 levels. The tests check every field of the container (alignment, ordering, that each level is where `TextureLayout` says and has the
+size it computes, that the descriptor and key/value blocks are well formed), compare every texel of the cube faces and array layers with independently regenerated data, check
+that the face order of `CubeFace` is the face order of the file, and corrupt 20 000 copies of the files (header, level index and descriptors) to confirm that only
+`IllegalArgumentException` ever comes out. The files are not validated by an external tool (`ktx validate`); they are written by the same author as the parser.

@@ -27,7 +27,8 @@ or a different handedness for a generated tangent) is listed in the changelog un
 `vmath.annotations.Experimental` marks a type, method, constructor or field that is new and may change or vanish in any release, patch releases included.
 It is how a large new layer (a loader, an optimiser) can ship before its shape is settled without freezing it. Rules:
 
-- The japicmp check ignores anything carrying it.
+- The japicmp check ignores anything carrying it. Verified by experiment (2026-10): with the current jar as baseline, renaming a method of an `@Experimental` class passes,
+  while renaming a method of a stable class fails with `METHOD_REMOVED`.
 - The Javadoc says what is expected to change.
 - It is removed in a minor release, announced in the changelog under "Promoted"; from then on the normal rules apply.
 - Nothing stable may expose an experimental type in its signature; if it would, the stable method is experimental too.
@@ -43,3 +44,12 @@ The annotation has class retention: it is in the class file for tools, absent at
 
 `CHANGELOG.md` uses the [Keep a Changelog](https://keepachangelog.com) headings (Added, Changed, Deprecated, Removed, Fixed, plus Promoted for graduated
 experimental APIs). Every user-visible change goes under "Unreleased" in the commit that makes it; a release renames that section.
+
+## Release checklist
+
+1. `CHANGELOG.md`: rename "Unreleased" to the version and date, start a new empty "Unreleased".
+2. `version` in `build.gradle.kts`: drop `-SNAPSHOT` for the release commit.
+3. `./gradlew build` and the `-Pvalhalla` build (see `docs/API-COMPAT.md`) are green.
+4. Commit, then `git tag -a vX.Y.Z -m "vX.Y.Z"` and push the tag.
+5. **Only now** change `japicmpTag` in `build.gradle.kts` to the new tag. Doing it before the tag exists makes the check skip silently ("no baseline"), which removes the protection without a failure.
+6. Bump `version` to the next `-SNAPSHOT`.

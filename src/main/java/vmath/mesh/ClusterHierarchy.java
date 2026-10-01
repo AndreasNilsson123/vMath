@@ -2,9 +2,7 @@ package vmath.mesh;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import vmath.annotations.Experimental;
 import vmath.spatial.ConeCull;
 
@@ -95,17 +93,19 @@ public final class ClusterHierarchy {
             }
             int[][] groups = group(current, posIds, groupSize);
             // edges shared with another group are the borders to keep
-            Map<Long, Integer> edgeGroup = new HashMap<>();
-            Map<Long, Boolean> border = new HashMap<>();
+            FastMaps.LongIntMap edgeGroup = new FastMaps.LongIntMap(trianglesBefore);
+            FastMaps.LongIntMap border = new FastMaps.LongIntMap(1024);
             for (int g = 0; g < groups.length; g++) {
                 for (int ci : groups[g]) {
                     int[] idx = current.get(ci).indices;
                     for (int t = 0; t < idx.length; t += 3) {
                         for (int k = 0; k < 3; k++) {
                             long key = edgeKey(posIds[idx[t + k]], posIds[idx[t + (k + 1) % 3]]);
-                            Integer prev = edgeGroup.putIfAbsent(key, g);
-                            if (prev != null && prev != g) {
-                                border.put(key, Boolean.TRUE);
+                            int prev = edgeGroup.get(key);
+                            if (prev < 0) {
+                                edgeGroup.put(key, g);
+                            } else if (prev != g) {
+                                border.put(key, 1);
                             }
                         }
                     }
@@ -118,24 +118,32 @@ public final class ClusterHierarchy {
                     children.add(current.get(ci));
                 }
                 // the merged triangles as a local mesh
-                Map<Integer, Integer> local = new HashMap<>();
-                List<Integer> localToGlobal = new ArrayList<>();
+                FastMaps.LongIntMap local = new FastMaps.LongIntMap(512);
+                int[] localToGlobal = new int[256];
+                int localCount = 0;
                 Mesh gm = new Mesh();
                 copyStreams(pool, gm);
-                List<Integer> groupTris = new ArrayList<>();
+                int[] groupTris = new int[768];
+                int groupTriCount = 0;
                 for (Cluster c : children) {
                     for (int v : c.indices) {
-                        Integer l = local.get(v);
-                        if (l == null) {
+                        int l = local.get(v);
+                        if (l < 0) {
                             l = appendVertex(pool, v, gm);
                             local.put(v, l);
-                            localToGlobal.add(v);
+                            if (localCount == localToGlobal.length) {
+                                localToGlobal = Arrays.copyOf(localToGlobal, localCount * 2);
+                            }
+                            localToGlobal[localCount++] = v;
                         }
-                        groupTris.add(l);
+                        if (groupTriCount == groupTris.length) {
+                            groupTris = Arrays.copyOf(groupTris, groupTriCount * 2);
+                        }
+                        groupTris[groupTriCount++] = l;
                     }
                 }
-                for (int t = 0; t < groupTris.size(); t += 3) {
-                    gm.addTriangle(groupTris.get(t), groupTris.get(t + 1), groupTris.get(t + 2));
+                for (int t = 0; t < groupTriCount; t += 3) {
+                    gm.addTriangle(groupTris[t], groupTris[t + 1], groupTris[t + 2]);
                 }
                 boolean[] locked = new boolean[gm.vertexCount()];
                 for (Cluster c : children) {
@@ -156,10 +164,12 @@ public final class ClusterHierarchy {
                 for (int s = 0; s < gm.vertexCount(); s++) {
                     int old = r.remap()[s];
                     if (locked[old]) {
-                        globalOf[s] = localToGlobal.get(old);
+                        globalOf[s] = localToGlobal[old];
                     } else {
                         globalOf[s] = appendVertex(gm, s, pool);
-                        posIds = Arrays.copyOf(posIds, pool.vertexCount());
+                        if (globalOf[s] >= posIds.length) { // grow geometrically: copying the whole array per vertex was quadratic
+                            posIds = Arrays.copyOf(posIds, Math.max(posIds.length * 2, globalOf[s] + 1));
+                        }
                         posIds[globalOf[s]] = nextPos++;
                     }
                 }
@@ -226,18 +236,19 @@ public final class ClusterHierarchy {
     // ---------------------------------------------------------------- build helpers
 
     private static int assignPositionIds(Mesh m, int[] out) {
-        Map<String, Integer> ids = new HashMap<>();
+        FastMaps.TripleIntMap ids = new FastMaps.TripleIntMap(m.vertexCount());
         float[] p = m.positions();
+        int count = 0;
         for (int v = 0; v < m.vertexCount(); v++) {
-            String key = Float.floatToIntBits(p[v * 3] + 0f) + "," + Float.floatToIntBits(p[v * 3 + 1] + 0f) + "," + Float.floatToIntBits(p[v * 3 + 2] + 0f);
-            Integer id = ids.get(key);
-            if (id == null) {
-                id = ids.size();
-                ids.put(key, id);
+            int x = Float.floatToIntBits(p[v * 3] + 0f), y = Float.floatToIntBits(p[v * 3 + 1] + 0f), z = Float.floatToIntBits(p[v * 3 + 2] + 0f);
+            int id = ids.get(x, y, z);
+            if (id < 0) {
+                id = count++;
+                ids.put(x, y, z, id);
             }
             out[v] = id;
         }
-        return ids.size();
+        return count;
     }
 
     private static long edgeKey(int a, int b) {
@@ -282,78 +293,90 @@ public final class ClusterHierarchy {
     /** Groups of cluster indices: each grown from a cluster with few free neighbours by taking the neighbour it shares most edges with. */
     private static int[][] group(List<Cluster> clusters, int[] posIds, int groupSize) {
         int n = clusters.size();
-        Map<Long, List<Integer>> edgeClusters = new HashMap<>();
+        // neighbours: two clusters that own the same edge, weighted by how many edges they share
+        FastMaps.LongIntMap firstOwner = new FastMaps.LongIntMap(1024);
+        FastMaps.LongIntMap pairs = new FastMaps.LongIntMap(1024);
         for (int c = 0; c < n; c++) {
             int[] idx = clusters.get(c).indices;
             for (int t = 0; t < idx.length; t += 3) {
                 for (int k = 0; k < 3; k++) {
-                    List<Integer> l = edgeClusters.computeIfAbsent(edgeKey(posIds[idx[t + k]], posIds[idx[t + (k + 1) % 3]]), x -> new ArrayList<>(2));
-                    if (l.isEmpty() || l.get(l.size() - 1) != c) {
-                        l.add(c);
+                    long key = edgeKey(posIds[idx[t + k]], posIds[idx[t + (k + 1) % 3]]);
+                    int owner = firstOwner.get(key);
+                    if (owner < 0) {
+                        firstOwner.put(key, c);
+                    } else if (owner != c) {
+                        pairs.add(((long) Math.min(owner, c) << 32) | Math.max(owner, c), 1);
                     }
                 }
             }
         }
-        List<Map<Integer, Integer>> neighbours = new ArrayList<>();
+        int[] degree = new int[n + 1];
+        pairs.forEach((key, weight) -> {
+            degree[(int) (key >>> 32)]++;
+            degree[(int) key]++;
+        });
+        int[] start = new int[n + 1];
         for (int c = 0; c < n; c++) {
-            neighbours.add(new HashMap<>());
+            start[c + 1] = start[c] + degree[c];
         }
-        for (List<Integer> l : edgeClusters.values()) {
-            for (int i = 0; i < l.size(); i++) {
-                for (int j = i + 1; j < l.size(); j++) {
-                    neighbours.get(l.get(i)).merge(l.get(j), 1, Integer::sum);
-                    neighbours.get(l.get(j)).merge(l.get(i), 1, Integer::sum);
-                }
-            }
+        long[] packed = new long[start[n]]; // neighbour in the high bits, so that sorting a range orders it by neighbour
+        int[] fill = Arrays.copyOf(start, n);
+        pairs.forEach((key, weight) -> {
+            int a = (int) (key >>> 32), b = (int) key;
+            packed[fill[a]++] = ((long) b << 32) | weight;
+            packed[fill[b]++] = ((long) a << 32) | weight;
+        });
+        for (int c = 0; c < n; c++) {
+            Arrays.sort(packed, start[c], start[c + 1]);
         }
         boolean[] taken = new boolean[n];
+        int[] free = new int[n]; // untaken neighbours of every cluster
+        for (int c = 0; c < n; c++) {
+            free[c] = start[c + 1] - start[c];
+        }
         List<int[]> groups = new ArrayList<>();
+        int[] members = new int[groupSize];
         for (int round = 0; round < n; round++) {
             int seed = -1, seedFree = Integer.MAX_VALUE;
             for (int c = 0; c < n; c++) {
-                if (taken[c]) {
-                    continue;
-                }
-                int free = 0;
-                for (int o : neighbours.get(c).keySet()) {
-                    if (!taken[o]) {
-                        free++;
-                    }
-                }
-                if (free < seedFree) {
-                    seedFree = free;
+                if (!taken[c] && free[c] < seedFree) {
+                    seedFree = free[c];
                     seed = c;
                 }
             }
             if (seed < 0) {
                 break;
             }
-            List<Integer> members = new ArrayList<>();
-            members.add(seed);
-            taken[seed] = true;
-            while (members.size() < groupSize) {
+            int count = 0;
+            members[count++] = seed;
+            take(seed, taken, free, packed, start);
+            while (count < groupSize) {
                 int best = -1, bestShared = 0;
-                for (int m : members) {
-                    for (Map.Entry<Integer, Integer> e : neighbours.get(m).entrySet()) {
-                        if (!taken[e.getKey()] && e.getValue() > bestShared) {
-                            bestShared = e.getValue();
-                            best = e.getKey();
+                for (int i = 0; i < count; i++) {
+                    for (int e = start[members[i]]; e < start[members[i] + 1]; e++) {
+                        int other = (int) (packed[e] >>> 32), shared = (int) packed[e];
+                        if (!taken[other] && shared > bestShared) {
+                            bestShared = shared;
+                            best = other;
                         }
                     }
                 }
                 if (best < 0) {
                     break;
                 }
-                members.add(best);
-                taken[best] = true;
+                members[count++] = best;
+                take(best, taken, free, packed, start);
             }
-            int[] g = new int[members.size()];
-            for (int i = 0; i < g.length; i++) {
-                g[i] = members.get(i);
-            }
-            groups.add(g);
+            groups.add(Arrays.copyOf(members, count));
         }
         return groups.toArray(new int[0][]);
+    }
+
+    private static void take(int c, boolean[] taken, int[] free, long[] packed, int[] start) {
+        taken[c] = true;
+        for (int e = start[c]; e < start[c + 1]; e++) {
+            free[(int) (packed[e] >>> 32)]--;
+        }
     }
 
     private static void setGeometryBounds(Mesh pool, Cluster c) {

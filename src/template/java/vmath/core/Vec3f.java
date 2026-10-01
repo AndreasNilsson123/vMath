@@ -90,10 +90,28 @@ public record Vec3f(float x, float y, float z) {
         return (float) Math.sqrt(distanceSquared(o));
     }
 
-    /** Unit vector in the same direction. A zero vector yields NaN components. */
+    /**
+     * Unit vector in the same direction. A zero, NaN or infinite input yields NaN components. A very large or very small vector, whose squared length would
+     * overflow or underflow, is scaled first and still gives the right direction (the plain formula would return zeros or infinities for it).
+     */
     public Vec3f normalize() {
-        float inv = 1f / length();
-        return new Vec3f(x * inv, y * inv, z * inv);
+        float len2 = x * x + y * y + z * z;
+        if (len2 >= Float.MIN_NORMAL && len2 <= Float.MAX_VALUE) {
+            float inv = 1f / (float) Math.sqrt(len2);
+            return new Vec3f(x * inv, y * inv, z * inv);
+        }
+        return normalizeScaled();
+    }
+
+    /** The slow path of {@link #normalize()}: divide by the largest component first so that the squares neither overflow nor underflow. */
+    private Vec3f normalizeScaled() {
+        float m = Math.max(Math.abs(x), Math.max(Math.abs(y), Math.abs(z)));
+        if (!(m > 0f) || m == Float.POSITIVE_INFINITY) {
+            return new Vec3f(Float.NaN, Float.NaN, Float.NaN);
+        }
+        float a = x / m, b = y / m, c = z / m;
+        float inv = 1f / (float) Math.sqrt(a * a + b * b + c * c);
+        return new Vec3f(a * inv, b * inv, c * inv);
     }
 
     /** Like {@link #normalize()} but returns {@link #ZERO} for (near-)zero input. */
@@ -101,6 +119,9 @@ public record Vec3f(float x, float y, float z) {
         float len2 = lengthSquared();
         if (len2 <= 1e-30f) {
             return ZERO;
+        }
+        if (!(len2 <= Float.MAX_VALUE)) { // overflowed (a huge vector keeps its direction) or NaN (stays NaN)
+            return normalizeScaled();
         }
         float inv = 1f / (float) Math.sqrt(len2);
         return new Vec3f(x * inv, y * inv, z * inv);

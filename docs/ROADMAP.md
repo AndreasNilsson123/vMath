@@ -42,7 +42,7 @@ Findings from reading the code:
 - `Std140` handles `vec3`, `mat3`, `mat4` only: no scalars, `vec2`, `vec4`, arrays, structs, std430 or scalar layout.
 
 **Missing infrastructure**
-- No JMH module (the README's "allocations disappear" claim is unverified), no CI, no `module-info.java`, no LICENSE,
+- No JMH module (the README's "allocations disappear" claim is unverified), no CI, no `module-info.java`,
   no API-compat check, no javadoc build. Baseline JDK 21 predates FFM (`MemorySegment`) going final in 22.
 
 **Nothing above the math layer yet:** no shapes, no culling, no spatial structures, no bulk containers.
@@ -134,14 +134,15 @@ Tasks:
 - [x] **INF-4 (P1, S)** Decide baseline JDK (21 vs current LTS). FFM final and useful for `MemorySegment` APIs from 22.  
       *Done: baseline is JDK 25.*
       Multi-release or a bump. (Open question 2.)
-- [ ] **INF-5 (P1, M)** JPMS `module-info.java` per module, `japicmp` API-compat check, javadoc with `-Xdoclint`, LICENSE.  
+- [x] **INF-5 (P1, M)** JPMS `module-info.java` per module, `japicmp` API-compat check, javadoc with `-Xdoclint`, LICENSE.  
       *Partial: JPMS done for `vmath`, `vmath.annotations` and `vmath.codegen` (`vmath` requires the annotations `static`, so
       it needs only `java.base` at run time), verified against the built jar by `ModuleDescriptorTest`. `vmath-bench` stays
-      non-modular (JMH's generated code is not). `japicmp` is done (`docs/API-COMPAT.md`, baseline tag `v0.1.0`). Javadoc is linted by `check` (`-Xdoclint:all,-missing` with warnings as errors: broken references, bad HTML, malformed tags); checking for *missing* comments and record `@param` tags is open, and so is the LICENSE (the owner's decision).*
+      non-modular (JMH's generated code is not). `japicmp` is done (`docs/API-COMPAT.md`, baseline tag `v0.1.0`). Javadoc is linted by `check` (`-Xdoclint:all,-missing` with warnings as errors: broken references, bad HTML, malformed tags); checking for *missing* comments and record `@param` tags is open, and the LICENSE is MIT (added 2026-10, the owner's decision).*
 - [ ] **INF-6 (P1, M)** Restructure into multi-project Gradle build per the module table. → AF-2  
       *Partial: annotations/codegen/bench are modules; core/geo/spatial still share the root project, which is one JPMS module `vmath` exporting `vmath.core`, `geo`, `bulk`, `spatial`, `gl`. Splitting it further means per-module template directories and a generator that resolves family renames across modules.*
-- [ ] **INF-7 (P2, M)** Fuzzing/degenerate suite: zero vectors, denormals, NaN/Inf, huge magnitudes, near-singular
-      matrices. Explicit expected behavior per op.
+- [x] **INF-7 (P2, M)** Fuzzing/degenerate suite: zero vectors, denormals, NaN/Inf, huge magnitudes, near-singular
+      matrices. Explicit expected behavior per op.  
+      *Done for the 14 core types: `DegenerateInputSweepTest` (257 200 reflective calls, fails on unexpected exceptions or hidden NaN), `DegenerateContractfTest` (explicit cases, both precisions), `docs/ROBUSTNESS.md`. Found and fixed `normalize` of huge and tiny vectors. Shapes, meshes and bulk arrays are not covered.*
 - [ ] **INF-8 (P2, M)** Oracle strategy for features JOML lacks (BVH, culling): brute-force reference implementations
       in tests, analytic cases, cross-precision (f vs d) comparison.
 - [ ] **INF-9 (P2, S)** Code coverage (JaCoCo) and mutation testing (PIT) on `core`.
@@ -173,7 +174,8 @@ Consistency first, then features. All new features are written once in float and
       with tests against `Math`. Opt-in `FastMath` class, never silently substituted.
 - [ ] **CORE-10 (P2, M)** Robustness: `Predicates` (orient2d/3d, incircle/insphere, adaptive-precision), `DoubleDouble` type,
       stable `normalize` / angle-between / cross-based formulas.
-- [ ] **CORE-11 (P2, S)** Consistent `hashCode`/`equals` semantics doc (`-0.0`, NaN) and epsilon-hash helpers for spatial hashing.
+- [ ] **CORE-11 (P2, S)** Consistent `hashCode`/`equals` semantics doc (`-0.0`, NaN) and epsilon-hash helpers for spatial hashing.  
+      *Partial: semantics documented and tested (`docs/ROBUSTNESS.md`); epsilon-hash helpers are open.*
 - [ ] **CORE-12 (P3, M)** Optional `ToString`/`fromString` formats, `Vec.parse`, debug formatter for matrices.
 - [ ] **CORE-13 (P2, M)** Transform-space utilities: frame-tagged transforms, `Geodetic/Ecef/WGS-84` (from the existing "next steps"),
       camera-relative rendering helpers beyond `relativeTo` (rebasing a whole scene, double→float model matrices).
@@ -319,7 +321,7 @@ can be chained and composed, and they run on SoA bounds.
       *Partial: `weld`, Forsyth `optimizeVertexCache` (ACMR 2.99 shuffled to 0.66-0.68), `optimizeVertexFetch`, `acmr`. `Overdraw` (experimental): software overdraw measure and cluster ordering, accepted only when measured overdraw drops within an ACMR budget; numbers in `docs/MESH.md`.*
 - [x] **MESH-4 (P2, XL)** Meshlet builder (bounds + normal cone per meshlet), LOD simplification (quadric error metrics) and
       LOD chain / cluster hierarchy generation.  
-      *Done (experimental): `Meshlets` (greedy builder, sphere + normal cone, GPU records), `MeshSimplifier` (QEM, seams, borders and explicit locks), `MeshLod` (discrete chain with errors and LodSelector thresholds), `ClusterHierarchy` (Nanite-style cluster DAG with crack-free selection, tested on closed meshes). The hierarchy build is slow on big meshes (14 s for 328k triangles) and unoptimised; see `docs/MESH.md`.*
+      *Done (experimental): `Meshlets` (greedy builder, sphere + normal cone, GPU records), `MeshSimplifier` (QEM, seams, borders and explicit locks), `MeshLod` (discrete chain with errors and LodSelector thresholds), `ClusterHierarchy` (Nanite-style cluster DAG with crack-free selection, tested on closed meshes). The hierarchy build takes about 4 s for 328k triangles (was 14 s); see `docs/MESH.md`.*
 - [x] **MESH-5 (P2, M)** Procedural primitives: plane, box, UV/ico sphere, capsule, cylinder, cone, torus, with UV/normals/tangents.  
       *Done: `Primitives`, watertight by position, outward-wound, volumes and areas checked against the analytic shapes.*
 - [x] **MESH-6 (P2, L)** glTF 2.0 loader (mesh, skin, animation, materials) writing straight into `MemorySegment` streams.  

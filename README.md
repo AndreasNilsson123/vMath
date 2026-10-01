@@ -125,7 +125,7 @@ Allocation findings and the performance contract are in [docs/PERFORMANCE.md](do
 ## Next steps
 
 Versioning and the `@Experimental` marker: [docs/VERSIONING.md](docs/VERSIONING.md); changes: [CHANGELOG.md](CHANGELOG.md).
-The full backlog is in [docs/ROADMAP.md](docs/ROADMAP.md); design notes are in `docs/` (CODEGEN, CULLING, GPU, CAMERA, FORMATS, TEXTURES, GLTF,
+The full backlog is in [docs/ROADMAP.md](docs/ROADMAP.md); design notes are in `docs/` (CODEGEN, CULLING, GPU, CAMERA, FORMATS, TEXTURES, GLTF, ROBUSTNESS,
 PERFORMANCE, API-COMPAT). Not built yet, roughly in order of value:
 
 - A SIMD occlusion test, temporal coherence for occlusion queries, and portal culling (the rest of culling is built: frustum
@@ -134,3 +134,8 @@ PERFORMANCE, API-COMPAT). Not built yet, roughly in order of value:
 - Animation (skinning, blending, IK) and a scene-transform hierarchy in SoA form.
 - Indirect-draw and vertex-format structs, and a shared GLSL header generator.
 - Random and noise utilities, color spaces, curves.
+
+## License
+
+MIT, see [LICENSE](LICENSE): free to use, copy, modify, merge, publish and distribute, in source or binary form, as long as the copyright notice and the licence text are kept
+(that is the credit the licence asks for).

@@ -92,8 +92,14 @@ public final class Gltf {
      * A skin as vmath types. {@code jointNodes[j]} is the node of skeleton joint {@code j}; {@code skinToSkeleton[k]} is the skeleton joint of entry {@code k} of
      * the glTF skin (the value a {@code JOINTS_0} attribute holds). {@code inverseBindMatrices} are the file's, 16 floats per joint in skeleton order, or null
      * if the skin has none; the skeleton computes its own from the bind pose.
+     *
+     * <p>{@code rootTransform} is the world matrix of the nodes above the skeleton (an exporter's "Armature" node, often a rotation), the identity when the roots have
+     * no parent. The skeleton's bind pose and the animation clips are local to the joints and leave it out, while the file's inverse bind matrices and vertices include it.
+     * To skin the vertices of the file: {@code world = Skinning.worldMatrices(skeleton, pose)}, joint matrix {@code world * inverseBindMatrix} (the file's, not the
+     * skeleton's), skin the positions with those, and then transform the result by {@code rootTransform}. (The skeleton's own inverse bind matrices omit the armature too, so
+     * with those the vertices must first be taken into armature space by the inverse of {@code rootTransform}.)
      */
-    public record SkinData(String name, Skeleton skeleton, int[] jointNodes, int[] skinToSkeleton, float[] inverseBindMatrices) {
+    public record SkinData(String name, Skeleton skeleton, int[] jointNodes, int[] skinToSkeleton, float[] inverseBindMatrices, Mat4f rootTransform) {
     }
 
     /** Four joint indices and four weights per vertex. */
@@ -1053,7 +1059,27 @@ public final class Gltf {
                 System.arraycopy(raw, k * 16, ibm, skinToSkeleton[k] * 16, 16);
             }
         }
-        SkinData data = new SkinData(str(s, "name", null), skeleton, nodesInOrder, skinToSkeleton, ibm);
+        // the world matrix above the skeleton: every root joint must hang from the same place
+        Mat4f rootTransform = Mat4f.IDENTITY;
+        Mat4f[] worlds = null;
+        boolean first = true;
+        for (int k = 0; k < n; k++) {
+            if (parentSlot[k] >= 0) {
+                continue;
+            }
+            int above = nodeParent[jointNode[k]];
+            if (above >= 0 && worlds == null) {
+                worlds = worldMatrices();
+            }
+            Mat4f here = above >= 0 ? worlds[above] : Mat4f.IDENTITY;
+            if (first) {
+                rootTransform = here;
+                first = false;
+            } else if (!rootTransform.approxEquals(here, 1e-4f)) {
+                throw new GltfException("skins[" + index + "]: the root joints hang below different transforms");
+            }
+        }
+        SkinData data = new SkinData(str(s, "name", null), skeleton, nodesInOrder, skinToSkeleton, ibm, rootTransform);
         skinCache.put(index, data);
         return data;
     }

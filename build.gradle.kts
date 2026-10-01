@@ -86,7 +86,7 @@ tasks.test {
     dependsOn(tasks.jar)
     systemProperty("vmath.jar", tasks.jar.get().archiveFile.get().asFile.absolutePath)
     // Forward -Dvmath.seed / -Dvmath.trials from the command line, e.g. a nightly job with a fresh seed.
-    listOf("vmath.seed", "vmath.trials").forEach { key ->
+    listOf("vmath.seed", "vmath.trials", "vmath.writeAssets").forEach { key ->
         System.getProperty(key)?.let { systemProperty(key, it) }
     }
 }

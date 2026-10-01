@@ -79,9 +79,28 @@ public record Quatf(float x, float y, float z, float w) {
         return (float) Math.sqrt(lengthSquared());
     }
 
+    /**
+     * Unit vector in the same direction. A zero, NaN or infinite input yields NaN components. A very large or very small vector, whose squared length would
+     * overflow or underflow, is scaled first and still gives the right direction (the plain formula would return zeros or infinities for it).
+     */
     public Quatf normalize() {
-        float inv = 1f / length();
-        return new Quatf(x * inv, y * inv, z * inv, w * inv);
+        float len2 = x * x + y * y + z * z + w * w;
+        if (len2 >= Float.MIN_NORMAL && len2 <= Float.MAX_VALUE) {
+            float inv = 1f / (float) Math.sqrt(len2);
+            return new Quatf(x * inv, y * inv, z * inv, w * inv);
+        }
+        return normalizeScaled();
+    }
+
+    /** The slow path of {@link #normalize()}: divide by the largest component first so that the squares neither overflow nor underflow. */
+    private Quatf normalizeScaled() {
+        float m = Math.max(Math.abs(x), Math.max(Math.abs(y), Math.max(Math.abs(z), Math.abs(w))));
+        if (!(m > 0f) || m == Float.POSITIVE_INFINITY) {
+            return new Quatf(Float.NaN, Float.NaN, Float.NaN, Float.NaN);
+        }
+        float a = x / m, b = y / m, c = z / m, d = w / m;
+        float inv = 1f / (float) Math.sqrt(a * a + b * b + c * c + d * d);
+        return new Quatf(a * inv, b * inv, c * inv, d * inv);
     }
 
     /**

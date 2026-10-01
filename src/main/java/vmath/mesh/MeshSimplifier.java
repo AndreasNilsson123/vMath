@@ -50,8 +50,10 @@ public final class MeshSimplifier {
      * @param collapses number of edge collapses performed
      * @param remap for every vertex after, the vertex of the input it came from (identical duplicates were merged into the first of them; a vertex that
      *              survived a collapse carries the interpolated attributes and possibly a moved position, a vertex that took part in none is unchanged)
+     * @param attributes when extra attributes were given: {@code stride} values per vertex after, the mean of the attributes of all the input vertices that were
+     *                   merged into it; null otherwise
      */
-    public record Result(int trianglesBefore, int trianglesAfter, int verticesAfter, float error, int collapses, int[] remap) {
+    public record Result(int trianglesBefore, int trianglesAfter, int verticesAfter, float error, int collapses, int[] remap, float[] attributes) {
     }
 
     private static final double BORDER_WEIGHT = 100.0;
@@ -86,10 +88,28 @@ public final class MeshSimplifier {
      * hierarchy keep their shared borders identical.
      */
     public static Result simplify(Mesh mesh, int targetTriangles, float maxError, boolean lockBorder, boolean[] lockedVertices) {
+        return simplify(mesh, targetTriangles, maxError, lockBorder, lockedVertices, null, 0, 0f);
+    }
+
+    /**
+     * As above, with extra per-vertex attributes that the collapses must respect, such as skinning weights: {@code attributes} holds {@code stride} floats per
+     * vertex (for skin weights, one weight per joint, so a vertex is a dense vector with zeros for the joints that do not influence it). The cost of a collapse
+     * gets the term {@code attributeWeight * n_a n_b / (n_a + n_b) * |mean_a - mean_b|^2}, Ward's clustering criterion: the increase in the summed squared
+     * distance of the merged vertices' attributes to their common mean, where {@code n} counts the input vertices already merged into each side. Because it works on
+     * means and counts it measures accumulated drift, not just the difference across one edge, so a long chain of small steps cannot hide a large change.
+     * {@code attributeWeight} is the squared world distance that a squared unit of attribute difference is worth (0.0625 means that swinging a weight from 0 to 1
+     * is worth 0.25 units of position error). The survivors' means come back in {@link Result#attributes()}.
+     */
+    public static Result simplify(Mesh mesh, int targetTriangles, float maxError, boolean lockBorder, boolean[] lockedVertices, float[] attributes, int stride,
+                                  float attributeWeight) {
         if (lockedVertices != null && lockedVertices.length < mesh.vertexCount()) {
             throw new IllegalArgumentException("lockedVertices needs one flag per vertex: " + lockedVertices.length + " < " + mesh.vertexCount());
         }
-        return new Run(mesh, lockBorder, lockedVertices).run(targetTriangles, (double) maxError * maxError);
+        if (attributes != null && (stride < 1 || attributes.length < (long) stride * mesh.vertexCount() || !(attributeWeight >= 0f))) {
+            throw new IllegalArgumentException("attributes needs stride >= 1, stride floats per vertex and a weight >= 0: stride " + stride + ", length " + attributes.length
+                    + ", weight " + attributeWeight);
+        }
+        return new Run(mesh, lockBorder, lockedVertices, attributes, stride, attributeWeight).run(targetTriangles, (double) maxError * maxError);
     }
 
     private static final class Run {
@@ -110,11 +130,21 @@ public final class MeshSimplifier {
         final boolean attributes;
 
         final boolean[] lockedVertices;
+        final float[] attr;
+        final int stride;
+        final double attrWeight;
+        double[] mean;          // per node: the mean attribute vector of the input vertices merged into it
+        int[] members;          // per node: how many
+        int[] nodeOfVertex;
+        float[] outAttributes;
 
-        Run(Mesh mesh, boolean lockBorder, boolean[] lockedVertices) {
+        Run(Mesh mesh, boolean lockBorder, boolean[] lockedVertices, float[] attr, int stride, float attrWeight) {
             this.mesh = mesh;
             this.lockBorder = lockBorder;
             this.lockedVertices = lockedVertices;
+            this.attr = attr;
+            this.stride = stride;
+            this.attrWeight = attrWeight;
             boolean any = mesh.hasNormals() || mesh.hasTangents();
             for (int s = 0; s < Mesh.MAX_UV_SETS; s++) {
                 any |= mesh.hasUvs(s);
@@ -172,7 +202,7 @@ public final class MeshSimplifier {
                 }
             }
             int[] remap = finish();
-            return new Result(before, aliveTris, mesh.vertexCount(), (float) Math.sqrt(worst), collapses, remap);
+            return new Result(before, aliveTris, mesh.vertexCount(), (float) Math.sqrt(worst), collapses, remap, outAttributes);
         }
 
         // ---------------------------------------------------------------- setup
@@ -233,6 +263,19 @@ public final class MeshSimplifier {
                     locked[g] = true;
                 } else if (nodeVertex[g] < 0) {
                     nodeVertex[g] = canon[v];
+                }
+            }
+            nodeOfVertex = node;
+            if (attr != null) {
+                mean = new double[nodes * stride];
+                members = new int[nodes];
+                for (int g = 0; g < nodes; g++) {
+                    if (!locked[g] && nodeVertex[g] >= 0) {
+                        members[g] = 1;
+                        for (int k = 0; k < stride; k++) {
+                            mean[g * stride + k] = attr[nodeVertex[g] * stride + k];
+                        }
+                    }
                 }
             }
             // triangles, dropping those with no area
@@ -425,7 +468,7 @@ public final class MeshSimplifier {
                 out[0] = pos[keep * 3];
                 out[1] = pos[keep * 3 + 1];
                 out[2] = pos[keep * 3 + 2];
-                return Math.max(0, eval(q, 0, out[0], out[1], out[2]));
+                return Math.max(0, eval(q, 0, out[0], out[1], out[2])) + ward(a, b);
             }
             double best = Double.MAX_VALUE;
             double[][] cand = new double[4][];
@@ -448,7 +491,20 @@ public final class MeshSimplifier {
                     out[2] = cand[i][2];
                 }
             }
-            return Math.max(0, best);
+            return Math.max(0, best) + ward(a, b);
+        }
+
+        /** The attribute term of a collapse (Ward's criterion on the merged means), 0 without attributes. */
+        double ward(int a, int b) {
+            if (attr == null || attrWeight == 0f) {
+                return 0.0;
+            }
+            double d2 = 0;
+            for (int k = 0; k < stride; k++) {
+                double d = mean[a * stride + k] - mean[b * stride + k];
+                d2 += d * d;
+            }
+            return attrWeight * ((double) members[a] * members[b] / (members[a] + members[b])) * d2;
         }
 
         /** The minimiser of the quadric, or null when the 3 x 3 system is (nearly) singular. */
@@ -538,6 +594,13 @@ public final class MeshSimplifier {
 
         /** Merges {@code a} into {@code b} and moves {@code b} to {@code p}. */
         void collapse(int a, int b, double[] p) {
+            if (attr != null) {
+                int total = members[a] + members[b];
+                for (int k = 0; k < stride; k++) {
+                    mean[b * stride + k] = (mean[a * stride + k] * members[a] + mean[b * stride + k] * members[b]) / total;
+                }
+                members[b] = total;
+            }
             if (attributes) {
                 double dx = pos[a * 3] - pos[b * 3], dy = pos[a * 3 + 1] - pos[b * 3 + 1], dz = pos[a * 3 + 2] - pos[b * 3 + 2];
                 double len2 = dx * dx + dy * dy + dz * dz;
@@ -655,6 +718,15 @@ public final class MeshSimplifier {
                         newToOld[count++] = v;
                     }
                     out[o++] = map[v];
+                }
+            }
+            if (attr != null) {
+                outAttributes = new float[count * stride];
+                for (int i = 0; i < count; i++) {
+                    int v = newToOld[i], node = nodeOfVertex[v];
+                    for (int k = 0; k < stride; k++) {
+                        outAttributes[i * stride + k] = alive[node] && !locked[node] && members[node] > 0 ? (float) mean[node * stride + k] : attr[v * stride + k];
+                    }
                 }
             }
             MeshOptimizer.rebuild(mesh, newToOld, count, out, o);
