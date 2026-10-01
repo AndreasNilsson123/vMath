@@ -43,7 +43,7 @@ jobs:
         with:
           distribution: temurin
           java-version: |
-            25
             28-ea
+            25
       - uses: gradle/actions/setup-gradle@v4
-      - run: ./gradlew build -Pvalhalla
+      - run: ./gradlew -Dorg.gradle.java.installations.fromEnv=JAVA_HOME_28_X64 build -Pvalhalla
