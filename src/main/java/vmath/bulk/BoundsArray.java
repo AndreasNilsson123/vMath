@@ -216,4 +216,34 @@ public final class BoundsArray {
             dst[o + 5] = maxZ[i];
         }
     }
+
+    // ---------------------------------------------------------------- compaction
+
+    /**
+     * Removes box {@code i} by moving the last box into its place: O(1), the order of the others is kept except for that one. Returns the index the moved box had
+     * before (the old last index), or -1 if {@code i} was the last box.
+     */
+    public int removeSwap(int i) {
+        checkIndex(i);
+        int moved = Compaction.swapRemove(minX, 1, size, i);
+        Compaction.swapRemove(minY, 1, size, i);
+        Compaction.swapRemove(minZ, 1, size, i);
+        Compaction.swapRemove(maxX, 1, size, i);
+        Compaction.swapRemove(maxY, 1, size, i);
+        Compaction.swapRemove(maxZ, 1, size, i);
+        size--;
+        return moved;
+    }
+
+    /** Keeps only the boxes whose bit is set in {@code keep}, in their original order. Returns the new size. */
+    public int compact(VisibilitySet keep) {
+        int n = Compaction.stable(minX, 1, size, keep);
+        Compaction.stable(minY, 1, size, keep);
+        Compaction.stable(minZ, 1, size, keep);
+        Compaction.stable(maxX, 1, size, keep);
+        Compaction.stable(maxY, 1, size, keep);
+        Compaction.stable(maxZ, 1, size, keep);
+        size = n;
+        return n;
+    }
 }

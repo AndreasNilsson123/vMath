@@ -20,6 +20,8 @@ module vmath {
     exports vmath.tex;
     exports vmath.gltf;
     exports vmath.gpucull;
+    exports vmath.mem;
 
     uses vmath.spatial.FrustumKernelProvider;
+    uses vmath.bulk.MatrixKernelProvider;
 }

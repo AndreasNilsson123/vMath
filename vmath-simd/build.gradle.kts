@@ -15,6 +15,9 @@ java {
 
 dependencies {
     api(project(":"))
+    // class-retention marker on the SPI types of the core library; not needed at run time
+    compileOnly(project(":vmath-annotations"))
+    testCompileOnly(project(":vmath-annotations"))
 
     testImplementation(platform("org.junit:junit-bom:5.13.4"))
     testImplementation("org.junit.jupiter:junit-jupiter")

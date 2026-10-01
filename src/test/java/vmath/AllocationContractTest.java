@@ -627,4 +627,122 @@ class AllocationContractTest {
         });
         assertNoAllocation("Hilbert.encode3", 1000, 100000, () -> vmath.core.Hilbert.encode3(12345, 6789, 424242, 21));
     }
+
+    // ------------------------------------------------------------ containers, registries, allocators
+
+    @Test
+    void containersKernelsAndCompaction() {
+        int n = 2000;
+        java.util.SplittableRandom r = new java.util.SplittableRandom(2);
+        vmath.bulk.Mat4fArray a = new vmath.bulk.Mat4fArray(n), b = new vmath.bulk.Mat4fArray(n), out = new vmath.bulk.Mat4fArray(n);
+        vmath.bulk.QuatArray qa = new vmath.bulk.QuatArray(n), qb = new vmath.bulk.QuatArray(n), qo = new vmath.bulk.QuatArray(n);
+        vmath.bulk.Vec4fArray v4 = new vmath.bulk.Vec4fArray(n), v4o = new vmath.bulk.Vec4fArray(n);
+        vmath.bulk.Vec3fArray v3 = new vmath.bulk.Vec3fArray(n);
+        vmath.bulk.TransformArray ta = new vmath.bulk.TransformArray(n);
+        for (int i = 0; i < n; i++) {
+            a.add(vmath.core.Mat4f.translation(i, 1f, 2f));
+            b.add(vmath.core.Mat4f.rotationY(i * 0.01f));
+            qa.add(vmath.core.Quatf.IDENTITY);
+            qb.add(new vmath.core.Quatf(0.1f, 0.2f, 0.3f, 0.9f).normalize());
+            v4.add(i, 1f, 2f, 1f + i);
+            ta.add(vmath.core.Transformf.IDENTITY);
+        }
+        vmath.core.Mat4f m = vmath.core.Mat4f.perspective(1f, 1.5f, 0.1f, 100f, vmath.core.ClipSpace.D3D);
+        assertNoAllocation("Mat4fArray.multiply", 300, 2000, () -> vmath.bulk.Mat4fArray.multiply(a, b, out));
+        assertNoAllocation("Mat4fArray.premultiply", 300, 2000, () -> a.premultiply(m, out));
+        assertNoAllocation("QuatArray.nlerp", 300, 2000, () -> vmath.bulk.QuatArray.nlerp(qa, qb, 0.3f, qo));
+        assertNoAllocation("Vec4fArray.transform", 300, 2000, () -> v4.transform(m, v4o));
+        assertNoAllocation("Vec4fArray.divideByW", 300, 2000, () -> v4o.divideByW(v3));
+        java.lang.foreign.Arena arena = java.lang.foreign.Arena.ofConfined();
+        java.lang.foreign.MemorySegment seg = arena.allocate((long) n * 64, 16);
+        assertNoAllocation("TransformArray.toMatrices(MemorySegment)", 300, 2000, () -> ta.toMatrices(seg, 0, 64));
+        vmath.bulk.VisibilitySet keep = new vmath.bulk.VisibilitySet(n);
+        for (int i = 0; i < n; i += 2) {
+            keep.set(i);
+        }
+        vmath.bulk.Mat4fArray work = new vmath.bulk.Mat4fArray(n);
+        assertNoAllocation("Mat4fArray.compact", 300, 2000, () -> {
+            work.setSize(0);
+            work.ensureCapacity(n);
+            work.setSize(n);
+            work.compact(keep);
+        });
+        assertNoAllocation("Mat4fArray.removeSwap", 300, 2000, () -> {
+            work.setSize(n);
+            work.removeSwap(7);
+        });
+        arena.close();
+    }
+
+    @Test
+    void handleRegistryDirtyRangesAndAllocators() {
+        vmath.bulk.HandleRegistry reg = new vmath.bulk.HandleRegistry(1000);
+        long[] handles = new long[1000];
+        assertNoAllocation("HandleRegistry create/destroy", 300, 2000, () -> {
+            for (int i = 0; i < 1000; i++) {
+                handles[i] = reg.create();
+            }
+            for (int i = 0; i < 1000; i += 2) {
+                reg.destroy(handles[i]);
+            }
+            for (int i = 0; i < 1000; i++) {
+                reg.isAlive(handles[i]);
+            }
+            reg.clear();
+        });
+        vmath.bulk.DirtyRanges dirty = new vmath.bulk.DirtyRanges(4096);
+        int[] ranges = new int[512];
+        java.lang.foreign.Arena arena = java.lang.foreign.Arena.ofConfined();
+        java.lang.foreign.MemorySegment dst = arena.allocate(4096L * 16, 16);
+        float[] src = new float[4096 * 4];
+        assertNoAllocation("DirtyRanges mark/ranges/uploadFloats", 300, 2000, () -> {
+            dirty.markRange(10, 50);
+            dirty.mark(100);
+            dirty.mark(2000);
+            dirty.ranges(4, ranges);
+            dirty.uploadFloats(src, 4, 4096, dst, 0, 4);
+        });
+        vmath.mem.ArenaAllocator bump = new vmath.mem.ArenaAllocator(1 << 20);
+        assertNoAllocation("ArenaAllocator", 300, 2000, () -> {
+            bump.reset();
+            for (int i = 0; i < 100; i++) {
+                bump.allocate(64, 16);
+            }
+        });
+        vmath.mem.SlabAllocator slab = new vmath.mem.SlabAllocator(64, 1000);
+        long[] blocks = new long[1000];
+        assertNoAllocation("SlabAllocator", 300, 2000, () -> {
+            for (int i = 0; i < 1000; i++) {
+                blocks[i] = slab.allocate();
+            }
+            for (int i = 0; i < 1000; i++) {
+                slab.free(blocks[i]);
+            }
+        });
+        vmath.mem.FreeListAllocator list = new vmath.mem.FreeListAllocator(1 << 20, vmath.mem.FreeListAllocator.Strategy.BEST_FIT);
+        long[] pieces = new long[200];
+        assertNoAllocation("FreeListAllocator", 300, 2000, () -> {
+            for (int i = 0; i < 200; i++) {
+                pieces[i] = list.allocate(100 + i, 16);
+            }
+            for (int i = 0; i < 200; i += 2) {
+                list.free(pieces[i]);
+            }
+            for (int i = 1; i < 200; i += 2) {
+                list.free(pieces[i]);
+            }
+        });
+        vmath.mem.RingAllocator ring = new vmath.mem.RingAllocator(1 << 16, 3);
+        assertNoAllocation("RingAllocator", 300, 2000, () -> {
+            for (int f = 0; f < 3; f++) {
+                ring.allocate(1000, 16);
+                ring.allocate(300, 256);
+                ring.endFrame();
+            }
+            for (int f = 0; f < 3; f++) {
+                ring.retireOldestFrame();
+            }
+        });
+        arena.close();
+    }
 }

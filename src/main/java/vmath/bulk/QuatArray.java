@@ -240,4 +240,54 @@ public final class QuatArray {
         }
         out.setSize(size);
     }
+
+    // ---------------------------------------------------------------- compaction
+
+    /**
+     * Removes element {@code i} by moving the last element into its place: O(1), the order of the others is kept except for that one. Returns the index the
+     * moved element had before (the old last index), or -1 if {@code i} was the last element. Mirror it in parallel arrays with the same call.
+     */
+    public int removeSwap(int i) {
+        checkIndex(i);
+        int moved = Compaction.swapRemove(data, STRIDE, size, i);
+        size--;
+        return moved;
+    }
+
+    /** Keeps only the elements whose bit is set in {@code keep} (bit {@code i} for element {@code i}), in their original order. Returns the new size. */
+    public int compact(VisibilitySet keep) {
+        size = Compaction.stable(data, STRIDE, size, keep);
+        return size;
+    }
+
+    /**
+     * Normalized linear interpolation along the shortest arc: {@code normalize((1 - t) a + sign * t b)}. About as accurate as {@link #slerp} when the rotations are
+     * close (animation frames) and several times cheaper; for rotations far apart the angular speed is not constant. Same size and aliasing rules as {@code slerp}.
+     */
+    public static void nlerp(QuatArray a, QuatArray b, float t, QuatArray out) {
+        requireSameSize(a, b);
+        out.ensureCapacity(a.size);
+        float[] x = a.data, y = b.data, z = out.data;
+        float s0 = 1f - t;
+        for (int i = 0, o = 0; i < a.size; i++, o += STRIDE) {
+            float ax = x[o], ay = x[o + 1], az = x[o + 2], aw = x[o + 3];
+            float bx = y[o], by = y[o + 1], bz = y[o + 2], bw = y[o + 3];
+            float s1 = ax * bx + ay * by + az * bz + aw * bw < 0f ? -t : t;
+            float qx = s0 * ax + s1 * bx, qy = s0 * ay + s1 * by, qz = s0 * az + s1 * bz, qw = s0 * aw + s1 * bw;
+            float len = (float) Math.sqrt(qx * qx + qy * qy + qz * qz + qw * qw);
+            if (len > 1e-20f) {
+                float inv = 1f / len;
+                z[o] = qx * inv;
+                z[o + 1] = qy * inv;
+                z[o + 2] = qz * inv;
+                z[o + 3] = qw * inv;
+            } else {
+                z[o] = 0f;
+                z[o + 1] = 0f;
+                z[o + 2] = 0f;
+                z[o + 3] = 1f;
+            }
+        }
+        out.size = a.size;
+    }
 }

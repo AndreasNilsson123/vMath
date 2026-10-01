@@ -192,4 +192,23 @@ public final class Vec3fArray {
         }
         return new Aabbf(x0, y0, z0, x1, y1, z1);
     }
+
+    // ---------------------------------------------------------------- compaction
+
+    /**
+     * Removes element {@code i} by moving the last element into its place: O(1), the order of the others is kept except for that one. Returns the index the
+     * moved element had before (the old last index), or -1 if {@code i} was the last element. Mirror it in parallel arrays with the same call.
+     */
+    public int removeSwap(int i) {
+        checkIndex(i);
+        int moved = Compaction.swapRemove(data, STRIDE, size, i);
+        size--;
+        return moved;
+    }
+
+    /** Keeps only the elements whose bit is set in {@code keep} (bit {@code i} for element {@code i}), in their original order. Returns the new size. */
+    public int compact(VisibilitySet keep) {
+        size = Compaction.stable(data, STRIDE, size, keep);
+        return size;
+    }
 }

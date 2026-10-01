@@ -33,6 +33,9 @@ public final class RadixSorter {
     private int[] converted = new int[0];
     private long[] longConverted = new long[0];
 
+    public RadixSorter() {
+    }
+
     /** Makes sure that sorting up to {@code n} elements will not allocate: reserves for the 32-bit, 64-bit, payload and float/double conversion buffers. */
     public void reserve(int n) {
         keyBuffer = grow(keyBuffer, n);

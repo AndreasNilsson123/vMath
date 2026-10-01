@@ -182,21 +182,24 @@ Consistency first, then features. All new features are written once in float and
 
 ### Phase D. Bulk data and memory efficiency (P1)
 
-- [ ] **MEM-1 (P1, L)** `vmath-bulk` SoA containers (`Vec3fArray`, `Vec4fArray`, `QuatArray`, `Mat4fArray`, `TransformArray`)  
-      *Partial: `BoundsArray`, `Mat4fArray`, `Vec3fArray`, `QuatArray`, `TransformArray`, `VisibilitySet`, `IntList` on `float[]` (`docs/BULK.md`); `Vec4fArray`, `MemorySegment` (off-heap) storage and compaction are open.*
+- [x] **MEM-1 (P1, L)** `vmath-bulk` SoA containers (`Vec3fArray`, `Vec4fArray`, `QuatArray`, `Mat4fArray`, `TransformArray`)  
+      *Done (experimental additions): `Vec4fArray`, `SegmentFloatArray` (off-heap twin with typed accessors and `AutoCloseable` growth), `removeSwap` and `compact(VisibilitySet)` on every container, kernels that write straight into a `MemorySegment`. Containers over `float[]` keep their own classes (`docs/BULK.md`).*
       over `float[]` (heap) and `MemorySegment` (off-heap) with one interface-free API pair. Growth policy, capacity, compaction.
 - [ ] **MEM-2 (P1, L)** Kernels: batch transform points/normals, matrix multiply, TRS compose, quaternion normalize/slerp,  
-      *Partial, scalar versions: `BoundsArray.transformFrom`, `Vec3fArray` transform positions/directions and normalize, `QuatArray` normalize/multiply/slerp/toMatrices, `TransformArray` toMatrices/blend, measured in `docs/BULK.md` (`QuatArray.slerp` is 72 ns per element). Matrix multiply and the Vector API variants are open.*
+      *Partial: scalar kernels for transform of positions and directions, normalize, quaternion multiply, slerp, nlerp, toMatrices, blend, AABB transform, `Mat4fArray.multiply`/`premultiply`, `Vec4fArray.transform`. The Vector API is used for the batch matrix product only (`MatrixKernel` SPI, `vmath-simd`, selected at startup, 2.2 times faster measured); the other kernels have no SIMD variant. See `docs/BULK.md`.*
       AABB transform. Scalar versions first, then Vector API (incubator) variants selected at startup. → MEM-1, INF-1
 - [ ] **MEM-3 (P1, M)** Generate the SoA container and scalar loops from the scalar ops via `@Kernel`/`@Bulk`, so
       new ops don't need hand-written loops. → AF-2
 - [ ] **MEM-4 (P1, M)** `writeTo`/`readFrom` for `ByteBuffer` (with `ByteOrder`), `MemorySegment`, and strided/interleaved variants.  
       *Partial: `FloatBuffer` writers on the containers; `MemorySegment` and `ByteBuffer` strided/byte-order writers and readers (`Strided`, container `writeTo`/`readFrom`) done; named interleaved vertex-layout writers open (`MeshExport` covers the common mesh case).*
       Interleaved vertex writers for common layouts.
-- [ ] **MEM-5 (P1, M)** Allocators: arena, slab/pool, free-list and ring allocators over `MemorySegment`; persistent-mapped
+- [x] **MEM-5 (P1, M)** Allocators: arena, slab/pool, free-list and ring allocators over `MemorySegment`; persistent-mapped
       buffer ring (N frames in flight) with fence tracking hooks.
-- [ ] **MEM-6 (P2, M)** Handle/generation-index registry (sparse set) for entity IDs, with dense array iteration.
-- [ ] **MEM-7 (P2, M)** Dirty-flag/change-tracking bitsets for incremental GPU upload (upload only changed ranges).
+      *Done (experimental): `vmath.mem` with `ArenaAllocator`, `SlabAllocator`, `FreeListAllocator` (first and best fit, coalescing), `RingAllocator` and `PersistentBufferRing` with `FenceOps` hooks. Tested with random simulations and a simulated GPU; not run against a real OpenGL or Vulkan binding. See `docs/MEMORY.md`.*
+- [x] **MEM-6 (P2, M)** Handle/generation-index registry (sparse set) for entity IDs, with dense array iteration.
+      *Done (experimental): `HandleRegistry` (generation handles, swap-remove dense range, `denseIndex`/`handleAt`). See `docs/BULK.md`.*
+- [x] **MEM-7 (P2, M)** Dirty-flag/change-tracking bitsets for incremental GPU upload (upload only changed ranges).
+      *Done (experimental): `DirtyRanges` (bitset, gap-merged runs, `uploadFloats`/`uploadSegment`) and `FrameDirtyRanges` (one set per frame in flight). 5 to 12 times faster than uploading everything at 1% to 10% dirty. See `docs/BULK.md`.*
 - [x] **MEM-8 (P2, M)** Radix sort (float keys, 32/64-bit) and parallel-friendly prefix sums, for draw sorting and BVH build.
       *Done (experimental): `RadixSorter` (int/long/float/double keys, optional payload, stable, descending floats), `PrefixSum` (scans and chunked parallel scan), `LocalityOrder`. 3.5 to 8 times faster than the JDK sorts for float keys from 100 000 elements; not a clear win for 64-bit keys at a million; the parallel scan gains only on multi-million arrays. See `docs/BULK.md`.*
 - [x] **MEM-9 (P3, M)** Thread-parallel kernel driver (`ForkJoin`/virtual-thread-free) with chunking and false-sharing avoidance.  

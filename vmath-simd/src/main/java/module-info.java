@@ -9,4 +9,5 @@ module vmath.simd {
     exports vmath.simd;
 
     provides vmath.spatial.FrustumKernelProvider with vmath.simd.SimdFrustumKernelProvider;
+    provides vmath.bulk.MatrixKernelProvider with vmath.simd.SimdMatrixKernelProvider;
 }

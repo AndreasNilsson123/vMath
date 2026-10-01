@@ -1,0 +1,68 @@
+package vmath.bulk;
+
+import vmath.annotations.Experimental;
+
+/**
+ * Dirty tracking for a buffer that exists once per frame in flight (a ring of N copies). A change must reach all N copies, one per frame, so each copy has its own
+ * {@link DirtyRanges}: {@link #mark} marks an element in every one of them, and when the copy for frame slot {@code s} is about to be written, {@link #forSlot} gives
+ * the set of everything that changed since that copy was last written. After uploading, clear that set ({@code forSlot(s).clear()}, or let
+ * {@link DirtyRanges#uploadFloats} do it); the other copies keep their marks until their turn.
+ *
+ * <p>With one slot this is a plain {@link DirtyRanges}.
+ */
+@Experimental("the upload helpers may grow")
+public final class FrameDirtyRanges {
+
+    private final DirtyRanges[] slots;
+
+    public FrameDirtyRanges(int capacity, int slots) {
+        if (slots < 1) {
+            throw new IllegalArgumentException("slots must be at least 1: " + slots);
+        }
+        this.slots = new DirtyRanges[slots];
+        for (int i = 0; i < slots; i++) {
+            this.slots[i] = new DirtyRanges(capacity);
+        }
+    }
+
+    public int slots() {
+        return slots.length;
+    }
+
+    public int capacity() {
+        return slots[0].capacity();
+    }
+
+    public void ensureCapacity(int n) {
+        for (DirtyRanges d : slots) {
+            d.ensureCapacity(n);
+        }
+    }
+
+    public void mark(int i) {
+        for (DirtyRanges d : slots) {
+            d.mark(i);
+        }
+    }
+
+    public void markRange(int from, int to) {
+        for (DirtyRanges d : slots) {
+            d.markRange(from, to);
+        }
+    }
+
+    /** Marks everything in every slot (after the array was rebuilt, or the buffers were recreated). */
+    public void markAll() {
+        for (DirtyRanges d : slots) {
+            d.markAll();
+        }
+    }
+
+    /** The live set of the buffer copy for frame slot {@code slot} ({@code frame % slots()}). */
+    public DirtyRanges forSlot(int slot) {
+        if (slot < 0 || slot >= slots.length) {
+            throw new IndexOutOfBoundsException("slot " + slot + " of " + slots.length);
+        }
+        return slots[slot];
+    }
+}

@@ -8,8 +8,10 @@ no per-element allocation, and the arrays are already in the layout a GPU buffer
 | `BoundsArray` | 6 arrays of 1 | axis-aligned boxes, structure-of-arrays | `docs/CULLING.md` |
 | `Mat4fArray` | 16 | 4x4 matrices, column-major (GPU order) | `Skinning.jointMatrices` writes one |
 | `Vec3fArray` | 3 | positions, directions, normals | |
+| `Vec4fArray` | 4 | homogeneous positions, colours, planes | |
 | `QuatArray` | 4 | unit quaternions `x, y, z, w` | |
 | `TransformArray` | 10 | translation, unit quaternion, scale: the layout of `Pose` and `TransformHierarchy` | `docs/ANIMATION.md` |
+| `SegmentFloatArray` | any | the same, off-heap in a `MemorySegment` (below) | |
 | `VisibilitySet`, `IntList` | bits, ints | culling results | `docs/CULLING.md` |
 
 All of them have the same shape: `add`, `set`, `get`, `size`, `capacity`, `ensureCapacity`, `setSize` (after writing into `data()` directly), `clear`, a live `data()`
@@ -29,6 +31,10 @@ They read and write the arrays directly, allocate nothing (`AllocationContractTe
 | `TransformArray.toMatrices(out)` | model matrices `T * R * S`, the matrices to upload |
 | `TransformArray.blend(a, b, t, out)` | translation and scale linear, rotation slerp |
 | `BoundsArray.transformFrom(local, matrices)` | world bounds from local bounds and per-object matrices |
+| `Mat4fArray.multiply(a, b, out)`, `premultiply(m, out)` | element-wise matrix product; a common matrix on the left of every element |
+| `QuatArray.nlerp(a, b, t, out)` | shortest-arc normalized lerp |
+| `Vec4fArray.transform(m, out)`, `divideByW(out)` | full 4x4 product; perspective divide |
+| `TransformArray.toMatrices(segment, offset, stride)` | model matrices straight into an off-heap buffer |
 
 Each kernel is tested against the value-type classes (`Mat4f.transformPosition`, `Quatf.slerp`, `Transformf.toMat4`, ...), including the in-place calls and
 the `q` / `-q` shortest-arc case. `TransformArray` and `QuatArray.slerp` are the same code `vmath.anim` uses (`Pose.lerp`, `ClipSampler`), so there is one
@@ -48,8 +54,46 @@ implementation of each.
 | `QuatArray.slerp` | 7 246 us | 72 ns |
 
 `slerp` is the expensive one by a wide margin: it calls `sin` twice and `atan2` once per element. When the two rotations are close (a blend between nearby
-animation frames) a normalised linear interpolation is a good substitute at a fraction of the cost, and a batch `nlerp` would be the obvious addition;
-it is not built. None of these kernels uses the Vector API yet.
+animation frames) `QuatArray.nlerp` is a good substitute at a fraction of the cost (measured below). The Vector API is used for the matrix product only.
+
+## More containers, compaction and off-heap storage (experimental)
+
+**`Vec4fArray`** has the shape of `Vec3fArray` (homogeneous positions, colours, plane equations): `transform(Mat4f, out)` is the full 4x4 product, so a perspective matrix gives clip
+positions, and `divideByW(Vec3fArray)` takes them to NDC (tested against `Mat4f.transformProject`).
+
+**Compaction.** Every container (`Vec3fArray`, `Vec4fArray`, `QuatArray`, `Mat4fArray`, `TransformArray`, `BoundsArray`) has `removeSwap(i)`, which moves the last element into the gap in O(1) and
+returns the index that element came from (or -1 if `i` was last, so parallel arrays can mirror it), and `compact(VisibilitySet keep)`, which keeps the marked elements in their original order and
+returns the new size. Together with `HandleRegistry` below this is the machinery for dense per-entity data.
+
+**Off-heap: `SegmentFloatArray`.** The `MemorySegment` twin of the containers: a growable array of fixed-size elements (`floatsPerElement`, with `ofVec3`, `ofVec4`, `ofMat4`, `ofTransform` and
+typed accessors such as `addMat4`/`getMat4`) in a shared `Arena`, with the same `add`, `set`, `get`, `size`, `capacity`, `ensureCapacity`, `removeSwap`, `compact` and the live `segment()` (replaced on growth,
+the old memory freed). `copyFrom(float[], count)` and `copyTo` move whole runs to and from a heap container. It is `AutoCloseable`. Rather than a second copy of every kernel, the kernels that produce
+GPU data can write straight into a segment: `TransformArray.toMatrices(MemorySegment, offset, strideBytes)` computes the model matrices into a mapped instance buffer (a stride above 64 leaves per-instance
+data alone). Measured, 100 000 transforms: through a heap `Mat4fArray` and a copy 1 519 us, direct 825 us (+-214), about 1.8 times faster.
+
+**Matrix and quaternion kernels.** `Mat4fArray.multiply(a, b, out)` (element-wise product, `out` may alias an input) and `premultiply(Mat4f, out)` (a parent matrix on every element); `QuatArray.nlerp`
+(shortest-arc normalized lerp). Tested against `Mat4f.mul` and `Quatf.nlerp`, including aliasing. Measured for 100 000 elements: `nlerp` 596 us against `slerp` 7 799 us (13 times faster; use it when the
+rotations are close). `multiply` runs through a `MatrixKernel` chosen at startup by `MatrixKernels.best()`: the scalar one, or, when the `vmath-simd` module and `--add-modules jdk.incubator.vector` are present,
+a Vector API kernel (one 128-bit vector per matrix column, fused multiply-add; results can differ from the scalar kernel in the last bit). Measured (JMH, 2 forks of 10 iterations): scalar 2 008 us
+(+-58), SIMD 914 us (+-117) for 100 000 products, so 2.2 times faster (20 ns against 9 ns per matrix). `-Dvmath.matrixKernel=scalar` forces the scalar one. The other kernels (transform of positions, slerp, ...) have no Vector
+API variant: they work on interleaved data where the gain has not been shown, and none was written.
+
+## Incremental GPU upload: `DirtyRanges`
+
+`DirtyRanges` is a bitset of changed elements. `mark(i)` and `markRange(from, to)` as you write; `ranges(maxGap, out)` or `forEachRange(maxGap, visitor)` give the changed runs, with runs at most
+`maxGap` clean elements apart merged (one slightly larger copy beats two calls); `uploadFloats(float[], floatsPerElement, count, MemorySegment dst, dstOffset, maxGap)` and `uploadSegment(...)`
+copy just those runs into a mapped buffer and clear the set. With frames in flight each buffer copy needs the changes since *that* copy was written, which `FrameDirtyRanges` provides: one set per
+slot, `mark` marks all of them, `forSlot(frame % n)` is the set to upload from. Tested against a boolean model (all operations, run merging, search), and end to end: with 3 buffers and random
+changes each frame, every buffer equals the CPU array after its upload while copying a small fraction of the bytes. Measured, 100 000 elements of 16 bytes (1.6 MB): copying everything 38.1 us;
+1% of the elements dirty (runs of 10, marked in the same call) 3.0 us; 10% dirty (runs of 100) 7.3 us, so 12 and 5 times faster.
+
+## Entity handles: `HandleRegistry`
+
+A sparse set with generation counters. `create()` returns a `long` handle (`generation << 32 | slot`); `isAlive(handle)` is false after `destroy`, even when the slot is reused, because the generation differs, so a stale
+handle can never reach a new entity. Alive entities fill the dense indices `0 .. size() - 1` without holes, so component arrays indexed by dense index can be iterated and uploaded as they are. `destroy`
+swaps the last entity into the gap and returns the freed dense index `d`; if `d < size()` afterwards, do `removeSwap(d)` on every parallel array. `denseIndex(handle)` and `handleAt(dense)` map between the two sides.
+Tested with 20 000 random operations against a map and a mirrored component array (every alive entity once in the dense range with its own component, every dead handle stale). A create, look-up and destroy
+costs about 3 ns each (9.4 us for 1 000 of each). A slot's generation wraps after 2^32 - 1 reuses of that one slot.
 
 ## Sorting, scans and locality order (experimental)
 

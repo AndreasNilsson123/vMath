@@ -6,6 +6,8 @@ Nothing has been released yet; the baseline for the compatibility check is the t
 ## Unreleased
 
 ### Added
+- Bulk and memory (experimental): `Vec4fArray`, `SegmentFloatArray` (off-heap), `removeSwap`/`compact` on every container, `Mat4fArray.multiply`/`premultiply`, `QuatArray.nlerp`, `MatrixKernel` SPI with a Vector API kernel in `vmath-simd`, `DirtyRanges`, `FrameDirtyRanges`, `HandleRegistry`.
+- New package `vmath.mem` (experimental): `ArenaAllocator`, `SlabAllocator`, `FreeListAllocator`, `RingAllocator`, `PersistentBufferRing`.
 - Sorting (experimental): `RadixSorter`, `PrefixSum`, `LocalityOrder`; `Hilbert` codes and 32-bit `Morton`/`Hilbert` codes.
 - Camera (experimental): `PlanarViews` (reflections, oblique near-plane clipping, portal views), `Stereo`, `DualParaboloid`.
 - GPU (experimental): `VertexFormat`, `VertexBufferLayout`, `VertexLayout.toBufferLayout()`, `ShaderHeader` (GLSL/Slang headers from layouts), `LayoutValidator`.

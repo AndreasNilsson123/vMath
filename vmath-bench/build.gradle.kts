@@ -13,6 +13,7 @@ val jmhVersion = "1.37"
 
 dependencies {
     implementation(project(":"))
+    compileOnly(project(":vmath-annotations")) // class-retention marker on some core types; not needed at run time
     // Optional SIMD kernels, found through FrustumKernels.best() when present and the incubator module is enabled.
     implementation(project(":vmath-simd"))
     implementation("org.openjdk.jmh:jmh-core:$jmhVersion")

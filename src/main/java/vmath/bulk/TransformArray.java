@@ -183,4 +183,57 @@ public final class TransformArray {
         }
         out.size = a.size;
     }
+
+    // ---------------------------------------------------------------- compaction
+
+    /**
+     * Removes element {@code i} by moving the last element into its place: O(1), the order of the others is kept except for that one. Returns the index the
+     * moved element had before (the old last index), or -1 if {@code i} was the last element. Mirror it in parallel arrays with the same call.
+     */
+    public int removeSwap(int i) {
+        checkIndex(i);
+        int moved = Compaction.swapRemove(data, STRIDE, size, i);
+        size--;
+        return moved;
+    }
+
+    /** Keeps only the elements whose bit is set in {@code keep} (bit {@code i} for element {@code i}), in their original order. Returns the new size. */
+    public int compact(VisibilitySet keep) {
+        size = Compaction.stable(data, STRIDE, size, keep);
+        return size;
+    }
+
+    /**
+     * As {@link #toMatrices(Mat4fArray)}, but writes the model matrices (16 native-order floats, column-major) straight into {@code dst}: element {@code i} at byte
+     * {@code offset + i * strideBytes}, the way a persistently mapped instance buffer wants them (the stride may be larger than 64 to leave room for per-instance
+     * data, which is left untouched). Nothing is allocated and no heap matrix array is involved.
+     */
+    public void toMatrices(java.lang.foreign.MemorySegment dst, long offset, long strideBytes) {
+        if (strideBytes < 64) {
+            throw new IllegalArgumentException("stride " + strideBytes + " is smaller than one matrix (64 bytes)");
+        }
+        java.lang.foreign.ValueLayout.OfFloat f = java.lang.foreign.ValueLayout.JAVA_FLOAT_UNALIGNED;
+        for (int i = 0, o = 0; i < size; i++, o += STRIDE) {
+            long d = offset + i * strideBytes;
+            float x = data[o + 3], y = data[o + 4], z = data[o + 5], w = data[o + 6];
+            float sx = data[o + 7], sy = data[o + 8], sz = data[o + 9];
+            float xx = x * x, yy = y * y, zz = z * z, xy = x * y, xz = x * z, yz = y * z, wx = w * x, wy = w * y, wz = w * z;
+            dst.set(f, d, (1f - 2f * (yy + zz)) * sx);
+            dst.set(f, d + 4, 2f * (xy + wz) * sx);
+            dst.set(f, d + 8, 2f * (xz - wy) * sx);
+            dst.set(f, d + 12, 0f);
+            dst.set(f, d + 16, 2f * (xy - wz) * sy);
+            dst.set(f, d + 20, (1f - 2f * (xx + zz)) * sy);
+            dst.set(f, d + 24, 2f * (yz + wx) * sy);
+            dst.set(f, d + 28, 0f);
+            dst.set(f, d + 32, 2f * (xz + wy) * sz);
+            dst.set(f, d + 36, 2f * (yz - wx) * sz);
+            dst.set(f, d + 40, (1f - 2f * (xx + yy)) * sz);
+            dst.set(f, d + 44, 0f);
+            dst.set(f, d + 48, data[o]);
+            dst.set(f, d + 52, data[o + 1]);
+            dst.set(f, d + 56, data[o + 2]);
+            dst.set(f, d + 60, 1f);
+        }
+    }
 }
