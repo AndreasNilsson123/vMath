@@ -213,11 +213,12 @@ Consistency first, then features. All new features are written once in float and
       *Done: `Norm`, `SmallFloat`, `PackedFormat` (tokens verified against the Khronos headers).*
 - [x] **FMT-3 (P1, M)** Octahedral normal/tangent encoding (2×16 or 2×8 bit), tangent-frame-as-quaternion (smallest-three, 32 bit).  
       *Done: `Octahedral` with best-of-four rounding and `QuatPacked`; measured error bounds are asserted in the tests.*
-- [ ] **FMT-4 (P2, M)** Position quantization with bounds (`unorm16` × AABB), meshopt-style attribute quantization.  
-      *Partial: `Quantizer` (unorm16 over an `Aabbf`, with dequantization matrix) done; a full meshopt-style attribute pipeline belongs with mesh processing (MESH-3).*
+- [x] **FMT-4 (P2, M)** Position quantization with bounds (`unorm16` × AABB), meshopt-style attribute quantization.  
+      *Done (experimental additions): `Quantize` (N-bit unorm/snorm, mantissa rounding), `GridQuantizer` (1 to 16 bits, per-axis or cubic cells), `UvQuantizer`, and the `positionUnorm16`/`uvUnorm16` mesh export formats with their dequantization data. The vertex and index buffer compression codecs of meshoptimizer are not built. See `docs/FORMATS.md`.*
 - [x] **FMT-5 (P2, S)** Morton/Hilbert codes (2D/3D, 32/64-bit) for locality sorting and BVH/linear-octree construction.  
       *Done (experimental additions): `Hilbert` (2D to 32 bits per axis, 3D to 21, hierarchy and neighbour properties tested), 32-bit `Morton`/`Hilbert` codes. Hilbert encode is about 100 ns, 17 times Morton; a table-driven version is not tried. See `docs/BULK.md`.*
-- [ ] **FMT-6 (P2, S)** Color: sRGB↔linear (exact + fast), HSV/HSL/Oklab, luminance, tone-map curves, premultiplied alpha.
+- [x] **FMT-6 (P2, S)** Color: sRGB↔linear (exact + fast), HSV/HSL/Oklab, luminance, tone-map curves, premultiplied alpha.
+      *Done (experimental): `vmath.color` with `Srgb` (exact and fast transfer functions, 8-bit tables), `ColorSpaces` (HSV, HSL, Oklab, Oklch, luminance, Oklab mixing), `ToneMap` (Reinhard, extended, ACES fit, Hable, exposure, by luminance), `PremultipliedAlpha`. No wide-gamut spaces or gamut mapping. See `docs/COLOR.md`.*
 
 ### Phase F. GPU interface (P1)
 

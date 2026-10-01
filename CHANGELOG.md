@@ -6,6 +6,8 @@ Nothing has been released yet; the baseline for the compatibility check is the t
 ## Unreleased
 
 ### Added
+- Quantization (experimental): `Quantize` (N-bit unorm/snorm, mantissa rounding), `GridQuantizer`, `UvQuantizer`; `VertexLayout` formats `positionUnorm16` and `uvUnorm16` for `MeshExport`.
+- New package `vmath.color` (experimental): `Srgb`, `ColorSpaces` (HSV, HSL, Oklab, Oklch), `ToneMap`, `PremultipliedAlpha`.
 - Bulk and memory (experimental): `Vec4fArray`, `SegmentFloatArray` (off-heap), `removeSwap`/`compact` on every container, `Mat4fArray.multiply`/`premultiply`, `QuatArray.nlerp`, `MatrixKernel` SPI with a Vector API kernel in `vmath-simd`, `DirtyRanges`, `FrameDirtyRanges`, `HandleRegistry`.
 - New package `vmath.mem` (experimental): `ArenaAllocator`, `SlabAllocator`, `FreeListAllocator`, `RingAllocator`, `PersistentBufferRing`.
 - Sorting (experimental): `RadixSorter`, `PrefixSum`, `LocalityOrder`; `Hilbert` codes and 32-bit `Morton`/`Hilbert` codes.

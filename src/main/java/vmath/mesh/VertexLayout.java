@@ -20,6 +20,11 @@ public final class VertexLayout {
     public enum Format {
         /** Three 32-bit floats. */
         POSITION_F32X3(12),
+        /**
+         * Three unorm16 coordinates relative to the mesh's bounding box and a fourth one equal to 1 (so a {@code vec4} read works with one matrix): 8 bytes. The
+         * dequantization matrix is {@link MeshExport#positionQuantizer(Mesh)}'s {@code dequantizationMatrix()}; the error is half a step, {@code size / 131070} per axis.
+         */
+        POSITION_UNORM16X4(8),
         /** Three 32-bit floats. */
         NORMAL_F32X3(12),
         /** Two 16-bit octahedral coordinates in one 32-bit word (see {@code vmath.pack.Octahedral}); about 4e-5 radians of error. */
@@ -29,7 +34,9 @@ public final class VertexLayout {
         /** Two 32-bit floats. */
         UV_F32X2(8),
         /** Two half floats in one 32-bit word. */
-        UV_HALF2(4);
+        UV_HALF2(4),
+        /** Two unorm16 coordinates relative to the rectangle around the set's texture coordinates ({@link MeshExport#uvQuantizer(Mesh, int)}): 4 bytes. */
+        UV_UNORM16X2(4);
 
         private final int bytes;
 
@@ -76,14 +83,16 @@ public final class VertexLayout {
         int location = 0;
         for (Attribute a : attributes) {
             String name = switch (a.format()) {
-                case POSITION_F32X3 -> "position";
+                case POSITION_F32X3, POSITION_UNORM16X4 -> "position";
                 case NORMAL_F32X3, NORMAL_OCT16 -> "normal";
                 case TANGENT_F32X4 -> "tangent";
-                case UV_F32X2, UV_HALF2 -> "uv" + a.uvSet();
+                case UV_F32X2, UV_HALF2, UV_UNORM16X2 -> "uv" + a.uvSet();
             };
             VertexFormat f = switch (a.format()) {
                 case POSITION_F32X3, NORMAL_F32X3 -> VertexFormat.FLOAT32X3;
                 case NORMAL_OCT16 -> VertexFormat.SNORM16X2;
+                case POSITION_UNORM16X4 -> VertexFormat.UNORM16X4;
+                case UV_UNORM16X2 -> VertexFormat.UNORM16X2;
                 case TANGENT_F32X4 -> VertexFormat.FLOAT32X4;
                 case UV_F32X2 -> VertexFormat.FLOAT32X2;
                 case UV_HALF2 -> VertexFormat.FLOAT16X2;
@@ -111,6 +120,11 @@ public final class VertexLayout {
             return add(Format.POSITION_F32X3, 0);
         }
 
+        /** A position quantized to unorm16 inside the mesh's bounding box, padded to four components (8 bytes). */
+        public Builder positionUnorm16() {
+            return add(Format.POSITION_UNORM16X4, 0);
+        }
+
         public Builder normal() {
             return add(Format.NORMAL_F32X3, 0);
         }
@@ -129,6 +143,11 @@ public final class VertexLayout {
 
         public Builder uvHalf(int set) {
             return add(Format.UV_HALF2, set);
+        }
+
+        /** A texture coordinate quantized to unorm16 inside the rectangle that covers the set (4 bytes). */
+        public Builder uvUnorm16(int set) {
+            return add(Format.UV_UNORM16X2, set);
         }
 
         public VertexLayout build() {

@@ -15,6 +15,7 @@ hand-written rather than generated, and it allocates nothing beyond the small ve
 | octahedral unit vector, 2x8 | 2 B | `Octahedral` | worst angular error 1.1e-2 rad (0.63 degrees) |
 | smallest-three quaternion | 4 B | `QuatPacked` | worst rotation error 4.1e-3 rad (0.24 degrees) |
 | position in a box, 3x unorm16 | 6 B | `Quantizer` | half a step: `size / 131070` per axis |
+| position or uv on a grid of 1 to 16 bits | any | `GridQuantizer`, `UvQuantizer` | half a step: `extent / (2 * (2^bits - 1))` |
 
 The angular figures are the worst cases measured over 2 million random unit vectors or rotations, and the tests assert bounds just above
 them (so a regression that loses accuracy fails). A `Vec3f` normal is 12 bytes and a `Quatf` is 16, so these are 3 to 6 times smaller.
@@ -41,7 +42,24 @@ them (so a regression that loses accuracy fails). A `Vec3f` normal is 12 bytes a
 - **Positions:** `Quantizer` when the mesh has a known bounding box. Fold `dequantizationMatrix()` into the model matrix and let the GPU
   read the three shorts as normalized integers.
 
+## Quantization of any width and mesh attribute formats (experimental)
+
+`Quantize` does normalized integers of 1 to 24 bits (`unorm`, `snorm` with exact zero and a symmetric range, `fromUnorm`, `fromSnorm`) and `mantissa(f, bits)`, which rounds a float's mantissa to fewer bits (relative
+error at most `2^-(bits+1)`, the low bits become zero) so that data keeps its type but compresses far better. The conventions are those of `Norm`; against its float arithmetic the 8-, 10- and 16-bit codes agree to within one
+code at values that sit on a rounding tie.
+
+`GridQuantizer` quantizes positions to 1 to 16 bits inside a box: `of(bounds, bits)` scales each axis to its own extent, `uniform(bounds, bits)` uses the largest extent for all axes so the cells are cubes and the error is
+the same in every direction (the meshoptimizer convention). The worst error per axis is half a step, `extent / (2 * (2^bits - 1))`: 6.1e-5 units for 14 bits across 2 units, 9.8e-4 for 10 bits. `dequantizationMatrix()` folds
+into the model matrix. Tested: the error bound at 1, 5, 10, 14 and 16 bits in both modes over 3 000 random points each, the matrix against `unpack`, cubic cells, clamping, flat axes, and agreement with `Quantizer` at 16 bits.
+`UvQuantizer` does the same for texture coordinates in a rectangle (`fit` finds the rectangle of a set, which may lie outside [0, 1]).
+
+`VertexLayout` gained two formats that use them through `MeshExport`: `positionUnorm16()` (an unorm16x4: three coordinates inside the mesh bounding box and a 1 in the fourth, 8 bytes) and `uvUnorm16(set)` (4 bytes, over
+the rectangle around the set). `MeshExport.positionQuantizer(mesh)` and `uvQuantizer(mesh, set)` return the quantizers the writer used, for the matrix and the rectangle the shader needs; `toBufferLayout()` describes them as
+`UNORM16X4` and `UNORM16X2`. A layout of position, octahedral normal and uv takes 16 bytes per vertex in this form, against 24 with a float position (12), the same normal (4) and a float uv pair (8): a third smaller.
+Tested on a sphere whose uvs were stretched outside the unit square: every position and uv comes back within half a step through the matrix and the rectangle.
+
+What is **not** built from meshoptimizer: the vertex and index buffer *compression* codecs (`encodeVertexBuffer`, `encodeIndexBuffer`), which need a byte-level entropy format and decoders on the target side.
+
 ## Not covered yet
 
-A full attribute-quantization pipeline like meshoptimizer's (this belongs
-with mesh processing), and unsigned 8-bit encodings of normals (2x8 octahedral covers that need). See `docs/ROADMAP.md`.
+The vertex and index buffer compression codecs of meshoptimizer (the quantization and the mesh formats above are built, the entropy-coded streams are not), and unsigned 8-bit encodings of normals (2x8 octahedral covers that need). Colour is in `docs/COLOR.md`. See `docs/ROADMAP.md`.

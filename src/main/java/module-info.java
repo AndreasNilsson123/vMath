@@ -21,6 +21,7 @@ module vmath {
     exports vmath.gltf;
     exports vmath.gpucull;
     exports vmath.mem;
+    exports vmath.color;
 
     uses vmath.spatial.FrustumKernelProvider;
     uses vmath.bulk.MatrixKernelProvider;

@@ -745,4 +745,55 @@ class AllocationContractTest {
         });
         arena.close();
     }
+
+    // ------------------------------------------------------------ colour and quantization
+
+    @Test
+    void colourAndQuantization() {
+        int n = 2000;
+        java.util.SplittableRandom r = new java.util.SplittableRandom(3);
+        float[] px = new float[4 * n], work = new float[4 * n];
+        for (int i = 0; i < px.length; i++) {
+            px[i] = (float) r.nextDouble();
+        }
+        float[] out = new float[3];
+        assertNoAllocation("Srgb array conversions", 300, 2000, () -> {
+            System.arraycopy(px, 0, work, 0, px.length);
+            vmath.color.Srgb.toLinear(work, 0, n, 4, true);
+            vmath.color.Srgb.fromLinear(work, 0, n, 4, false);
+        });
+        assertNoAllocation("ColorSpaces", 300, 2000, () -> {
+            for (int i = 0; i < 200; i++) {
+                vmath.color.ColorSpaces.linearSrgbToOklab(px[i], px[i + 1], px[i + 2], out);
+                vmath.color.ColorSpaces.oklabToLinearSrgb(out[0], out[1], out[2], out);
+                vmath.color.ColorSpaces.rgbToHsv(px[i], px[i + 1], px[i + 2], out);
+                vmath.color.ColorSpaces.hsvToRgb(out[0], out[1], out[2], out);
+                vmath.color.ColorSpaces.rgbToHsl(px[i], px[i + 1], px[i + 2], out);
+                vmath.color.ColorSpaces.hslToRgb(out[0], out[1], out[2], out);
+                vmath.color.ColorSpaces.mixOklab(px[i], px[i + 1], px[i + 2], px[i + 3], px[i + 4], px[i + 5], 0.3f, out);
+            }
+        });
+        assertNoAllocation("ToneMap and PremultipliedAlpha", 300, 2000, () -> {
+            System.arraycopy(px, 0, work, 0, px.length);
+            vmath.color.ToneMap.apply(vmath.color.ToneMap.Curve.ACES, 0f, work, 0, n, 4);
+            vmath.color.ToneMap.byLuminance(vmath.color.ToneMap.Curve.HABLE, 0f, work, 0);
+            vmath.color.PremultipliedAlpha.premultiply(work, 0, n);
+            vmath.color.PremultipliedAlpha.unpremultiply(work, 0, n);
+            vmath.color.PremultipliedAlpha.over(work, 0, work, 4, work, 8);
+            vmath.color.PremultipliedAlpha.premultiplyRgba8(0x80FF8040);
+        });
+        vmath.pack.GridQuantizer grid = vmath.pack.GridQuantizer.uniform(new vmath.geo.Aabbf(0f, 0f, 0f, 4f, 2f, 1f), 14);
+        vmath.pack.UvQuantizer uv = vmath.pack.UvQuantizer.fit(px, n, 12);
+        short[] codes = new short[3];
+        assertNoAllocation("GridQuantizer, UvQuantizer, Quantize", 300, 2000, () -> {
+            for (int i = 0; i < 200; i++) {
+                grid.pack(px[i] * 4f, px[i + 1] * 2f, px[i + 2], codes, 0);
+                uv.pack(px[i], px[i + 1], codes, 0);
+                vmath.pack.Quantize.unorm(px[i], 11);
+                vmath.pack.Quantize.snorm(px[i] - 0.5f, 12);
+                vmath.pack.Quantize.mantissa(px[i], 10);
+            }
+            vmath.pack.Quantize.mantissa(work, 0, n, 9);
+        });
+    }
 }

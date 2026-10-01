@@ -5,6 +5,8 @@ import vmath.core.Vec3f;
 import vmath.gl.GpuWriter;
 import vmath.pack.Half;
 import vmath.pack.Octahedral;
+import vmath.pack.Quantizer;
+import vmath.pack.UvQuantizer;
 
 /**
  * Writes a {@link Mesh} into GPU-ready buffers: interleaved vertices as described by a {@link VertexLayout}, and 16- or 32-bit indices.
@@ -32,6 +34,28 @@ public final class MeshExport {
         return 2L * mesh.indexCount();
     }
 
+    /**
+     * The quantizer {@link #writeVertices} uses for a {@link VertexLayout.Format#POSITION_UNORM16X4} attribute: unorm16 over the mesh's bounding box. Its
+     * {@code dequantizationMatrix()} turns the normalized values the GPU reads back into model space.
+     *
+     * @throws IllegalStateException if the mesh has no vertices
+     */
+    public static Quantizer positionQuantizer(Mesh mesh) {
+        if (mesh.vertexCount() == 0) {
+            throw new IllegalStateException("an empty mesh has no bounding box to quantize into");
+        }
+        return new Quantizer(mesh.bounds());
+    }
+
+    /**
+     * The quantizer {@link #writeVertices} uses for a {@link VertexLayout.Format#UV_UNORM16X2} attribute of the given set: unorm16 over the smallest rectangle around
+     * its texture coordinates. {@code minU() + sizeU() * code / 65535} restores a coordinate (in the shader: the normalized value times the size plus the minimum).
+     */
+    public static UvQuantizer uvQuantizer(Mesh mesh, int set) {
+        require(mesh.hasUvs(set), "uv set " + set);
+        return UvQuantizer.fit(mesh.uvs(set), mesh.vertexCount(), 16);
+    }
+
     /** Writes every vertex, interleaved, starting at {@code offset}. Returns the offset just past the last byte written. */
     public static long writeVertices(Mesh mesh, VertexLayout layout, MemorySegment dst, long offset) {
         int stride = layout.stride();
@@ -39,7 +63,7 @@ public final class MeshExport {
             switch (a.format()) {
                 case NORMAL_F32X3, NORMAL_OCT16 -> require(mesh.hasNormals(), "normals");
                 case TANGENT_F32X4 -> require(mesh.hasTangents(), "tangents");
-                case UV_F32X2, UV_HALF2 -> require(mesh.hasUvs(a.uvSet()), "uv set " + a.uvSet());
+                case UV_F32X2, UV_HALF2, UV_UNORM16X2 -> require(mesh.hasUvs(a.uvSet()), "uv set " + a.uvSet());
                 default -> { }
             }
         }
@@ -47,12 +71,29 @@ public final class MeshExport {
             throw new IllegalArgumentException("destination too small: need " + ((long) mesh.vertexCount() * stride) + " bytes from " + offset);
         }
         float[] pos = mesh.positions();
+        Quantizer positionQuantizer = null;
+        UvQuantizer[] uvQuantizers = new UvQuantizer[Mesh.MAX_UV_SETS];
+        for (VertexLayout.Attribute a : layout.attributes()) {
+            if (a.format() == VertexLayout.Format.POSITION_UNORM16X4 && positionQuantizer == null && mesh.vertexCount() > 0) {
+                positionQuantizer = positionQuantizer(mesh);
+            } else if (a.format() == VertexLayout.Format.UV_UNORM16X2 && uvQuantizers[a.uvSet()] == null && mesh.vertexCount() > 0) {
+                uvQuantizers[a.uvSet()] = uvQuantizer(mesh, a.uvSet());
+            }
+        }
+        short[] scratch = new short[3];
         for (int v = 0; v < mesh.vertexCount(); v++) {
             long base = offset + (long) v * stride;
             for (VertexLayout.Attribute a : layout.attributes()) {
                 long o = base + a.offset();
                 switch (a.format()) {
                     case POSITION_F32X3 -> put3(dst, o, pos, v * 3);
+                    case POSITION_UNORM16X4 -> {
+                        positionQuantizer.pack(new Vec3f(pos[v * 3], pos[v * 3 + 1], pos[v * 3 + 2]), scratch, 0);
+                        dst.set(java.lang.foreign.ValueLayout.JAVA_SHORT_UNALIGNED, o, scratch[0]);
+                        dst.set(java.lang.foreign.ValueLayout.JAVA_SHORT_UNALIGNED, o + 2, scratch[1]);
+                        dst.set(java.lang.foreign.ValueLayout.JAVA_SHORT_UNALIGNED, o + 4, scratch[2]);
+                        dst.set(java.lang.foreign.ValueLayout.JAVA_SHORT_UNALIGNED, o + 6, (short) 0xFFFF);
+                    }
                     case NORMAL_F32X3 -> put3(dst, o, mesh.normals(), v * 3);
                     case NORMAL_OCT16 -> {
                         float[] n = mesh.normals();
@@ -68,6 +109,12 @@ public final class MeshExport {
                         float[] uv = mesh.uvs(a.uvSet());
                         GpuWriter.putFloat(dst, o, uv[v * 2]);
                         GpuWriter.putFloat(dst, o + 4, uv[v * 2 + 1]);
+                    }
+                    case UV_UNORM16X2 -> {
+                        float[] uv = mesh.uvs(a.uvSet());
+                        UvQuantizer uq = uvQuantizers[a.uvSet()];
+                        dst.set(java.lang.foreign.ValueLayout.JAVA_SHORT_UNALIGNED, o, (short) uq.quantizeU(uv[v * 2]));
+                        dst.set(java.lang.foreign.ValueLayout.JAVA_SHORT_UNALIGNED, o + 2, (short) uq.quantizeV(uv[v * 2 + 1]));
                     }
                     case UV_HALF2 -> {
                         float[] uv = mesh.uvs(a.uvSet());

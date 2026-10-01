@@ -126,7 +126,7 @@ Allocation findings and the performance contract are in [docs/PERFORMANCE.md](do
 
 Versioning and the `@Experimental` marker: [docs/VERSIONING.md](docs/VERSIONING.md); changes: [CHANGELOG.md](CHANGELOG.md).
 The full backlog is in [docs/ROADMAP.md](docs/ROADMAP.md); design notes are in `docs/` (CODEGEN, CULLING, GPU, CAMERA, FORMATS, TEXTURES, GLTF, ROBUSTNESS,
-PERFORMANCE, API-COMPAT, BULK, MEMORY). Not built yet, roughly in order of value:
+PERFORMANCE, API-COMPAT, BULK, MEMORY, COLOR). Not built yet, roughly in order of value:
 
 - A SIMD occlusion test, temporal coherence for occlusion queries, and portal culling (the rest of culling is built: frustum
   kernels, BVH, dynamic tree, grid, octree, k-NN, LOD, cone, shadow, light and occlusion culling; see `docs/CULLING.md`).
