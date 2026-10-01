@@ -43,5 +43,5 @@ them (so a regression that loses accuracy fails). A `Vec3f` normal is 12 bytes a
 
 ## Not covered yet
 
-Hilbert curves (only Morton codes exist, in `vmath.core.Morton`), a full attribute-quantization pipeline like meshoptimizer's (this belongs
+A full attribute-quantization pipeline like meshoptimizer's (this belongs
 with mesh processing), and unsigned 8-bit encodings of normals (2x8 octahedral covers that need). See `docs/ROADMAP.md`.

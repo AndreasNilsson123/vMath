@@ -197,7 +197,8 @@ Consistency first, then features. All new features are written once in float and
       buffer ring (N frames in flight) with fence tracking hooks.
 - [ ] **MEM-6 (P2, M)** Handle/generation-index registry (sparse set) for entity IDs, with dense array iteration.
 - [ ] **MEM-7 (P2, M)** Dirty-flag/change-tracking bitsets for incremental GPU upload (upload only changed ranges).
-- [ ] **MEM-8 (P2, M)** Radix sort (float keys, 32/64-bit) and parallel-friendly prefix sums, for draw sorting and BVH build.
+- [x] **MEM-8 (P2, M)** Radix sort (float keys, 32/64-bit) and parallel-friendly prefix sums, for draw sorting and BVH build.
+      *Done (experimental): `RadixSorter` (int/long/float/double keys, optional payload, stable, descending floats), `PrefixSum` (scans and chunked parallel scan), `LocalityOrder`. 3.5 to 8 times faster than the JDK sorts for float keys from 100 000 elements; not a clear win for 64-bit keys at a million; the parallel scan gains only on multi-million arrays. See `docs/BULK.md`.*
 - [x] **MEM-9 (P3, M)** Thread-parallel kernel driver (`ForkJoin`/virtual-thread-free) with chunking and false-sharing avoidance.  
       *Done for frustum culling: `ParallelFrustumKernel` (caller-supplied executor, chunks at multiples of 64, bit-identical, 3x at 8 chunks); other kernels do not exist in bulk form yet.*
 
@@ -211,8 +212,8 @@ Consistency first, then features. All new features are written once in float and
       *Done: `Octahedral` with best-of-four rounding and `QuatPacked`; measured error bounds are asserted in the tests.*
 - [ ] **FMT-4 (P2, M)** Position quantization with bounds (`unorm16` × AABB), meshopt-style attribute quantization.  
       *Partial: `Quantizer` (unorm16 over an `Aabbf`, with dequantization matrix) done; a full meshopt-style attribute pipeline belongs with mesh processing (MESH-3).*
-- [ ] **FMT-5 (P2, S)** Morton/Hilbert codes (2D/3D, 32/64-bit) for locality sorting and BVH/linear-octree construction.  
-      *Partial: `Morton` (2D 32-bit/axis, 3D 21-bit/axis) done; Hilbert curves are not.*
+- [x] **FMT-5 (P2, S)** Morton/Hilbert codes (2D/3D, 32/64-bit) for locality sorting and BVH/linear-octree construction.  
+      *Done (experimental additions): `Hilbert` (2D to 32 bits per axis, 3D to 21, hierarchy and neighbour properties tested), 32-bit `Morton`/`Hilbert` codes. Hilbert encode is about 100 ns, 17 times Morton; a table-driven version is not tried. See `docs/BULK.md`.*
 - [ ] **FMT-6 (P2, S)** Color: sRGB↔linear (exact + fast), HSV/HSL/Oklab, luminance, tone-map curves, premultiplied alpha.
 
 ### Phase F. GPU interface (P1)

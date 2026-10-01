@@ -579,4 +579,52 @@ class AllocationContractTest {
         org.junit.jupiter.api.Assertions.assertTrue(bytes > 100.0, "a path that allocates a 16-long array per call must be seen, measured " + bytes);
         org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class, () -> assertNoAllocation("x", 10, 10, () -> { }));
     }
+
+    // ------------------------------------------------------------ sorting and scans
+
+    @Test
+    void radixSortAndLocalityOrder() {
+        int n = 3000;
+        java.util.SplittableRandom r = new java.util.SplittableRandom(1);
+        vmath.bulk.RadixSorter sorter = new vmath.bulk.RadixSorter();
+        sorter.reserve(n);
+        int[] keys = new int[n], work = new int[n], values = new int[n];
+        long[] lkeys = new long[n], lwork = new long[n];
+        float[] fkeys = new float[n], fwork = new float[n];
+        double[] dkeys = new double[n], dwork = new double[n];
+        for (int i = 0; i < n; i++) {
+            keys[i] = r.nextInt();
+            lkeys[i] = r.nextLong();
+            fkeys[i] = (float) r.nextDouble();
+            dkeys[i] = r.nextDouble();
+        }
+        assertNoAllocation("RadixSorter.sort(int)", 300, 2000, () -> {
+            System.arraycopy(keys, 0, work, 0, n);
+            sorter.sort(work, values, n);
+        });
+        assertNoAllocation("RadixSorter.sortUnsigned(long)", 300, 2000, () -> {
+            System.arraycopy(lkeys, 0, lwork, 0, n);
+            sorter.sortUnsigned(lwork, values, n);
+        });
+        assertNoAllocation("RadixSorter.sort(float)", 300, 2000, () -> {
+            System.arraycopy(fkeys, 0, fwork, 0, n);
+            sorter.sort(fwork, values, n, true);
+        });
+        assertNoAllocation("RadixSorter.order(float)", 300, 2000, () -> sorter.order(fkeys, n, values, false));
+        assertNoAllocation("RadixSorter.order(double)", 300, 2000, () -> sorter.order(dkeys, n, values, false));
+        float[] xyz = new float[3 * n];
+        for (int i = 0; i < xyz.length; i++) {
+            xyz[i] = (float) r.nextDouble();
+        }
+        int[] order = new int[n];
+        long[] codes = new long[n];
+        assertNoAllocation("LocalityOrder.order(HILBERT)", 300, 2000, () -> vmath.bulk.LocalityOrder.order(xyz, n, vmath.bulk.LocalityOrder.Curve.HILBERT, order, codes, sorter));
+        assertNoAllocation("LocalityOrder.order(MORTON)", 300, 2000, () -> vmath.bulk.LocalityOrder.order(xyz, n, vmath.bulk.LocalityOrder.Curve.MORTON, order, codes, sorter));
+        int[] counts = new int[n];
+        assertNoAllocation("PrefixSum.exclusive", 300, 2000, () -> {
+            java.util.Arrays.fill(counts, 1);
+            vmath.bulk.PrefixSum.exclusive(counts, n);
+        });
+        assertNoAllocation("Hilbert.encode3", 1000, 100000, () -> vmath.core.Hilbert.encode3(12345, 6789, 424242, 21));
+    }
 }

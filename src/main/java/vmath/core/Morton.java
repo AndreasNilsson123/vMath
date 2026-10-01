@@ -17,7 +17,7 @@ public final class Morton {
     public static final int MAX_3D = (1 << 21) - 1;
 
     /** Spreads the low 21 bits of {@code v} so that two zero bits sit between each pair of bits. */
-    private static long spread3(long v) {
+    static long spread3(long v) {
         long x = v & 0x1FFFFFL;
         x = (x | (x << 32)) & 0x1F00000000FFFFL;
         x = (x | (x << 16)) & 0x1F0000FF0000FFL;
@@ -27,7 +27,7 @@ public final class Morton {
         return x;
     }
 
-    private static long compact3(long v) {
+    static long compact3(long v) {
         long x = v & 0x1249249249249249L;
         x = (x ^ (x >>> 2)) & 0x10C30C30C30C30C3L;
         x = (x ^ (x >>> 4)) & 0x100F00F00F00F00FL;
@@ -46,7 +46,7 @@ public final class Morton {
         return new Vec3i((int) compact3(code), (int) compact3(code >>> 1), (int) compact3(code >>> 2));
     }
 
-    private static long spread2(long v) {
+    static long spread2(long v) {
         long x = v & 0xFFFFFFFFL;
         x = (x | (x << 16)) & 0x0000FFFF0000FFFFL;
         x = (x | (x << 8)) & 0x00FF00FF00FF00FFL;
@@ -56,7 +56,7 @@ public final class Morton {
         return x;
     }
 
-    private static long compact2(long v) {
+    static long compact2(long v) {
         long x = v & 0x5555555555555555L;
         x = (x ^ (x >>> 1)) & 0x3333333333333333L;
         x = (x ^ (x >>> 2)) & 0x0F0F0F0F0F0F0F0FL;
@@ -73,6 +73,24 @@ public final class Morton {
 
     public static Vec2i decode2(long code) {
         return new Vec2i((int) compact2(code), (int) compact2(code >>> 1));
+    }
+
+    /** 30-bit code of three 10-bit coordinates (0 to 1023), as an {@code int} that is non-negative and sorts as a signed or an unsigned integer alike. */
+    public static int encode3Int(int x, int y, int z) {
+        return (int) encode3(x & 0x3FF, y & 0x3FF, z & 0x3FF);
+    }
+
+    public static Vec3i decode3Int(int code) {
+        return decode3(code & 0x3FFFFFFFL);
+    }
+
+    /** 32-bit code of two 16-bit coordinates (0 to 65535); the code is unsigned, so compare with {@link Integer#compareUnsigned} or sort with an unsigned sort. */
+    public static int encode2Int(int x, int y) {
+        return (int) encode2(x & 0xFFFF, y & 0xFFFF);
+    }
+
+    public static Vec2i decode2Int(int code) {
+        return decode2(code & 0xFFFFFFFFL);
     }
 
     /**

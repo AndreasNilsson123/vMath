@@ -6,6 +6,7 @@ Nothing has been released yet; the baseline for the compatibility check is the t
 ## Unreleased
 
 ### Added
+- Sorting (experimental): `RadixSorter`, `PrefixSum`, `LocalityOrder`; `Hilbert` codes and 32-bit `Morton`/`Hilbert` codes.
 - Camera (experimental): `PlanarViews` (reflections, oblique near-plane clipping, portal views), `Stereo`, `DualParaboloid`.
 - GPU (experimental): `VertexFormat`, `VertexBufferLayout`, `VertexLayout.toBufferLayout()`, `ShaderHeader` (GLSL/Slang headers from layouts), `LayoutValidator`.
 - Clustered lighting (experimental): `ClusterGrid`, `ClusterLights` (CPU reference of light assignment, tiled variant), `ClusterLight` struct.
