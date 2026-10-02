@@ -42,13 +42,16 @@ public final class ClusterLights {
     private int[] indices = new int[0];
     private final float[] scratch = new float[8];
 
+    /** An assigner with no lights. */
     public ClusterLights() {
     }
 
+    /** Removes all lights. */
     public void clearLights() {
         lightCount = 0;
     }
 
+    /** The number of lights added since the last {@link #clearLights()}. */
     public int lightCount() {
         return lightCount;
     }
@@ -301,10 +304,12 @@ public final class ClusterLights {
 
     // ---------------------------------------------------------------- results
 
+    /** The number of lights assigned to {@code cluster}. */
     public int count(int cluster) {
         return offsets[cluster + 1] - offsets[cluster];
     }
 
+    /** The position in the flat light list of the first light of {@code cluster}; its lights are the {@link #count(int)} entries from there. */
     public int offset(int cluster) {
         return offsets[cluster];
     }
@@ -319,6 +324,7 @@ public final class ClusterLights {
         return offsets[grid.clusterCount()];
     }
 
+    /** Whether {@code light} (an index as returned by {@code addPoint} / {@code addSpot}) is assigned to {@code cluster}. */
     public boolean contains(int cluster, int light) {
         for (int e = offsets[cluster]; e < offsets[cluster + 1]; e++) {
             if (indices[e] == light) {

@@ -26,6 +26,7 @@ public record Planef(float nx, float ny, float nz, float d) {
         return fromPointNormal(a, b.sub(a).cross(c.sub(a)));
     }
 
+    /** The plane's unit normal. */
     public Vec3f normal() {
         return new Vec3f(nx, ny, nz);
     }
@@ -50,6 +51,7 @@ public record Planef(float nx, float ny, float nz, float d) {
         return new Planef(-nx, -ny, -nz, -d);
     }
 
+    /** The point of the plane nearest to {@code p}. */
     public Vec3f closestPoint(Vec3f p) {
         float dist = distance(p);
         return new Vec3f(p.x() - nx * dist, p.y() - ny * dist, p.z() - nz * dist);
@@ -68,11 +70,13 @@ public record Planef(float nx, float ny, float nz, float d) {
                 it.m03() * nx + it.m13() * ny + it.m23() * nz + it.m33() * d).normalize();
     }
 
+    /** The same plane with double-precision components. */
     @FloatOnly
     public Planed toDouble() {
         return new Planed(nx, ny, nz, d);
     }
 
+    /** The same plane with float components, each rounded to the nearest float. */
     @DoubleOnly
     public Planef toFloat() {
         return new Planef((float) nx, (float) ny, (float) nz, (float) d);

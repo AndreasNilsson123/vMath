@@ -1,6 +1,5 @@
 package vmath.simd;
 
-import jdk.incubator.vector.FloatVector;
 import vmath.bulk.MatrixKernel;
 import vmath.bulk.MatrixKernelProvider;
 
@@ -13,21 +12,17 @@ public final class SimdMatrixKernelProvider implements MatrixKernelProvider {
 
     @Override
     public String name() {
-        return "simd";
+        return SimdSupport.NAME;
     }
 
     @Override
     public int priority() {
-        return 100;
+        return SimdSupport.PRIORITY;
     }
 
     @Override
     public boolean isSupported() {
-        try {
-            return FloatVector.SPECIES_PREFERRED.length() >= 4;
-        } catch (Throwable t) {
-            return false;
-        }
+        return SimdSupport.vectorsAvailable();
     }
 
     @Override

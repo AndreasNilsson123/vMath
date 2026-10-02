@@ -1,9 +1,5 @@
 package vmath.bulk;
 
-import java.lang.foreign.MemorySegment;
-import java.nio.ByteOrder;
-import java.nio.FloatBuffer;
-import java.util.Arrays;
 import vmath.annotations.Experimental;
 import vmath.core.Mat4f;
 import vmath.core.Vec4f;
@@ -16,44 +12,17 @@ import vmath.core.Vec4f;
  * while no thread is writing.
  */
 @Experimental("the kernel set may grow")
-public final class Vec4fArray {
+public final class Vec4fArray extends FloatElements {
 
     /** Floats per vector. */
     public static final int STRIDE = 4;
 
-    private float[] data;
-    private int size;
-
+    /** An empty array with room for {@code capacity} vectors (at least 1). */
     public Vec4fArray(int capacity) {
-        this.data = new float[Math.max(capacity, 1) * STRIDE];
+        super(capacity, STRIDE);
     }
 
-    public int size() {
-        return size;
-    }
-
-    public int capacity() {
-        return data.length / STRIDE;
-    }
-
-    public void clear() {
-        size = 0;
-    }
-
-    /** Sets the element count after writing into {@link #data()} directly. */
-    public void setSize(int n) {
-        if (n < 0 || n > capacity()) {
-            throw new IllegalArgumentException("size " + n + " outside 0.." + capacity());
-        }
-        size = n;
-    }
-
-    public void ensureCapacity(int n) {
-        if (n * STRIDE > data.length) {
-            data = Arrays.copyOf(data, Math.max(n, capacity() * 2) * STRIDE);
-        }
-    }
-
+    /** Appends a vector and returns its index. */
     public int add(float x, float y, float z, float w) {
         ensureCapacity(size + 1);
         int o = size * STRIDE;
@@ -64,10 +33,12 @@ public final class Vec4fArray {
         return size++;
     }
 
+    /** Appends a vector and returns its index. */
     public int add(Vec4f v) {
         return add(v.x(), v.y(), v.z(), v.w());
     }
 
+    /** Replaces vector {@code i}; {@link IndexOutOfBoundsException} for an index that is not below {@link #size()}. */
     public void set(int i, float x, float y, float z, float w) {
         checkIndex(i);
         int o = i * STRIDE;
@@ -77,79 +48,43 @@ public final class Vec4fArray {
         data[o + 3] = w;
     }
 
+    /** Replaces vector {@code i}; {@link IndexOutOfBoundsException} for an index that is not below {@link #size()}. */
     public void set(int i, Vec4f v) {
         set(i, v.x(), v.y(), v.z(), v.w());
     }
 
+    /** Vector {@code i} as a value (allocates); {@link IndexOutOfBoundsException} for an index that is not below {@link #size()}. */
     public Vec4f get(int i) {
         checkIndex(i);
         int o = i * STRIDE;
         return new Vec4f(data[o], data[o + 1], data[o + 2], data[o + 3]);
     }
 
+    /** The x of vector {@code i}; {@link IndexOutOfBoundsException} for an index that is not below {@link #size()}. */
     public float x(int i) {
         checkIndex(i);
         return data[i * STRIDE];
     }
 
+    /** The y of vector {@code i}. */
     public float y(int i) {
         checkIndex(i);
         return data[i * STRIDE + 1];
     }
 
+    /** The z of vector {@code i}. */
     public float z(int i) {
         checkIndex(i);
         return data[i * STRIDE + 2];
     }
 
+    /** The w of vector {@code i}. */
     public float w(int i) {
         checkIndex(i);
         return data[i * STRIDE + 3];
     }
 
-    private void checkIndex(int i) {
-        if (i < 0 || i >= size) {
-            throw new IndexOutOfBoundsException("index " + i + ", size " + size);
-        }
-    }
-
-    /** The live backing array (vector {@code i} starts at {@code i * STRIDE}); replaced when the array grows. */
-    public float[] data() {
-        return data;
-    }
-
-    /** Writes all vectors into {@code dst} starting at byte {@code offset}, {@code strideBytes} apart (at least 16), in the given byte order. */
-    public void writeTo(MemorySegment dst, long offset, long strideBytes, ByteOrder order) {
-        Strided.write(data, 0, STRIDE, size, dst, offset, strideBytes, order);
-    }
-
-    /** Replaces the contents with {@code count} vectors read from {@code src} ({@link #writeTo(MemorySegment, long, long, ByteOrder)} reversed). */
-    public void readFrom(MemorySegment src, long offset, long strideBytes, ByteOrder order, int count) {
-        ensureCapacity(count);
-        Strided.read(src, offset, strideBytes, order, data, 0, STRIDE, count);
-        size = count;
-    }
-
-    /** Absolute write of all vectors at {@code index}; does not move the buffer position. */
-    public void writeTo(FloatBuffer dst, int index) {
-        dst.put(index, data, 0, size * STRIDE);
-    }
-
     // ---------------------------------------------------------------- compaction
-
-    /** Removes element {@code i} by moving the last into its place; returns the index the moved element had, or -1 if {@code i} was last. */
-    public int removeSwap(int i) {
-        checkIndex(i);
-        int moved = Compaction.swapRemove(data, STRIDE, size, i);
-        size--;
-        return moved;
-    }
-
-    /** Keeps only the elements whose bit is set in {@code keep}, in order. Returns the new size. */
-    public int compact(VisibilitySet keep) {
-        size = Compaction.stable(data, STRIDE, size, keep);
-        return size;
-    }
 
     // ---------------------------------------------------------------- batch kernels
 

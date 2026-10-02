@@ -43,6 +43,7 @@ public final class Std140 {
         }
     }
 
+    /** Writes a {@code mat4} as 16 floats starting at {@code index}. */
     public static void putMat4(FloatBuffer dst, int index, Mat4f m) {
         m.writeTo(dst, index);
     }

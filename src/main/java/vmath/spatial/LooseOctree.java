@@ -83,6 +83,7 @@ public final class LooseOctree {
         this(0f, 0f, 0f, halfSize, 10);
     }
 
+    /** The number of objects in the octree. */
     public int size() {
         return liveCount;
     }
@@ -92,16 +93,21 @@ public final class LooseOctree {
         return nodeCount;
     }
 
+    /** The depth limit the octree was built with: the root is level 0. */
     public int maxDepth() {
         return maxDepth;
     }
 
     // ---------------------------------------------------------------- updates
 
+    /** Adds an object with the given box and returns its handle; {@code userData} is what queries report for it. */
     public int insert(Aabbf b, int userData) {
         return insert(b.minX(), b.minY(), b.minZ(), b.maxX(), b.maxY(), b.maxZ(), userData);
     }
 
+    /**
+     * Adds an object with the box given by its six bounds and returns its handle; {@code userData} is what queries report for it. The box must be finite and ordered ({@link IllegalArgumentException} otherwise).
+     */
     public int insert(float minX, float minY, float minZ, float maxX, float maxY, float maxZ, int userData) {
         checkBox(minX, minY, minZ, maxX, maxY, maxZ);
         int h = allocateObject();
@@ -140,6 +146,7 @@ public final class LooseOctree {
         return true;
     }
 
+    /** As the six-bounds {@code move}, with the box given as an {@link Aabbf}. */
     public boolean move(int handle, Aabbf b) {
         return move(handle, b.minX(), b.minY(), b.minZ(), b.maxX(), b.maxY(), b.maxZ());
     }
@@ -158,15 +165,20 @@ public final class LooseOctree {
 
     // ---------------------------------------------------------------- inspection
 
+    /** True when {@code handle} names an object currently in the octree. */
     public boolean isValid(int handle) {
         return handle >= 0 && handle < objectHigh && alive[handle];
     }
 
+    /** The {@code userData} given when the object was inserted; {@link IllegalArgumentException} for a handle that is not in the octree. */
     public int userData(int handle) {
         requireLive(handle);
         return item[handle];
     }
 
+    /**
+     * The object's box as last given to {@code insert} or {@code move}; allocates the result. {@link IllegalArgumentException} for a handle that is not in the octree.
+     */
     public Aabbf bounds(int handle) {
         requireLive(handle);
         int o = handle * 6;

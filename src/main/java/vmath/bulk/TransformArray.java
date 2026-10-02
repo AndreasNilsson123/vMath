@@ -1,9 +1,6 @@
 package vmath.bulk;
 
 import java.lang.foreign.MemorySegment;
-import java.nio.ByteOrder;
-import java.nio.FloatBuffer;
-import java.util.Arrays;
 import vmath.core.Quatf;
 import vmath.core.Transformf;
 import vmath.core.Vec3f;
@@ -19,56 +16,31 @@ import vmath.core.Vec3f;
  * <p><b>Thread safety.</b> Not thread-safe: it is mutable, so use one instance per thread or synchronise externally. Concurrent reads are safe only
  * while no thread is writing.
  */
-public final class TransformArray {
+public final class TransformArray extends FloatElements {
 
     /** Floats per transform. */
     public static final int STRIDE = 10;
 
-    private float[] data;
-    private int size;
-
+    /** An empty array with room for {@code capacity} transforms (at least 1). */
     public TransformArray(int capacity) {
-        this.data = new float[Math.max(capacity, 1) * STRIDE];
+        super(capacity, STRIDE);
     }
 
-    public int size() {
-        return size;
-    }
-
-    public int capacity() {
-        return data.length / STRIDE;
-    }
-
-    public void clear() {
-        size = 0;
-    }
-
-    /** Sets the element count after writing into {@link #data()} directly. */
-    public void setSize(int n) {
-        if (n < 0 || n > capacity()) {
-            throw new IllegalArgumentException("size " + n + " outside 0.." + capacity());
-        }
-        size = n;
-    }
-
-    public void ensureCapacity(int n) {
-        if (n * STRIDE > data.length) {
-            data = Arrays.copyOf(data, Math.max(n, capacity() * 2) * STRIDE);
-        }
-    }
-
+    /** Appends a transform given by translation, rotation quaternion ({@code x, y, z, w}, stored as given) and scale, and returns its index. */
     public int add(float tx, float ty, float tz, float qx, float qy, float qz, float qw, float sx, float sy, float sz) {
         ensureCapacity(size + 1);
         write(size, tx, ty, tz, qx, qy, qz, qw, sx, sy, sz);
         return size++;
     }
 
+    /** Appends a transform and returns its index. */
     public int add(Transformf t) {
         ensureCapacity(size + 1);
         store(size, t);
         return size++;
     }
 
+    /** Replaces transform {@code i}; {@link IndexOutOfBoundsException} for an index that is not below {@link #size()}. */
     public void set(int i, Transformf t) {
         checkIndex(i);
         store(i, t);
@@ -94,43 +66,13 @@ public final class TransformArray {
         data[o + 9] = sz;
     }
 
+    /** Transform {@code i} as a value (allocates); {@link IndexOutOfBoundsException} for an index that is not below {@link #size()}. */
     public Transformf get(int i) {
         checkIndex(i);
         int o = i * STRIDE;
         return new Transformf(new Vec3f(data[o], data[o + 1], data[o + 2]),
                 new Quatf(data[o + 3], data[o + 4], data[o + 5], data[o + 6]),
                 new Vec3f(data[o + 7], data[o + 8], data[o + 9]));
-    }
-
-    private void checkIndex(int i) {
-        if (i < 0 || i >= size) {
-            throw new IndexOutOfBoundsException("index " + i + ", size " + size);
-        }
-    }
-
-    /** The live backing array (transform {@code i} starts at {@code i * STRIDE}); replaced when the array grows. */
-    public float[] data() {
-        return data;
-    }
-
-    /**
-     * Writes all transforms (10 floats each, the layout of this array) into {@code dst} starting at byte {@code offset}, {@code strideBytes} apart (at least
-     * 40), in the given byte order.
-     */
-    public void writeTo(MemorySegment dst, long offset, long strideBytes, ByteOrder order) {
-        Strided.write(data, 0, STRIDE, size, dst, offset, strideBytes, order);
-    }
-
-    /** Replaces the contents with {@code count} transforms read from {@code src} ({@link #writeTo(MemorySegment, long, long, ByteOrder)} reversed). */
-    public void readFrom(MemorySegment src, long offset, long strideBytes, ByteOrder order, int count) {
-        ensureCapacity(count);
-        Strided.read(src, offset, strideBytes, order, data, 0, STRIDE, count);
-        size = count;
-    }
-
-    /** Absolute write of all transforms at {@code index}; does not move the buffer position. */
-    public void writeTo(FloatBuffer dst, int index) {
-        dst.put(index, data, 0, size * STRIDE);
     }
 
     // ---------------------------------------------------------------- batch kernels
@@ -188,23 +130,6 @@ public final class TransformArray {
     }
 
     // ---------------------------------------------------------------- compaction
-
-    /**
-     * Removes element {@code i} by moving the last element into its place: O(1), the order of the others is kept except for that one. Returns the index the
-     * moved element had before (the old last index), or -1 if {@code i} was the last element. Mirror it in parallel arrays with the same call.
-     */
-    public int removeSwap(int i) {
-        checkIndex(i);
-        int moved = Compaction.swapRemove(data, STRIDE, size, i);
-        size--;
-        return moved;
-    }
-
-    /** Keeps only the elements whose bit is set in {@code keep} (bit {@code i} for element {@code i}), in their original order. Returns the new size. */
-    public int compact(VisibilitySet keep) {
-        size = Compaction.stable(data, STRIDE, size, keep);
-        return size;
-    }
 
     /**
      * As {@link #toMatrices(Mat4fArray)}, but writes the model matrices (16 native-order floats, column-major) straight into {@code dst}: element {@code i} at byte

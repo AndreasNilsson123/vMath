@@ -33,6 +33,7 @@ public final class MeshLod {
      */
     public record Chain(Mesh[] levels, float[] errors) {
 
+        /** The number of levels. */
         public int count() {
             return levels.length;
         }

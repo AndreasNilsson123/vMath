@@ -3,7 +3,7 @@ plugins {
 }
 
 java {
-    toolchain { languageVersion.set(JavaLanguageVersion.of(25)) }
+    toolchain { languageVersion.set(JavaLanguageVersion.of(property("vmath.jdk").toString().toInt())) }
     withSourcesJar()
 }
 

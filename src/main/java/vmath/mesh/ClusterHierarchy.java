@@ -4,7 +4,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import vmath.annotations.Experimental;
-import vmath.spatial.ConeCull;
+import vmath.geo.NormalCone;
 
 /**
  * A cluster hierarchy for continuous level of detail, in the manner of Nanite's cluster DAG: the mesh is cut into clusters (meshlets), neighbouring clusters
@@ -416,7 +416,7 @@ public final class ClusterHierarchy {
             }
         }
         float[] cone = new float[4];
-        ConeCull.computeCone(normals, 0, c.indices.length / 3, cone, 0);
+        NormalCone.compute(normals, 0, c.indices.length / 3, cone, 0);
         c.ax = cone[0];
         c.ay = cone[1];
         c.az = cone[2];
@@ -445,6 +445,7 @@ public final class ClusterHierarchy {
         return pool;
     }
 
+    /** The number of clusters over all levels. */
     public int clusterCount() {
         return clusters.size();
     }
@@ -454,10 +455,12 @@ public final class ClusterHierarchy {
         return levels;
     }
 
+    /** The level of {@code cluster}: 0 is the original detail, higher levels are coarser. */
     public int level(int cluster) {
         return clusters.get(cluster).level;
     }
 
+    /** The number of triangles of {@code cluster}. */
     public int triangleCount(int cluster) {
         return clusters.get(cluster).indices.length / 3;
     }
@@ -472,14 +475,17 @@ public final class ClusterHierarchy {
         return clusters.get(c).sx;
     }
 
+    /** The y of the cluster's bounding sphere centre. */
     public float sphereY(int c) {
         return clusters.get(c).sy;
     }
 
+    /** The z of the cluster's bounding sphere centre. */
     public float sphereZ(int c) {
         return clusters.get(c).sz;
     }
 
+    /** The radius of the cluster's bounding sphere. */
     public float sphereRadius(int c) {
         return clusters.get(c).sr;
     }
@@ -489,14 +495,17 @@ public final class ClusterHierarchy {
         return clusters.get(c).ax;
     }
 
+    /** The y of the cluster's normal cone axis. */
     public float coneAxisY(int c) {
         return clusters.get(c).ay;
     }
 
+    /** The z of the cluster's normal cone axis. */
     public float coneAxisZ(int c) {
         return clusters.get(c).az;
     }
 
+    /** The sine of the cone's half-angle; 1 means no useful cone (the cluster is never back-face culled). */
     public float coneCutoff(int c) {
         return clusters.get(c).cutoff;
     }
@@ -506,18 +515,22 @@ public final class ClusterHierarchy {
         return clusters.get(c).lodError;
     }
 
+    /** The x of the centre of the sphere that bounds this cluster's simplification error (the same for every cluster of a group). */
     public float lodCenterX(int c) {
         return clusters.get(c).lx;
     }
 
+    /** The y of the centre of the sphere that bounds this cluster's simplification error. */
     public float lodCenterY(int c) {
         return clusters.get(c).ly;
     }
 
+    /** The z of the centre of the sphere that bounds this cluster's simplification error. */
     public float lodCenterZ(int c) {
         return clusters.get(c).lz;
     }
 
+    /** The radius of the sphere that bounds this cluster's simplification error. */
     public float lodRadius(int c) {
         return clusters.get(c).lr;
     }
@@ -532,18 +545,22 @@ public final class ClusterHierarchy {
         return clusters.get(c).parentError;
     }
 
+    /** The x of the centre of the error sphere of the group that replaces this cluster one level up. */
     public float parentCenterX(int c) {
         return clusters.get(c).px;
     }
 
+    /** The y of the centre of the error sphere of the group that replaces this cluster one level up. */
     public float parentCenterY(int c) {
         return clusters.get(c).py;
     }
 
+    /** The z of the centre of the error sphere of the group that replaces this cluster one level up. */
     public float parentCenterZ(int c) {
         return clusters.get(c).pz;
     }
 
+    /** The radius of the error sphere of the group that replaces this cluster one level up. */
     public float parentRadius(int c) {
         return clusters.get(c).pr;
     }

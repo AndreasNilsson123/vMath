@@ -28,8 +28,8 @@ them (so a regression that loses accuracy fails). A `Vec3f` normal is 12 bytes a
 - **Zero is exact** in every format (snorm reserves its most negative code so the range is symmetric).
 - **Bit layouts follow the graphics APIs** so a packed `int` can be uploaded as it is: first component in the lowest bits (GLSL
   `packUnorm4x8` and friends), red in bits 0 to 9 for `RGB10A2`, red in bits 0 to 10 for `R11G11B10F`, and so on.
-- `PackedFormat` lists the matching OpenGL internal format and `VkFormat` for each one, plus its size. The numbers were checked against the
-  Khronos `glcorearb.h` and `vulkan_core.h` headers.
+- `PackedFormat` lists the matching OpenGL internal format and `VkFormat` for each one, plus its size. The numbers were entered by hand from the registries and compared
+  in tests with `TextureFormat`'s Vulkan numbers where the formats are shared; no test reads the Khronos `glcorearb.h` and `vulkan_core.h` headers yet (technical-debt TD-01).
 
 ## Choosing
 

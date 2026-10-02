@@ -32,6 +32,7 @@ public final class Mesh {
     private int vertexCount;
     private int indexCount;
 
+    /** An empty mesh with room for 16 vertices and 16 triangles; it grows as they are added. */
     public Mesh() {
         this(16, 16);
     }
@@ -66,10 +67,12 @@ public final class Mesh {
 
     // ---------------------------------------------------------------- sizes
 
+    /** The number of vertices. */
     public int vertexCount() {
         return vertexCount;
     }
 
+    /** The number of triangles. */
     public int triangleCount() {
         return indexCount / 3;
     }
@@ -79,6 +82,7 @@ public final class Mesh {
         return indexCount;
     }
 
+    /** The number of vertices the mesh can hold before it grows. */
     public int vertexCapacity() {
         return positions.length / 3;
     }
@@ -163,14 +167,17 @@ public final class Mesh {
 
     // ---------------------------------------------------------------- streams
 
+    /** Whether the mesh has a normal stream. */
     public boolean hasNormals() {
         return normals != null;
     }
 
+    /** Whether the mesh has a tangent stream (four floats per vertex, the fourth is the handedness). */
     public boolean hasTangents() {
         return tangents != null;
     }
 
+    /** Whether UV set {@code set} is on. */
     public boolean hasUvs(int set) {
         checkSet(set);
         return uvs[set] != null;
@@ -203,10 +210,12 @@ public final class Mesh {
         normals = null;
     }
 
+    /** Switches the tangent stream off and frees it. */
     public void disableTangents() {
         tangents = null;
     }
 
+    /** Switches UV set {@code set} off and frees it. */
     public void disableUvs(int set) {
         checkSet(set);
         uvs[set] = null;
@@ -224,6 +233,7 @@ public final class Mesh {
         }
     }
 
+    /** Sets the position of vertex {@code i}; {@link IndexOutOfBoundsException} for a vertex that does not exist. */
     public void setPosition(int i, float x, float y, float z) {
         requireVertex(i);
         positions[i * 3] = x;
@@ -231,6 +241,7 @@ public final class Mesh {
         positions[i * 3 + 2] = z;
     }
 
+    /** Sets the normal of vertex {@code i}; the normal stream must be on ({@link IllegalStateException} otherwise). */
     public void setNormal(int i, float x, float y, float z) {
         requireVertex(i);
         requireStream(normals, "normals");
@@ -239,6 +250,7 @@ public final class Mesh {
         normals[i * 3 + 2] = z;
     }
 
+    /** Sets the tangent of vertex {@code i} ({@code w} is the handedness); the tangent stream must be on ({@link IllegalStateException} otherwise). */
     public void setTangent(int i, float x, float y, float z, float w) {
         requireVertex(i);
         requireStream(tangents, "tangents");
@@ -248,6 +260,7 @@ public final class Mesh {
         tangents[i * 4 + 3] = w;
     }
 
+    /** Sets texture coordinate {@code set} of vertex {@code i}; the UV set must be on ({@link IllegalStateException} otherwise). */
     public void setUv(int set, int i, float u, float v) {
         requireVertex(i);
         checkSet(set);

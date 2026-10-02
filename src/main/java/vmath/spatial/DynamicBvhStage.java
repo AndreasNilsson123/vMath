@@ -15,6 +15,7 @@ public final class DynamicBvhStage implements CullStage {
     private final DynamicAabbTree.Query query;
     private final VisibilitySet scratch = new VisibilitySet(64);
 
+    /** A stage that queries {@code tree} with the context's frustum; it keeps the objects the tree reports visible. */
     public DynamicBvhStage(DynamicAabbTree tree) {
         this.query = tree.newQuery();
     }

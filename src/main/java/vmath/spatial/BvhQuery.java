@@ -22,6 +22,7 @@ public final class BvhQuery {
     /** Narrow-phase test for ray casts: the exact hit distance of primitive {@code p}, or +Infinity. */
     @FunctionalInterface
     public interface PrimitiveTest {
+        /** The exact hit distance of {@code primitive} along {@code ray} if it is hit before {@code tMax}, else {@link Float#POSITIVE_INFINITY}. */
         float intersect(int primitive, Rayf ray, float tMax);
     }
 
@@ -32,6 +33,7 @@ public final class BvhQuery {
         /** Distance along the ray in units of its direction; +Infinity when nothing was hit. */
         public float t = Float.POSITIVE_INFINITY;
 
+        /** A hit that records nothing yet ({@code primitive} -1, {@code t} infinite). */
         public BvhHit() {
         }
 
@@ -46,6 +48,7 @@ public final class BvhQuery {
     private float[] tStack = new float[64];
     private final float[] planes = new float[24];
 
+    /** A query object over {@code bvh}. It owns the traversal stacks, so use one per thread; the queries allocate nothing after the stacks have grown. */
     public BvhQuery(StaticBvh bvh) {
         this.bvh = bvh;
     }
@@ -75,27 +78,8 @@ public final class BvhQuery {
         while (sp > 0) {
             int mask = stack[--sp];
             int node = stack[--sp];
-            int o = node * 6;
-            float cx = (nb[o] + nb[o + 3]) * 0.5f, cy = (nb[o + 1] + nb[o + 4]) * 0.5f, cz = (nb[o + 2] + nb[o + 5]) * 0.5f;
-            float hx = (nb[o + 3] - nb[o]) * 0.5f, hy = (nb[o + 4] - nb[o + 1]) * 0.5f, hz = (nb[o + 5] - nb[o + 2]) * 0.5f;
-            int m = mask;
-            boolean outside = false;
-            for (int p = 0; p < 6; p++) {
-                if ((mask & (1 << p)) == 0) {
-                    continue;
-                }
-                float nx = planes[p * 4], ny = planes[p * 4 + 1], nz = planes[p * 4 + 2], d = planes[p * 4 + 3];
-                float s = nx * cx + ny * cy + nz * cz + d;
-                float r = hx * Math.abs(nx) + hy * Math.abs(ny) + hz * Math.abs(nz);
-                if (s + r < 0f) {
-                    outside = true;
-                    break;
-                }
-                if (s - r >= 0f) {
-                    m &= ~(1 << p);
-                }
-            }
-            if (outside) {
+            int m = NodeTests.frustumMask(planes, nb, node * 6, mask);
+            if (m < 0) {
                 continue;
             }
             if (m == 0) {
@@ -141,28 +125,6 @@ public final class BvhQuery {
 
     // ------------------------------------------------------------------ rays
 
-    /** Reciprocal that never yields NaN downstream: a zero component becomes a huge finite value instead of infinity. */
-    private static float inverse(float d) {
-        return 1f / (d == 0f ? Float.MIN_NORMAL : d);
-    }
-
-    /** Slab test against node bounds; returns the entry distance, or +Infinity for a miss or an entry beyond tMax. */
-    private static float entry(float[] b, int o, float ox, float oy, float oz, float ix, float iy, float iz, float tMax) {
-        float t1 = (b[o] - ox) * ix, t2 = (b[o + 3] - ox) * ix;
-        float tNear = Math.min(t1, t2), tFar = Math.max(t1, t2);
-        t1 = (b[o + 1] - oy) * iy;
-        t2 = (b[o + 4] - oy) * iy;
-        tNear = Math.max(tNear, Math.min(t1, t2));
-        tFar = Math.min(tFar, Math.max(t1, t2));
-        t1 = (b[o + 2] - oz) * iz;
-        t2 = (b[o + 5] - oz) * iz;
-        tNear = Math.max(tNear, Math.min(t1, t2));
-        tFar = Math.min(tFar, Math.max(t1, t2));
-        tNear = Math.max(tNear, 0f);
-        tFar = Math.min(tFar, tMax);
-        return tNear <= tFar ? tNear : Float.POSITIVE_INFINITY;
-    }
-
     /** Nearest primitive whose <b>bounding box</b> the ray enters within {@code [0, tMax]}. */
     public boolean raycastBounds(Rayf ray, float tMax, BoundsArray bounds, BvhHit hit) {
         return raycast(ray, tMax, bounds, null, hit);
@@ -179,12 +141,12 @@ public final class BvhQuery {
             return false;
         }
         float ox = ray.ox(), oy = ray.oy(), oz = ray.oz();
-        float ix = inverse(ray.dx()), iy = inverse(ray.dy()), iz = inverse(ray.dz());
+        float ix = NodeTests.inverse(ray.dx()), iy = NodeTests.inverse(ray.dy()), iz = NodeTests.inverse(ray.dz());
         float[] nb = bvh.nodeBounds();
         int[] order = bvh.order();
         float best = tMax;
         int bestPrim = -1;
-        float rootT = entry(nb, 0, ox, oy, oz, ix, iy, iz, best);
+        float rootT = NodeTests.entry(nb, 0, ox, oy, oz, ix, iy, iz, best);
         if (rootT == Float.POSITIVE_INFINITY) {
             return false;
         }
@@ -214,8 +176,8 @@ public final class BvhQuery {
                 }
             } else {
                 int l = node + 1, r = bvh.rightChild(node);
-                float tl = entry(nb, l * 6, ox, oy, oz, ix, iy, iz, best);
-                float tr = entry(nb, r * 6, ox, oy, oz, ix, iy, iz, best);
+                float tl = NodeTests.entry(nb, l * 6, ox, oy, oz, ix, iy, iz, best);
+                float tr = NodeTests.entry(nb, r * 6, ox, oy, oz, ix, iy, iz, best);
                 if (sp + 2 > tStack.length) {
                     tStack = Arrays.copyOf(tStack, tStack.length * 2);
                 }

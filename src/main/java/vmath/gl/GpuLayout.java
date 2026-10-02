@@ -13,8 +13,11 @@ package vmath.gl;
  * </ul>
  */
 public enum GpuLayout {
+    /** The uniform block layout, with 16-byte rounding of arrays and structs. */
     STD140("std140"),
+    /** The storage block layout: std140 without the rounding of arrays and structs. */
     STD430("std430"),
+    /** The scalar block layout, everything aligned to its 4-byte component. */
     SCALAR("scalar");
 
     private final String glslName;

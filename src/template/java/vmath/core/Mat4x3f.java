@@ -25,6 +25,7 @@ public record Mat4x3f(
         float m20, float m21, float m22,
         float m30, float m31, float m32) {
 
+    /** The identity matrix. */
     public static final Mat4x3f IDENTITY = new Mat4x3f(
             1f, 0f, 0f,
             0f, 1f, 0f,
@@ -49,6 +50,7 @@ public record Mat4x3f(
                 src[off + 9], src[off + 10], src[off + 11]);
     }
 
+    /** The matrix with the given columns. */
     public static Mat4x3f fromColumns(Vec3f c0, Vec3f c1, Vec3f c2, Vec3f translation) {
         return new Mat4x3f(
                 c0.x(), c0.y(), c0.z(),
@@ -57,6 +59,7 @@ public record Mat4x3f(
                 translation.x(), translation.y(), translation.z());
     }
 
+    /** A translation by the given offset. */
     public static Mat4x3f translation(float x, float y, float z) {
         return new Mat4x3f(
                 1f, 0f, 0f,
@@ -65,10 +68,12 @@ public record Mat4x3f(
                 x, y, z);
     }
 
+    /** A translation by the given offset. */
     public static Mat4x3f translation(Vec3f t) {
         return translation(t.x(), t.y(), t.z());
     }
 
+    /** A scale by the given factors along each axis. */
     public static Mat4x3f scaling(float sx, float sy, float sz) {
         return new Mat4x3f(
                 sx, 0f, 0f,
@@ -171,6 +176,7 @@ public record Mat4x3f(
                 m02 * x + m12 * y + m22 * z);
     }
 
+    /** The point {@code p} transformed by this matrix: scaled, rotated and translated. */
     public Vec3f transformPosition(Vec3f p) {
         return new Vec3f(
                 m00 * p.x() + m10 * p.y() + m20 * p.z() + m30,
@@ -215,6 +221,7 @@ public record Mat4x3f(
                 -(i02 * m30 + i12 * m31 + i22 * m32));
     }
 
+    /** The upper-left 3x3 block: the rotation and scale part. */
     public Mat3f upperLeft3x3() {
         return new Mat3f(
                 m00, m01, m02,
@@ -227,6 +234,7 @@ public record Mat4x3f(
         return upperLeft3x3().normal();
     }
 
+    /** The translation: the x, y and z of the last column. */
     public Vec3f getTranslation() {
         return new Vec3f(m30, m31, m32);
     }
@@ -241,6 +249,7 @@ public record Mat4x3f(
         return toMat4().decompose();
     }
 
+    /** Column {@code c}. */
     public Vec3f column(int c) {
         return switch (c) {
             case 0 -> new Vec3f(m00, m01, m02);
@@ -251,10 +260,12 @@ public record Mat4x3f(
         };
     }
 
+    /** The element at {@code column} and {@code row}. */
     public float get(int column, int row) {
         return column(column).get(row);
     }
 
+    /** True when every element differs from that of {@code o} by at most {@code eps}. */
     public boolean approxEquals(Mat4x3f o, float eps) {
         for (int c = 0; c < 4; c++) {
             if (!column(c).approxEquals(o.column(c), eps)) {
@@ -318,11 +329,13 @@ public record Mat4x3f(
         dst[off + 11] = m32;
     }
 
+    /** The same value with double components. */
     @FloatOnly
     public Mat4x3d toDouble() {
         return new Mat4x3d(m00, m01, m02, m10, m11, m12, m20, m21, m22, m30, m31, m32);
     }
 
+    /** The same value with float components (rounded to the nearest float for double types). */
     @DoubleOnly
     public Mat4x3f toFloat() {
         return new Mat4x3f((float) m00, (float) m01, (float) m02, (float) m10, (float) m11, (float) m12,

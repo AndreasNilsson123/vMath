@@ -62,10 +62,12 @@ public final class GridQuantizer {
         return new GridQuantizer(bounds, bits, true);
     }
 
+    /** The box the grid covers. */
     public Aabbf bounds() {
         return bounds;
     }
 
+    /** The number of bits per axis. */
     public int bits() {
         return bits;
     }
@@ -96,6 +98,7 @@ public final class GridQuantizer {
         dst[offset + 2] = (short) axis(z, bounds.minZ(), sizeZ);
     }
 
+    /** Writes the three codes of {@code p} to {@code dst[offset .. offset + 2]} as unsigned 16-bit values. */
     public void pack(Vec3f p, short[] dst, int offset) {
         pack(p.x(), p.y(), p.z(), dst, offset);
     }
@@ -108,6 +111,7 @@ public final class GridQuantizer {
                 bounds.minZ() + (float) ((double) (qz & levels) / levels * sizeZ));
     }
 
+    /** The position the three unsigned 16-bit codes at {@code src[offset .. offset + 2]} stand for. */
     public Vec3f unpack(short[] src, int offset) {
         return unpack(src[offset] & 0xFFFF, src[offset + 1] & 0xFFFF, src[offset + 2] & 0xFFFF);
     }

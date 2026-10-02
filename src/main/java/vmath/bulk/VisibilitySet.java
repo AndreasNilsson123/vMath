@@ -14,6 +14,7 @@ public final class VisibilitySet {
     private long[] words;
     private int capacity;
 
+    /** A set for indices {@code 0 .. capacity - 1}, all clear. */
     public VisibilitySet(int capacity) {
         this.capacity = capacity;
         this.words = new long[wordsFor(capacity)];
@@ -23,6 +24,7 @@ public final class VisibilitySet {
         return (bits + 63) >>> 6;
     }
 
+    /** The number of indices the set holds. */
     public int capacity() {
         return capacity;
     }
@@ -35,18 +37,22 @@ public final class VisibilitySet {
         }
     }
 
+    /** Whether bit {@code i} is set; the index must be below the capacity. */
     public boolean get(int i) {
         return (words[i >>> 6] & (1L << i)) != 0L;
     }
 
+    /** Sets bit {@code i}. */
     public void set(int i) {
         words[i >>> 6] |= 1L << i;
     }
 
+    /** Clears bit {@code i}. */
     public void clear(int i) {
         words[i >>> 6] &= ~(1L << i);
     }
 
+    /** Clears every bit. */
     public void clearAll() {
         Arrays.fill(words, 0L);
     }
@@ -126,6 +132,7 @@ public final class VisibilitySet {
         Arrays.fill(words, n, words.length, 0L);
     }
 
+    /** {@code this |= o} over the shared capacity. */
     public void or(VisibilitySet o) {
         int n = Math.min(words.length, o.words.length);
         for (int i = 0; i < n; i++) {
@@ -141,6 +148,7 @@ public final class VisibilitySet {
         }
     }
 
+    /** Makes this set equal to {@code o}, growing it if needed. */
     public void copyFrom(VisibilitySet o) {
         ensureCapacity(o.capacity);
         System.arraycopy(o.words, 0, words, 0, o.words.length);

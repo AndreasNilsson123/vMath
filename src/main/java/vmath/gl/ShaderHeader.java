@@ -38,7 +38,9 @@ public final class ShaderHeader {
 
     /** The shading language to emit. */
     public enum Language {
+        /** GLSL source, for {@code #version 450} shaders. */
         GLSL,
+        /** Slang source. */
         SLANG
     }
 
@@ -123,6 +125,7 @@ public final class ShaderHeader {
             return this;
         }
 
+        /** Builds the header; the builder may be reused. */
         public ShaderHeader build() {
             return new ShaderHeader(guard, List.copyOf(structs), List.copyOf(constants), List.copyOf(blocks));
         }

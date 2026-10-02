@@ -84,6 +84,7 @@ public record Frustumf(Planef left, Planef right, Planef bottom, Planef top, Pla
         }
     }
 
+    /** True when the point is inside all six planes or on one. */
     public boolean contains(Vec3f p) {
         for (int i = 0; i < 6; i++) {
             if (plane(i).distance(p) < 0f) {
@@ -119,10 +120,16 @@ public record Frustumf(Planef left, Planef right, Planef bottom, Planef top, Pla
         return result;
     }
 
+    /**
+     * True when the sphere is not entirely outside the frustum. Conservative at the corners and edges: the six plane tests can keep a sphere that touches none of the frustum's volume.
+     */
     public boolean intersects(Spheref s) {
         return classify(s) != Containment.OUTSIDE;
     }
 
+    /**
+     * Where the sphere is relative to the frustum: {@code Containment.OUTSIDE} (entirely outside one plane), {@code INSIDE} (entirely inside all six) or {@code INTERSECTING}.
+     */
     public int classify(Spheref s) {
         int result = Containment.INSIDE;
         for (int i = 0; i < 6; i++) {
@@ -138,10 +145,12 @@ public record Frustumf(Planef left, Planef right, Planef bottom, Planef top, Pla
         return result;
     }
 
+    /** True when the box is not entirely outside the frustum. Conservative at the corners and edges, as for spheres. */
     public boolean intersects(Obbf box) {
         return classify(box) != Containment.OUTSIDE;
     }
 
+    /** Where the box is relative to the frustum: {@code Containment.OUTSIDE}, {@code INSIDE} or {@code INTERSECTING}, tested against the six planes. */
     public int classify(Obbf box) {
         Mat3f r = box.axes();
         int result = Containment.INSIDE;
@@ -161,12 +170,14 @@ public record Frustumf(Planef left, Planef right, Planef bottom, Planef top, Pla
         return result;
     }
 
+    /** The same frustum with double-precision planes. */
     @FloatOnly
     public Frustumd toDouble() {
         return new Frustumd(left.toDouble(), right.toDouble(), bottom.toDouble(), top.toDouble(),
                 near.toDouble(), far.toDouble());
     }
 
+    /** The same frustum with float planes, each rounded to the nearest float. */
     @DoubleOnly
     public Frustumf toFloat() {
         return new Frustumf(left.toFloat(), right.toFloat(), bottom.toFloat(), top.toFloat(), near.toFloat(), far.toFloat());

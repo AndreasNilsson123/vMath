@@ -22,12 +22,19 @@ import vmath.geo.Frustumf;
  */
 public final class CubeFaces {
 
+    /** The face looking along +X. */
     public static final int POSITIVE_X = 0;
+    /** The face looking along -X. */
     public static final int NEGATIVE_X = 1;
+    /** The face looking along +Y. */
     public static final int POSITIVE_Y = 2;
+    /** The face looking along -Y. */
     public static final int NEGATIVE_Y = 3;
+    /** The face looking along +Z. */
     public static final int POSITIVE_Z = 4;
+    /** The face looking along -Z. */
     public static final int NEGATIVE_Z = 5;
+    /** The number of faces, 6. */
     public static final int COUNT = 6;
 
     private static final Vec3f[] DIRECTION = {

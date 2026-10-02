@@ -30,6 +30,10 @@ import vmath.geo.Frustumf;
  *   <li>{@code slackFused}: all six planes in one loop over objects (no scratch traffic)</li>
  *   <li>{@code packBranchy}, {@code packSignBit}: turning the slack array into bitset words</li>
  * </ul>
+ *
+ * <p>The loops here are deliberate <em>copies</em> of the formulations (that is the point of comparing them), not calls into the production kernels: {@code slackMinCall} is
+ * the formulation that {@code FrustumCuller} used when this was written, and does not follow later changes to it. What the production kernels cost is measured by
+ * {@code CullBench}, {@code ParallelCullBench} and {@code FrameBench}.
  */
 @State(Scope.Thread)
 @BenchmarkMode(Mode.AverageTime)

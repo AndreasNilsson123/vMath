@@ -16,10 +16,12 @@ public final class CullPipeline {
 
     private final CullStage[] stages;
 
+    /** A pipeline that runs {@code stages} in the given order. */
     public CullPipeline(List<? extends CullStage> stages) {
         this.stages = stages.toArray(new CullStage[0]);
     }
 
+    /** A pipeline that runs {@code stages} in the given order. */
     public static CullPipeline of(CullStage... stages) {
         return new CullPipeline(List.of(stages));
     }

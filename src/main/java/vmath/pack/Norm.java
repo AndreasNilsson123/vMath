@@ -68,6 +68,7 @@ public final class Norm {
         return round(clamp01(f) * 65535f);
     }
 
+    /** The low 16 bits as an unsigned value, scaled to {@code [0, 1]}. */
     public static float unpackUnorm16(int bits) {
         return (bits & 0xFFFF) / 65535f;
     }
@@ -89,6 +90,7 @@ public final class Norm {
         return round(clamp01(f) * 1023f);
     }
 
+    /** The low 10 bits as an unsigned value, scaled to {@code [0, 1]}. */
     public static float unpackUnorm10(int bits) {
         return (bits & 0x3FF) / 1023f;
     }
@@ -111,6 +113,7 @@ public final class Norm {
         return packUnorm8(v.x()) | (packUnorm8(v.y()) << 8) | (packUnorm8(v.z()) << 16) | (packUnorm8(v.w()) << 24);
     }
 
+    /** Unpacks four unorm8 values, the lowest byte first ({@link #packUnorm4x8}). */
     public static Vec4f unpackUnorm4x8(int p) {
         return new Vec4f(unpackUnorm8(p), unpackUnorm8(p >>> 8), unpackUnorm8(p >>> 16), unpackUnorm8(p >>> 24));
     }
@@ -121,6 +124,7 @@ public final class Norm {
                 | ((packSnorm8(v.w()) & 0xFF) << 24);
     }
 
+    /** Unpacks four snorm8 values, the lowest byte first ({@link #packSnorm4x8}). */
     public static Vec4f unpackSnorm4x8(int p) {
         return new Vec4f(unpackSnorm8(p), unpackSnorm8(p >>> 8), unpackSnorm8(p >>> 16), unpackSnorm8(p >>> 24));
     }
@@ -130,6 +134,7 @@ public final class Norm {
         return packUnorm16(v.x()) | (packUnorm16(v.y()) << 16);
     }
 
+    /** Unpacks two unorm16 values, the low half first ({@link #packUnorm2x16}). */
     public static Vec2f unpackUnorm2x16(int p) {
         return new Vec2f(unpackUnorm16(p), unpackUnorm16(p >>> 16));
     }
@@ -139,6 +144,7 @@ public final class Norm {
         return (packSnorm16(v.x()) & 0xFFFF) | ((packSnorm16(v.y()) & 0xFFFF) << 16);
     }
 
+    /** Unpacks two snorm16 values, the low half first ({@link #packSnorm2x16}). */
     public static Vec2f unpackSnorm2x16(int p) {
         return new Vec2f(unpackSnorm16(p), unpackSnorm16(p >>> 16));
     }
@@ -152,6 +158,7 @@ public final class Norm {
                 | (round(clamp01(rgba.w()) * 3f) << 30);
     }
 
+    /** Unpacks the 10-10-10-2 layout of {@link #packRgb10A2}. */
     public static Vec4f unpackRgb10A2(int p) {
         return new Vec4f(unpackUnorm10(p), unpackUnorm10(p >>> 10), unpackUnorm10(p >>> 20), (p >>> 30) / 3f);
     }
@@ -165,6 +172,7 @@ public final class Norm {
         return packSnorm10(rgba.x()) | (packSnorm10(rgba.y()) << 10) | (packSnorm10(rgba.z()) << 20) | (a << 30);
     }
 
+    /** Unpacks the 10-10-10-2 layout of {@link #packRgb10A2Snorm}. */
     public static Vec4f unpackRgb10A2Snorm(int p) {
         int a = p >> 30; // arithmetic shift sign-extends the 2-bit field: -2, -1, 0, 1
         return new Vec4f(unpackSnorm10(p), unpackSnorm10(p >>> 10), unpackSnorm10(p >>> 20), Math.max(a, -1));

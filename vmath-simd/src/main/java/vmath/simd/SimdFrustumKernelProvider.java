@@ -1,6 +1,5 @@
 package vmath.simd;
 
-import jdk.incubator.vector.FloatVector;
 import vmath.spatial.FrustumKernel;
 import vmath.spatial.FrustumKernelProvider;
 
@@ -13,22 +12,17 @@ public final class SimdFrustumKernelProvider implements FrustumKernelProvider {
 
     @Override
     public String name() {
-        return "simd";
+        return SimdSupport.NAME;
     }
 
     @Override
     public int priority() {
-        return 100;
+        return SimdSupport.PRIORITY;
     }
 
-    /** Needs at least 128-bit vectors; a two-lane fallback would be slower than the scalar kernel. */
     @Override
     public boolean isSupported() {
-        try {
-            return FloatVector.SPECIES_PREFERRED.length() >= 4;
-        } catch (Throwable t) {
-            return false;
-        }
+        return SimdSupport.vectorsAvailable();
     }
 
     @Override

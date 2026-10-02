@@ -16,28 +16,38 @@ import java.nio.FloatBuffer;
 @ValueType
 public record Vec3f(float x, float y, float z) {
 
+    /** The zero vector. */
     public static final Vec3f ZERO = new Vec3f(0f, 0f, 0f);
+    /** The vector with every component 1. */
     public static final Vec3f ONE = new Vec3f(1f, 1f, 1f);
+    /** The unit vector along +X. */
     public static final Vec3f UNIT_X = new Vec3f(1f, 0f, 0f);
+    /** The unit vector along +Y. */
     public static final Vec3f UNIT_Y = new Vec3f(0f, 1f, 0f);
+    /** The unit vector along +Z. */
     public static final Vec3f UNIT_Z = new Vec3f(0f, 0f, 1f);
 
+    /** A vector with every component equal to {@code s}. */
     public static Vec3f splat(float s) {
         return new Vec3f(s, s, s);
     }
 
+    /** The sum {@code this + o}. */
     public Vec3f add(Vec3f o) {
         return new Vec3f(x + o.x, y + o.y, z + o.z);
     }
 
+    /** The sum of this and the vector with the given components. */
     public Vec3f add(float ox, float oy, float oz) {
         return new Vec3f(x + ox, y + oy, z + oz);
     }
 
+    /** The difference {@code this - o}. */
     public Vec3f sub(Vec3f o) {
         return new Vec3f(x - o.x, y - o.y, z - o.z);
     }
 
+    /** Every component multiplied by {@code s}. */
     public Vec3f mul(float s) {
         return new Vec3f(x * s, y * s, z * s);
     }
@@ -47,11 +57,13 @@ public record Vec3f(float x, float y, float z) {
         return new Vec3f(x * o.x, y * o.y, z * o.z);
     }
 
+    /** Every component divided by {@code s}; a zero divisor gives infinities or NaN, as in IEEE arithmetic. */
     public Vec3f div(float s) {
         float inv = 1f / s;
         return new Vec3f(x * inv, y * inv, z * inv);
     }
 
+    /** Every component negated. */
     public Vec3f negate() {
         return new Vec3f(-x, -y, -z);
     }
@@ -61,6 +73,7 @@ public record Vec3f(float x, float y, float z) {
         return new Vec3f(x + a.x * s, y + a.y * s, z + a.z * s);
     }
 
+    /** The dot product. */
     public float dot(Vec3f o) {
         return x * o.x + y * o.y + z * o.z;
     }
@@ -73,19 +86,23 @@ public record Vec3f(float x, float y, float z) {
                 x * o.y - y * o.x);
     }
 
+    /** The squared length. */
     public float lengthSquared() {
         return x * x + y * y + z * z;
     }
 
+    /** The length. */
     public float length() {
         return (float) Math.sqrt(lengthSquared());
     }
 
+    /** The squared distance to {@code o}; cheaper than {@link #distance}. */
     public float distanceSquared(Vec3f o) {
         float dx = x - o.x, dy = y - o.y, dz = z - o.z;
         return dx * dx + dy * dy + dz * dz;
     }
 
+    /** The distance to {@code o}. */
     public float distance(Vec3f o) {
         return (float) Math.sqrt(distanceSquared(o));
     }
@@ -127,6 +144,7 @@ public record Vec3f(float x, float y, float z) {
         return new Vec3f(x * inv, y * inv, z * inv);
     }
 
+    /** The linear interpolation {@code this + (o - this) * t}; {@code t} is not clamped. */
     public Vec3f lerp(Vec3f o, float t) {
         return new Vec3f(x + (o.x - x) * t, y + (o.y - y) * t, z + (o.z - z) * t);
     }
@@ -136,14 +154,17 @@ public record Vec3f(float x, float y, float z) {
         return (float) Math.atan2(cross(o).length(), dot(o));
     }
 
+    /** The component-wise minimum. */
     public Vec3f min(Vec3f o) {
         return new Vec3f(Math.min(x, o.x), Math.min(y, o.y), Math.min(z, o.z));
     }
 
+    /** The component-wise maximum. */
     public Vec3f max(Vec3f o) {
         return new Vec3f(Math.max(x, o.x), Math.max(y, o.y), Math.max(z, o.z));
     }
 
+    /** The absolute value of every component. */
     public Vec3f abs() {
         return new Vec3f(Math.abs(x), Math.abs(y), Math.abs(z));
     }
@@ -157,10 +178,12 @@ public record Vec3f(float x, float y, float z) {
         return cross(axis).normalize();
     }
 
+    /** The smallest component. */
     public float minComponent() {
         return Math.min(Math.min(x, y), z);
     }
 
+    /** The largest component. */
     public float maxComponent() {
         return Math.max(Math.max(x, y), z);
     }
@@ -175,6 +198,7 @@ public record Vec3f(float x, float y, float z) {
         return new Vec3f(Math.min(Math.max(x, lo.x), hi.x), Math.min(Math.max(y, lo.y), hi.y), Math.min(Math.max(z, lo.z), hi.z));
     }
 
+    /** Every component clamped to {@code [lo, hi]}. */
     public Vec3f clamp(float lo, float hi) {
         return new Vec3f(Math.min(Math.max(x, lo), hi), Math.min(Math.max(y, lo), hi), Math.min(Math.max(z, lo), hi));
     }
@@ -184,10 +208,12 @@ public record Vec3f(float x, float y, float z) {
         return clamp(0f, 1f);
     }
 
+    /** Every component rounded down to a whole number. */
     public Vec3f floor() {
         return new Vec3f((float) Math.floor(x), (float) Math.floor(y), (float) Math.floor(z));
     }
 
+    /** Every component rounded up to a whole number. */
     public Vec3f ceil() {
         return new Vec3f((float) Math.ceil(x), (float) Math.ceil(y), (float) Math.ceil(z));
     }
@@ -258,6 +284,7 @@ public record Vec3f(float x, float y, float z) {
         return ref.dot(incident) < 0f ? this : negate();
     }
 
+    /** Component {@code i} (0 is x, 1 is y, and so on); {@link IndexOutOfBoundsException} for any other index. */
     public float get(int i) {
         return switch (i) {
             case 0 -> x;
@@ -267,10 +294,12 @@ public record Vec3f(float x, float y, float z) {
         };
     }
 
+    /** True when every component differs from that of {@code o} by at most {@code eps}. */
     public boolean approxEquals(Vec3f o, float eps) {
         return Math.abs(x - o.x) <= eps && Math.abs(y - o.y) <= eps && Math.abs(z - o.z) <= eps;
     }
 
+    /** Writes the components to {@code dst[off ..]} in order. */
     public void writeTo(float[] dst, int off) {
         dst[off] = x;
         dst[off + 1] = y;
@@ -282,11 +311,13 @@ public record Vec3f(float x, float y, float z) {
         dst.put(index, x).put(index + 1, y).put(index + 2, z);
     }
 
+    /** The same value with double components. */
     @FloatOnly
     public Vec3d toDouble() {
         return new Vec3d(x, y, z);
     }
 
+    /** The same value with float components (rounded to the nearest float for double types). */
     @DoubleOnly
     public Vec3f toFloat() {
         return new Vec3f((float) x, (float) y, (float) z);

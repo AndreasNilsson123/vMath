@@ -13,11 +13,13 @@ public final class ClipSampler {
     private final AnimationClip clip;
     private final int[] cursor;
 
+    /** A sampler for {@code clip}, with every cursor at the start. */
     public ClipSampler(AnimationClip clip) {
         this.clip = clip;
         this.cursor = new int[clip.trackCount()];
     }
 
+    /** The clip this sampler reads. */
     public AnimationClip clip() {
         return clip;
     }

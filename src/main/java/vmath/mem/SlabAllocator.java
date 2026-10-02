@@ -48,18 +48,22 @@ public final class SlabAllocator {
         reset();
     }
 
+    /** The size of every block in bytes. */
     public long blockSize() {
         return blockSize;
     }
 
+    /** The number of blocks in the pool. */
     public int blockCount() {
         return blockCount;
     }
 
+    /** The blocks handed out and not yet freed. */
     public int allocatedCount() {
         return blockCount - freeCount;
     }
 
+    /** The blocks available: {@code blockCount() - allocatedCount()}. */
     public int freeBlocks() {
         return freeCount;
     }
@@ -110,6 +114,7 @@ public final class SlabAllocator {
         freeCount = blockCount;
     }
 
+    /** The memory behind the blocks, or {@code null} for a pool of offsets only. */
     public MemorySegment segment() {
         return backing;
     }

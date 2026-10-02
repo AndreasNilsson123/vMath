@@ -47,6 +47,7 @@ public final class VertexLayout {
             this.bytes = bytes;
         }
 
+        /** The size of one value of the format in bytes. */
         public int bytes() {
             return bytes;
         }
@@ -64,10 +65,12 @@ public final class VertexLayout {
         this.stride = stride;
     }
 
+    /** A builder for a layout; attributes are laid out in the order they are added. */
     public static Builder builder() {
         return new Builder();
     }
 
+    /** The attributes in memory order. */
     public List<Attribute> attributes() {
         return attributes;
     }
@@ -119,6 +122,7 @@ public final class VertexLayout {
             return this;
         }
 
+        /** Adds a position of three floats (12 bytes). */
         public Builder position() {
             return add(Format.POSITION_F32X3, 0);
         }
@@ -128,22 +132,27 @@ public final class VertexLayout {
             return add(Format.POSITION_UNORM16X4, 0);
         }
 
+        /** Adds a normal of three floats (12 bytes). */
         public Builder normal() {
             return add(Format.NORMAL_F32X3, 0);
         }
 
+        /** Adds a normal in octahedral form, two snorm16 (4 bytes). */
         public Builder normalOct16() {
             return add(Format.NORMAL_OCT16, 0);
         }
 
+        /** Adds a tangent of four floats, the fourth the handedness (16 bytes). */
         public Builder tangent() {
             return add(Format.TANGENT_F32X4, 0);
         }
 
+        /** Adds texture coordinate set {@code set} as two floats (8 bytes). */
         public Builder uv(int set) {
             return add(Format.UV_F32X2, set);
         }
 
+        /** Adds texture coordinate set {@code set} as two half floats (4 bytes). */
         public Builder uvHalf(int set) {
             return add(Format.UV_HALF2, set);
         }
@@ -153,6 +162,7 @@ public final class VertexLayout {
             return add(Format.UV_UNORM16X2, set);
         }
 
+        /** Builds the layout; {@link IllegalStateException} when no attribute was added. */
         public VertexLayout build() {
             if (list.isEmpty()) {
                 throw new IllegalStateException("a vertex layout needs at least one attribute");

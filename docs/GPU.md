@@ -186,7 +186,7 @@ reference never hides an object that an independent per-pixel test says is visib
 the camera plane are kept; the two phases never draw an object twice and together equal the single-pass result. Seeds 1 to 4 pass.
 
 **`ClusterCullReference`** (one invocation per cluster of a `ClusterHierarchy`): select the cluster when its projected error is within the pixel budget and its parent's is not, test its
-sphere against the frustum, back-face test it with its cone (`ConeCull.backfacing`), Hi-Z test the box around its sphere, and append one indirect command (`firstIndex`, `indexCount`,
+sphere against the frustum, back-face test it with its cone (`NormalCone.backfacing`), Hi-Z test the box around its sphere, and append one indirect command (`firstIndex`, `indexCount`,
 one instance, `baseInstance` = cluster index) for a multi-draw-indirect-count call. Tested: over 120 random views the selected set equals the one computed from the hierarchy's own accessors,
 `Frustumf` and `ConeCull` (8 485 expected clusters, **0 differences**); with frustum, cone and occlusion out of the way, the commands draw a closed, crack-free surface at budgets from 0 to
 unlimited; a wall in front hides everything; a short command buffer drops and counts the rest.

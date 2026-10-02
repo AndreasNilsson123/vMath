@@ -20,7 +20,9 @@ import vmath.geo.Planef;
 @Experimental("the helper set may change")
 public final class DualParaboloid {
 
+    /** The hemisphere looking along -Z of the paraboloid's view space. */
     public static final int FRONT = 0;
+    /** The hemisphere looking along +Z of the paraboloid's view space. */
     public static final int BACK = 1;
 
     private DualParaboloid() {

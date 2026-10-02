@@ -104,6 +104,7 @@ public final class DynamicAabbTree {
         return insert(box.minX(), box.minY(), box.minZ(), box.maxX(), box.maxY(), box.maxZ(), userData);
     }
 
+    /** Adds an object with the box given by its six bounds and returns its handle; {@code userData} is returned by queries and {@link #userData}. */
     public int insert(float minX, float minY, float minZ, float maxX, float maxY, float maxZ, int userData) {
         int leaf = allocate();
         int o = leaf * 6;
@@ -182,6 +183,7 @@ public final class DynamicAabbTree {
         return true;
     }
 
+    /** As the six-bounds {@code move}, with the box given as an {@link Aabbf}. */
     public boolean move(int handle, Aabbf box, float displacementX, float displacementY, float displacementZ) {
         return move(handle, box.minX(), box.minY(), box.minZ(), box.maxX(), box.maxY(), box.maxZ(),
                 displacementX, displacementY, displacementZ);
@@ -209,6 +211,7 @@ public final class DynamicAabbTree {
         return handle >= 0 && handle < nodeCapacity && handleNode[handle] >= 0;
     }
 
+    /** The {@code userData} given when the object was inserted; {@link IllegalArgumentException} for a handle that is not in the tree. */
     public int userData(int handle) {
         return link[(leafOf(handle) << 3) + ITEM];
     }
@@ -738,27 +741,8 @@ public final class DynamicAabbTree {
             while (sp > 0) {
                 int mask = stack[--sp];
                 int n = stack[--sp];
-                int o = n * 6;
-                float cx = (b[o] + b[o + 3]) * 0.5f, cy = (b[o + 1] + b[o + 4]) * 0.5f, cz = (b[o + 2] + b[o + 5]) * 0.5f;
-                float hx = (b[o + 3] - b[o]) * 0.5f, hy = (b[o + 4] - b[o + 1]) * 0.5f, hz = (b[o + 5] - b[o + 2]) * 0.5f;
-                int m = mask;
-                boolean outside = false;
-                for (int p = 0; p < 6; p++) {
-                    if ((mask & (1 << p)) == 0) {
-                        continue;
-                    }
-                    float nx = planes[p * 4], ny = planes[p * 4 + 1], nz = planes[p * 4 + 2], d = planes[p * 4 + 3];
-                    float s = nx * cx + ny * cy + nz * cz + d;
-                    float r = hx * Math.abs(nx) + hy * Math.abs(ny) + hz * Math.abs(nz);
-                    if (s + r < 0f) {
-                        outside = true;
-                        break;
-                    }
-                    if (s - r >= 0f) {
-                        m &= ~(1 << p);
-                    }
-                }
-                if (outside) {
+                int m = NodeTests.frustumMask(planes, b, n * 6, mask);
+                if (m < 0) {
                     continue;
                 }
                 if (t.link[(n << 3) + LEFT] == NULL) {
@@ -942,10 +926,10 @@ public final class DynamicAabbTree {
                 return false;
             }
             float ox = ray.ox(), oy = ray.oy(), oz = ray.oz();
-            float ix = inverse(ray.dx()), iy = inverse(ray.dy()), iz = inverse(ray.dz());
+            float ix = NodeTests.inverse(ray.dx()), iy = NodeTests.inverse(ray.dy()), iz = NodeTests.inverse(ray.dz());
             float best = tMax;
             int bestItem = -1;
-            float rootT = entry(t.bounds, t.root * 6, ox, oy, oz, ix, iy, iz, best);
+            float rootT = NodeTests.entry(t.bounds, t.root * 6, ox, oy, oz, ix, iy, iz, best);
             if (rootT == Float.POSITIVE_INFINITY) {
                 return false;
             }
@@ -964,7 +948,7 @@ public final class DynamicAabbTree {
                 if (t.link[(n << 3) + LEFT] == NULL) {
                     float leafT;
                     if (test == null) {
-                        leafT = entry(t.tight, n * 6, ox, oy, oz, ix, iy, iz, best);
+                        leafT = NodeTests.entry(t.tight, n * 6, ox, oy, oz, ix, iy, iz, best);
                     } else {
                         leafT = test.intersect(t.link[(n << 3) + ITEM], ray, best);
                     }
@@ -974,8 +958,8 @@ public final class DynamicAabbTree {
                     }
                 } else {
                     int l = t.link[(n << 3) + LEFT], r = t.link[(n << 3) + RIGHT];
-                    float tl = entry(t.bounds, l * 6, ox, oy, oz, ix, iy, iz, best);
-                    float tr = entry(t.bounds, r * 6, ox, oy, oz, ix, iy, iz, best);
+                    float tl = NodeTests.entry(t.bounds, l * 6, ox, oy, oz, ix, iy, iz, best);
+                    float tr = NodeTests.entry(t.bounds, r * 6, ox, oy, oz, ix, iy, iz, best);
                     if (sp + 2 > stack.length) {
                         stack = Arrays.copyOf(stack, stack.length * 2);
                     }
@@ -1008,26 +992,6 @@ public final class DynamicAabbTree {
             hit.primitive = bestItem;
             hit.t = best;
             return true;
-        }
-
-        private static float inverse(float d) {
-            return 1f / (d == 0f ? Float.MIN_NORMAL : d);
-        }
-
-        private static float entry(float[] b, int o, float ox, float oy, float oz, float ix, float iy, float iz, float tMax) {
-            float t1 = (b[o] - ox) * ix, t2 = (b[o + 3] - ox) * ix;
-            float tNear = Math.min(t1, t2), tFar = Math.max(t1, t2);
-            t1 = (b[o + 1] - oy) * iy;
-            t2 = (b[o + 4] - oy) * iy;
-            tNear = Math.max(tNear, Math.min(t1, t2));
-            tFar = Math.min(tFar, Math.max(t1, t2));
-            t1 = (b[o + 2] - oz) * iz;
-            t2 = (b[o + 5] - oz) * iz;
-            tNear = Math.max(tNear, Math.min(t1, t2));
-            tFar = Math.min(tFar, Math.max(t1, t2));
-            tNear = Math.max(tNear, 0f);
-            tFar = Math.min(tFar, tMax);
-            return tNear <= tFar ? tNear : Float.POSITIVE_INFINITY;
         }
     }
 

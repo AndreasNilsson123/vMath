@@ -152,7 +152,11 @@ final class FastMaps {
             }
         }
 
+        /** Stores the value for the key. */
         void put(int x, int y, int z, int value) {
+            if (value < 0) {
+                throw new IllegalArgumentException("values must not be negative");
+            }
             if ((size + 1) * 2 > kx.length) {
                 grow();
             }

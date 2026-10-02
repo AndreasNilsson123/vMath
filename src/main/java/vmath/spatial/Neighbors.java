@@ -47,6 +47,7 @@ public final class Neighbors {
         size = 0;
     }
 
+    /** The number of neighbours the buffer can hold, which is the {@code k} it was made with. */
     public int capacity() {
         return ids.length;
     }

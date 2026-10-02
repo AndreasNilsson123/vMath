@@ -65,6 +65,9 @@ public final class SegmentFloatArray implements AutoCloseable {
     private int capacity;
     private int size;
 
+    /**
+     * An empty array of elements of {@code floatsPerElement} floats (at least 1), with room for {@code capacity} elements (at least 1), in off-heap memory that {@link #close()} releases (and a cleaner, as a safety net, when the array is no longer reachable).
+     */
     public SegmentFloatArray(int floatsPerElement, int capacity) {
         if (floatsPerElement < 1) {
             throw new IllegalArgumentException("floatsPerElement must be positive: " + floatsPerElement);
@@ -97,14 +100,17 @@ public final class SegmentFloatArray implements AutoCloseable {
         return new SegmentFloatArray(TransformArray.STRIDE, capacity);
     }
 
+    /** The number of floats in one element. */
     public int floatsPerElement() {
         return stride;
     }
 
+    /** The number of elements. */
     public int size() {
         return size;
     }
 
+    /** The number of elements that fit without growing. */
     public int capacity() {
         return capacity;
     }
@@ -119,6 +125,7 @@ public final class SegmentFloatArray implements AutoCloseable {
         return segment;
     }
 
+    /** Removes all elements; the capacity is kept. */
     public void clear() {
         size = 0;
     }
@@ -131,6 +138,7 @@ public final class SegmentFloatArray implements AutoCloseable {
         size = n;
     }
 
+    /** Makes room for {@code n} elements; the segment at least doubles when it has to grow and the contents are kept. */
     public void ensureCapacity(int n) {
         if (n <= capacity) {
             return;
@@ -169,6 +177,7 @@ public final class SegmentFloatArray implements AutoCloseable {
         return size++;
     }
 
+    /** Replaces element {@code i} with {@code floatsPerElement()} floats from {@code src[off ..)}. */
     public void set(int i, float[] src, int off) {
         checkIndex(i);
         checkSource(src, off);
@@ -191,6 +200,7 @@ public final class SegmentFloatArray implements AutoCloseable {
         return segment.get(F, (long) i * elementBytes() + (long) component * Float.BYTES);
     }
 
+    /** Sets one component of element {@code i}. */
     public void setFloat(int i, int component, float v) {
         checkIndex(i);
         if (component < 0 || component >= stride) {
@@ -207,6 +217,7 @@ public final class SegmentFloatArray implements AutoCloseable {
         }
     }
 
+    /** Appends a {@code Vec3f} element and returns its index; the elements must have 3 floats ({@link IllegalStateException} otherwise). */
     public int addVec3(Vec3f v) {
         requireStride(3, "a Vec3f");
         ensureCapacity(size + 1);
@@ -217,6 +228,7 @@ public final class SegmentFloatArray implements AutoCloseable {
         return size++;
     }
 
+    /** Element {@code i} as a {@code Vec3f} (allocates); the elements must have 3 floats. */
     public Vec3f getVec3(int i) {
         requireStride(3, "a Vec3f");
         checkIndex(i);
@@ -224,6 +236,7 @@ public final class SegmentFloatArray implements AutoCloseable {
         return new Vec3f(segment.get(F, o), segment.get(F, o + 4), segment.get(F, o + 8));
     }
 
+    /** Appends a {@code Vec4f} element and returns its index; the elements must have 4 floats ({@link IllegalStateException} otherwise). */
     public int addVec4(Vec4f v) {
         requireStride(4, "a Vec4f");
         ensureCapacity(size + 1);
@@ -235,6 +248,7 @@ public final class SegmentFloatArray implements AutoCloseable {
         return size++;
     }
 
+    /** Element {@code i} as a {@code Vec4f} (allocates); the elements must have 4 floats. */
     public Vec4f getVec4(int i) {
         requireStride(4, "a Vec4f");
         checkIndex(i);
@@ -242,15 +256,18 @@ public final class SegmentFloatArray implements AutoCloseable {
         return new Vec4f(segment.get(F, o), segment.get(F, o + 4), segment.get(F, o + 8), segment.get(F, o + 12));
     }
 
+    /** Appends a quaternion element ({@code x, y, z, w}) and returns its index; the elements must have 4 floats. */
     public int addQuat(Quatf q) {
         return addVec4(new Vec4f(q.x(), q.y(), q.z(), q.w()));
     }
 
+    /** Element {@code i} as a quaternion (allocates); the elements must have 4 floats. */
     public Quatf getQuat(int i) {
         Vec4f v = getVec4(i);
         return new Quatf(v.x(), v.y(), v.z(), v.w());
     }
 
+    /** Appends a {@code Mat4f} element, column-major, and returns its index; the elements must have 16 floats ({@link IllegalStateException} otherwise). */
     public int addMat4(Mat4f m) {
         requireStride(16, "a Mat4f");
         ensureCapacity(size + 1);

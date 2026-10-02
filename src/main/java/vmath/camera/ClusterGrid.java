@@ -87,42 +87,52 @@ public final class ClusterGrid {
         return new ClusterGrid(viewportWidth, viewportHeight, tilePixels, slices, yDown, fovy, aspect, near, far);
     }
 
+    /** The number of tile columns. */
     public int tilesX() {
         return tilesX;
     }
 
+    /** The number of tile rows. */
     public int tilesY() {
         return tilesY;
     }
 
+    /** The number of depth slices. */
     public int slices() {
         return slices;
     }
 
+    /** The total number of clusters: {@code tilesX * tilesY * slices}. */
     public int clusterCount() {
         return tilesX * tilesY * slices;
     }
 
+    /** The side of a tile in pixels. */
     public int tilePixels() {
         return tilePixels;
     }
 
+    /** The viewport width in pixels. */
     public int viewportWidth() {
         return viewportWidth;
     }
 
+    /** The viewport height in pixels. */
     public int viewportHeight() {
         return viewportHeight;
     }
 
+    /** The view distance where the first slice starts. */
     public float near() {
         return near;
     }
 
+    /** The view distance where the last slice ends. */
     public float far() {
         return far;
     }
 
+    /** Whether pixel row 0 is at the top of the screen (NDC y = +1), as in a Vulkan-style framebuffer. */
     public boolean yDown() {
         return yDown;
     }
@@ -132,6 +142,7 @@ public final class ClusterGrid {
         return tanX;
     }
 
+    /** {@code tan(fovy / 2)}: the view-space y extent per unit of depth at the edge of the screen. */
     public float tanHalfFovY() {
         return tanY;
     }
@@ -141,10 +152,12 @@ public final class ClusterGrid {
         return sliceScale;
     }
 
+    /** The constant in the slice formula {@code floor(ln(depth) * sliceScale + sliceBias)}. */
     public float sliceBias() {
         return sliceBias;
     }
 
+    /** The linear index of a cluster: {@code (slice * tilesY + row) * tilesX + column}. The arguments are not checked. */
     public int index(int column, int row, int slice) {
         return (slice * tilesY + row) * tilesX + column;
     }

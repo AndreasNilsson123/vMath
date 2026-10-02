@@ -40,10 +40,12 @@ public final class TransformHierarchy {
     private int firstDirty = Integer.MAX_VALUE;
     private int lastUpdated;
 
+    /** An empty hierarchy with room for 64 nodes; it grows as nodes are added. */
     public TransformHierarchy() {
         this(64);
     }
 
+    /** An empty hierarchy with room for {@code capacity} nodes (at least 4); it grows as nodes are added. */
     public TransformHierarchy(int capacity) {
         int c = Math.max(capacity, 4);
         parent = new int[c];
@@ -166,12 +168,14 @@ public final class TransformHierarchy {
         markDirty(node);
     }
 
+    /** Sets the whole local transform of {@code node} from a {@link Transformf}. */
     public void setLocal(int node, Transformf t) {
         Vec3f p = t.translation(), s = t.scale();
         Quatf q = t.rotation();
         setLocal(node, p.x(), p.y(), p.z(), q.x(), q.y(), q.z(), q.w(), s.x(), s.y(), s.z());
     }
 
+    /** Sets the local translation of {@code node}. */
     public void setTranslation(int node, float x, float y, float z) {
         check(node);
         int o = node * LOCAL;
@@ -188,6 +192,7 @@ public final class TransformHierarchy {
         markDirty(node);
     }
 
+    /** Sets the local scale of {@code node}. */
     public void setScale(int node, float x, float y, float z) {
         check(node);
         int o = node * LOCAL;

@@ -33,6 +33,8 @@ Measured on the full test suite (JDK 25, generated float and double types includ
 | `vmath.mem` | 87.2% | 83.3% |
 | **all** | **96.8%** (13 686 of 14 144) | **90.7%** (6 737 of 7 428) |
 
+**The other modules** (`./gradlew :vmath-simd:test :vmath-codegen:test` writes a report under each module's `build/reports/jacoco`; measured 2026-10-02): `vmath-simd` 95.6% of lines (86 of 90) and 94.4% of branches, floor 92% / 90%; `vmath-codegen` 79.2% of lines (595 of 751) and 66.4% of branches, floor 76% / 62%, wired into each module's `check`. The code generator's own tests cover less than the root project's tests do indirectly: every generated `d` type and `XxxGpu` writer is exercised by the root test suite, which this figure does not count. `vmath-bench` has no tests and no figure.
+
 **Floors.** `check` fails if a package falls under a floor set two to three points below what was measured at the time (lines first, branches second: core 96% / 93%, camera 97% / 89%, geo 95% / 90%, mesh 95% / 90%,
 spatial 92% / 82%, bulk 90% / 80%, mem 84% / 80%, and so on; the table is `coverageFloors` in `build.gradle.kts`), and below 94% of lines or 87% of branches overall. They are there so that a change that adds untested code
 is noticed, not to chase a number: raise a floor when you raise the coverage, lower one only with a reason in the commit. The least covered package is `vmath.mem`, whose misses are mostly argument checks and `slice`
@@ -69,13 +71,26 @@ A third run on only `SpatialHash`, `Vec3f` and `Vec3d` after the last tests were
 formulations. In `SpatialHash` the survivors change how well `mix` scatters bits (the distribution tests would still pass with a weaker mixer, so they are thresholds, not a golden value) and the exact edge of
 the representable cell range.
 
+**Other packages, first runs (2026-10-02, 6 threads, the package's own test package as the tests, production classes only):**
+
+| Package | Mutants | Killed | Survived | No coverage | Run time |
+|---|---|---|---|---|---|
+| `vmath.spatial` | 3 330 | 76.9% | 715 | 53 | 13.5 min |
+| `vmath.mesh` | 3 996 | 74.9% | 835 | 168 | about 40 min |
+| `vmath.bulk` | 1 955 | 87.9% | 189 | 47 | about 3 min |
+| `vmath.gltf` | 841 | 84.8% | 112 | 16 | 4 min |
+
+These are much lower than `vmath.core` (98.4%): the tests of these packages compare with brute-force oracles and check invariants, which kills the logic but not the arithmetic inside tolerances and thresholds. The weakest classes: `CascadeCasters` 52.5% (its test only checked that nothing was wrongly culled, so any change that culled less survived), `CullStages$SmallFeature` 50.0%, `LooseOctree$Query` 59.0%, `Overdraw` 50.7%, `FastMaps$TripleIntMap` 28.6%, `MeshSimplifier$Run` 71.1%, `ClusterHierarchy` 71.4%, `MeshOptimizer` 72.2%, `SegmentFloatArray` 76.8%, `FrameDirtyRanges` 66.7%.
+
+**Gaps closed after these runs** (re-run on the changed classes only): `CascadeCasters` now has a test that compares every keep and cull decision with an independent double-precision light-space computation, in both directions, including near-vertical lights where the light view's basis has different zero entries: 52.5% to 79.2% killed (the survivors are the tolerance slack, comparison boundaries and entries that are structurally zero); `FastMaps` has a test against `HashMap` (and `TripleIntMap.put` now refuses negative values like `LongIntMap`): `TripleIntMap` 28.6% to 72.7%, `LongIntMap` 80.9% to 91.5%, the rest being the hash mixer, whose changes only alter the distribution; `FloatElements` (the new base of the containers) 82.1% to 96.4% and `FrameDirtyRanges` 66.7% to 93.3% with `FloatElementsTest` and a `FrameDirtyRanges` test. **Not closed:** the other survivors of all four packages (about 1 850 mutants in `spatial`, `mesh`, `bulk` and `gltf` together) have not been analysed one by one; the list is in the PIT report of a re-run, and `Overdraw`, `MeshSimplifier`, `SmallFeature`, `LooseOctree`, `LightCull` and `ClusterHierarchy` are where the real gaps are likely.
+
 ### How to read the numbers
 
 - Run-to-run variation is real: the same code gave 7 and 16 surviving mutants in `Vec3f` in two runs, because a mutant that makes a loop run forever is killed by a timeout, and which tests run first
   depends on timing. Compare totals, not individual mutants.
 - A killed mutant means *some* test failed, not that the right test did. The generated tests compare against JOML; they killed most of the arithmetic, and the survivors are where JOML has no opinion
   (conventions, thresholds, argument checks).
-- Only `vmath.core` and the `SpatialHash` addition were mutation tested. The other packages have coverage numbers above and nothing more: no claim is made about their tests' strength. `-Pmutation.classes='vmath.bulk.*'`
+- `vmath.core`, `spatial`, `mesh`, `bulk` and `gltf` were mutation tested (tables above); the other packages have coverage numbers and nothing more: no claim is made about their tests' strength. `-Pmutation.classes='vmath.bulk.*'`
   and the like run the same analysis; the packages with oracle tests of their own (`vmath.spatial`, `vmath.mesh`) are the interesting ones.
 - The first run mutated test classes that live in the same package as production code (`vmath.core.*` matches `Vec3fTest`); that inflated the first attempt's count and was fixed by restricting PIT to the main
   output directories. Those numbers were discarded.

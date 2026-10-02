@@ -17,8 +17,8 @@ group = "io.github.andreasnilsson123"
 version = "0.2.0-SNAPSHOT"
 
 val valhalla = providers.gradleProperty("valhalla").isPresent
-val baselineJdk = 25
-val valhallaJdk = 28
+val baselineJdk = property("vmath.jdk").toString().toInt()
+val valhallaJdk = property("vmath.valhallaJdk").toString().toInt()
 
 allprojects {
     group = rootProject.group
@@ -62,9 +62,13 @@ java {
 tasks.withType<JavaCompile>().configureEach {
     options.encoding = "UTF-8"
     // -exports is off because vmath.annotations.Experimental has class retention on purpose (japicmp reads it) while the annotations module is "requires static": with the lint on,
-    // javac reports exactly one warning per @Experimental class (54 on 2026-10-02) and nothing else, so nothing real is hidden. -preview is off for the Valhalla build's preview class files.
+    // javac reports exactly one warning per @Experimental class (54 on 2026-10-02) and nothing else, so nothing real is hidden. -preview is off only for the Valhalla build,
+    // whose class files are preview class files.
     // -Werror: the library and its tests compile without a single other warning, and it should stay that way.
-    options.compilerArgs.addAll(listOf("-Xlint:all", "-Xlint:-preview", "-Xlint:-exports", "-Werror"))
+    options.compilerArgs.addAll(listOf("-Xlint:all", "-Xlint:-exports", "-Werror"))
+    if (valhalla) {
+        options.compilerArgs.add("-Xlint:-preview")
+    }
 }
 
 // JOML's jar (the test oracle) is built for class-file version 46 and uses type annotations that javac reports with a [classfile] warning for every JOML class a test touches
@@ -100,7 +104,7 @@ tasks.test {
     // Extra JVM flags for the test JVM, e.g. -Pvmath.testJvmArgs="-XX:TieredStopAtLevel=1" to see which JIT settings the allocation contract tolerates.
     providers.gradleProperty("vmath.testJvmArgs").orNull?.let { jvmArgs(it.trim().split(Regex("\\s+"))) }
     // Forward -Dvmath.seed / -Dvmath.trials from the command line, e.g. a nightly job with a fresh seed.
-    listOf("vmath.seed", "vmath.trials", "vmath.writeAssets", "vmath.writeDocs", "vmath.verbose", "vmath.alloc.force").forEach { key ->
+    listOf("vmath.seed", "vmath.trials", "vmath.writeAssets", "vmath.writeDocs", "vmath.verbose", "vmath.alloc.force", "vmath.docs.all").forEach { key ->
         System.getProperty(key)?.let { systemProperty(key, it) }
     }
 }

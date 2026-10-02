@@ -18,10 +18,12 @@ public final class CullStages {
 
         private final FrustumKernel kernel;
 
+        /** A frustum stage that uses the best kernel found by {@link FrustumKernels#best()} (the SIMD one when its module is on the module or class path). */
         public Frustum() {
             this(FrustumKernels.best());
         }
 
+        /** A frustum stage that uses the given kernel. */
         public Frustum(FrustumKernel kernel) {
             this.kernel = kernel;
         }
@@ -37,6 +39,7 @@ public final class CullStages {
 
         private final float maxDistanceSquared;
 
+        /** A stage that rejects objects entirely farther than {@code maxDistance} from the camera. */
         public Distance(float maxDistance) {
             this.maxDistanceSquared = maxDistance * maxDistance;
         }
@@ -67,6 +70,7 @@ public final class CullStages {
 
         private final float minPixels;
 
+        /** A stage that rejects objects that would cover fewer than {@code minPixels} pixels of screen height. */
         public SmallFeature(float minPixels) {
             this.minPixels = minPixels;
         }

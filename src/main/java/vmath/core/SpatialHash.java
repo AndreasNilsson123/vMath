@@ -77,6 +77,7 @@ public final class SpatialHash {
         return hash(cell(x, cellSize), cell(y, cellSize), cell(z, cellSize));
     }
 
+    /** The hash of the cell that contains the point. */
     public static int hash(Vec3f p, float cellSize) {
         return hash(p.x(), p.y(), p.z(), cellSize);
     }
@@ -97,10 +98,12 @@ public final class SpatialHash {
         return (int) ((key >>> 42) & 0x1FFFFF) - (1 << 20);
     }
 
+    /** The cell index from the key made by {@link #pack3}: its y. */
     public static int unpackY(long key) {
         return (int) ((key >>> 21) & 0x1FFFFF) - (1 << 20);
     }
 
+    /** The cell index from the key made by {@link #pack3}: its z. */
     public static int unpackZ(long key) {
         return (int) (key & 0x1FFFFF) - (1 << 20);
     }

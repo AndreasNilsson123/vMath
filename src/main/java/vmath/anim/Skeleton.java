@@ -86,6 +86,7 @@ public final class Skeleton {
         }
     }
 
+    /** The number of joints. */
     public int jointCount() {
         return parent.length;
     }

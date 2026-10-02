@@ -31,6 +31,9 @@ import vmath.geo.Rayf;
 @ValueType
 public record Cameraf(Vec3f position, Quatf orientation, float fovy, float aspect, float near, float far, DepthRange depth) {
 
+    /**
+     * Checks the arguments: {@code fovy} in (0, pi) radians, {@code aspect} and {@code near} positive, {@code far} greater than {@code near}; {@link IllegalArgumentException} otherwise.
+     */
     public Cameraf {
         if (!(fovy > 0f && fovy < (float) Math.PI)) {
             throw new IllegalArgumentException("fovy must be in (0, PI) radians: " + fovy);
@@ -52,14 +55,17 @@ public record Cameraf(Vec3f position, Quatf orientation, float fovy, float aspec
         return new Cameraf(position, Quatf.lookRotation(target.sub(position), up), fovy, aspect, near, far, depth);
     }
 
+    /** The same camera at another position. */
     public Cameraf withPosition(Vec3f p) {
         return new Cameraf(p, orientation, fovy, aspect, near, far, depth);
     }
 
+    /** The same camera with another orientation. */
     public Cameraf withOrientation(Quatf q) {
         return new Cameraf(position, q, fovy, aspect, near, far, depth);
     }
 
+    /** The same camera with another aspect ratio (width over height), for example after a window resize. */
     public Cameraf withAspect(float a) {
         return new Cameraf(position, orientation, fovy, a, near, far, depth);
     }
@@ -76,10 +82,12 @@ public record Cameraf(Vec3f position, Quatf orientation, float fovy, float aspec
         return orientation.transform(new Vec3f(0f, 0f, -1f));
     }
 
+    /** The camera's +X axis in world space. */
     public Vec3f right() {
         return orientation.transform(Vec3f.UNIT_X);
     }
 
+    /** The camera's +Y axis in world space. */
     public Vec3f up() {
         return orientation.transform(Vec3f.UNIT_Y);
     }
@@ -91,6 +99,7 @@ public record Cameraf(Vec3f position, Quatf orientation, float fovy, float aspec
         return Mat4f.rotation(orientation.conjugate()).mul(Mat4f.translation(position.negate()));
     }
 
+    /** View to clip space, in the depth convention of {@link #depth()}. */
     public Mat4f projection() {
         boolean infinite = Float.isInfinite(far);
         return switch (depth) {
@@ -102,6 +111,7 @@ public record Cameraf(Vec3f position, Quatf orientation, float fovy, float aspec
         };
     }
 
+    /** World to clip space: {@code projection() * view()}. */
     public Mat4f viewProjection() {
         return projection().mul(view());
     }
@@ -207,6 +217,7 @@ public record Cameraf(Vec3f position, Quatf orientation, float fovy, float aspec
 
     // ---------------------------------------------------------------- precision
 
+    /** The same camera with double-precision position and orientation. */
     @FloatOnly
     public Camerad toDouble() {
         return new Camerad(position.toDouble(), orientation.toDouble(), fovy, aspect, near, far, depth);

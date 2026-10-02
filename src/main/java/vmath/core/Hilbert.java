@@ -2,7 +2,7 @@ package vmath.core;
 
 /**
  * Hilbert curve codes: like {@link Morton} codes, but consecutive codes are always neighbouring grid cells, so sorting by Hilbert code gives a better locality
- * than Z-order (no long jumps between quadrants). The price is a more expensive encode, a loop over the bits instead of a few shifts.
+ * than Z-order (no long jumps between quadrants). The price is a more expensive encode: a table lookup per two (3D) or four (2D) levels instead of a few shifts for the whole code.
  *
  * <p>The curve starts at the origin and visits every cell of the {@code 2^bits} grid once. It is hierarchical: the top {@code 2k} (2D) or {@code 3k} (3D)
  * bits of a code depend only on the top {@code k} bits of the coordinates, so a code prefix names a square or cube of cells. Coordinates are treated as unsigned
@@ -47,6 +47,14 @@ public final class Hilbert {
 
     /** The Hilbert index of cell {@code (x, y)} of a {@code 2^bits} by {@code 2^bits} grid ({@code 1 <= bits <= 32}); unsigned if {@code bits == 32}. */
     public static long encode2(int x, int y, int bits) {
+        checkBits(bits, MAX_BITS_2D);
+        checkCoordinate(x, bits);
+        checkCoordinate(y, bits);
+        return AUTOMATON_2.encode(Morton.encode2(y, x), bits);
+    }
+
+    /** Skilling's transpose algorithm as published, one bit at a time: the oracle of the table-driven {@link #encode2}, which gives the same codes. */
+    static long encode2Reference(int x, int y, int bits) {
         checkBits(bits, MAX_BITS_2D);
         checkCoordinate(x, bits);
         checkCoordinate(y, bits);
@@ -99,6 +107,15 @@ public final class Hilbert {
 
     /** The Hilbert index of cell {@code (x, y, z)} of a {@code 2^bits} cube ({@code 1 <= bits <= 21}). */
     public static long encode3(int x, int y, int z, int bits) {
+        checkBits(bits, MAX_BITS_3D);
+        checkCoordinate(x, bits);
+        checkCoordinate(y, bits);
+        checkCoordinate(z, bits);
+        return AUTOMATON_3.encode(Morton.encode3(z, y, x), bits);
+    }
+
+    /** Skilling's transpose algorithm, branch-free, one bit at a time: the oracle of the table-driven {@link #encode3}, which gives the same codes. */
+    static long encode3Reference(int x, int y, int z, int bits) {
         checkBits(bits, MAX_BITS_3D);
         checkCoordinate(x, bits);
         checkCoordinate(y, bits);
@@ -161,6 +178,137 @@ public final class Hilbert {
             }
         }
         return new Vec3i((int) a, (int) b, (int) c);
+    }
+
+    // ---------------------------------------------------------------- the table-driven encoder
+
+    private static final Automaton AUTOMATON_2 = new Automaton(2, 4);
+    private static final Automaton AUTOMATON_3 = new Automaton(3, 2);
+
+    /**
+     * Skilling's algorithm as a finite automaton over Morton digits. Reading the coordinates from the top bit down, the work done on the bits below a level is always
+     * one of a few signed permutations of the axes, together with the running parity of the Gray code; those (axis permutation, axis flips, parity) are the states,
+     * 16 in 2D and 48 in 3D, found by exploring from the identity. A table gives, for a state and the bits of a level (one per axis), the code digit and
+     * the next state; a second table does the same for {@code chunk} levels at once, so a 21-bit 3D code takes 11 lookups instead of 20 iterations of bit twiddling.
+     * The tables are built once at class initialisation from the automaton's own definition, and the codes are checked against the original algorithm
+     * ({@link #encode3Reference}) in the tests.
+     */
+    private static final class Automaton {
+        private final int dims;
+        private final int chunk;
+        private final int[] one;   // [state << dims | r] = next << dims | digit
+        private final int[] many;  // [state << (dims * chunk) | rr] = next << (dims * chunk) | digits
+
+        /** An automaton state: for each effective axis the raw axis it reads and whether it is complemented; and the Gray-code parity. */
+        private record State(int[] perm, boolean[] flip, int parity) {
+            @Override
+            public boolean equals(Object o) {
+                return o instanceof State s && java.util.Arrays.equals(perm, s.perm) && java.util.Arrays.equals(flip, s.flip) && parity == s.parity;
+            }
+
+            @Override
+            public int hashCode() {
+                return java.util.Arrays.hashCode(perm) * 31 + java.util.Arrays.hashCode(flip) * 7 + parity;
+            }
+        }
+
+        Automaton(int dims, int chunk) {
+            this.dims = dims;
+            this.chunk = chunk;
+            java.util.List<State> states = new java.util.ArrayList<>();
+            java.util.Map<State, Integer> index = new java.util.HashMap<>();
+            int[] identity = new int[dims];
+            for (int i = 0; i < dims; i++) {
+                identity[i] = i;
+            }
+            State start = new State(identity, new boolean[dims], 0);
+            index.put(start, 0);
+            states.add(start);
+            int[] digit = new int[1];
+            for (int i = 0; i < states.size(); i++) {
+                for (int r = 0; r < 1 << dims; r++) {
+                    State n = step(states.get(i), r, digit);
+                    if (!index.containsKey(n)) {
+                        index.put(n, states.size());
+                        states.add(n);
+                    }
+                }
+            }
+            int levelBits = dims * chunk;
+            one = new int[states.size() << dims];
+            many = new int[states.size() << levelBits];
+            for (int i = 0; i < states.size(); i++) {
+                for (int r = 0; r < 1 << dims; r++) {
+                    State n = step(states.get(i), r, digit);
+                    one[(i << dims) | r] = (index.get(n) << dims) | digit[0];
+                }
+                for (int rr = 0; rr < 1 << levelBits; rr++) {
+                    State s = states.get(i);
+                    int out = 0;
+                    for (int level = chunk - 1; level >= 0; level--) {
+                        s = step(s, (rr >>> (dims * level)) & ((1 << dims) - 1), digit);
+                        out = (out << dims) | digit[0];
+                    }
+                    many[(i << levelBits) | rr] = (index.get(s) << levelBits) | out;
+                }
+            }
+        }
+
+        /** One level: {@code r} holds the raw bit of each axis (axis 0 in the highest bit); returns the next state and writes the code digit to {@code digitOut[0]}. */
+        private State step(State s, int r, int[] digitOut) {
+            int[] e = new int[dims];
+            for (int i = 0; i < dims; i++) {
+                e[i] = ((r >>> (dims - 1 - s.perm[i])) & 1) ^ (s.flip[i] ? 1 : 0);
+            }
+            int g = 0, digit = 0;
+            int[] gray = new int[dims];
+            for (int i = 0; i < dims; i++) {
+                g ^= e[i];
+                gray[i] = g;
+            }
+            for (int i = 0; i < dims; i++) {
+                digit = (digit << 1) | (gray[i] ^ s.parity);
+            }
+            digitOut[0] = digit;
+            int[] perm = s.perm.clone();
+            boolean[] flip = s.flip.clone();
+            for (int i = 0; i < dims; i++) {
+                if (e[i] != 0) {
+                    flip[0] = !flip[0];
+                } else if (i != 0) {
+                    int tp = perm[0];
+                    perm[0] = perm[i];
+                    perm[i] = tp;
+                    boolean tf = flip[0];
+                    flip[0] = flip[i];
+                    flip[i] = tf;
+                }
+            }
+            return new State(perm, flip, s.parity ^ gray[dims - 1]);
+        }
+
+        /** The Hilbert code of the cell whose Morton code is {@code morton} (axis 0 in the highest bit of each digit), for a grid of {@code bits} levels. */
+        long encode(long morton, int bits) {
+            int levelBits = dims * chunk;
+            int mask = (1 << dims) - 1;
+            int state = 0;
+            long code = 0;
+            int level = bits;
+            while (level % chunk != 0) {
+                level--;
+                int e = one[(state << dims) | (int) ((morton >>> (dims * level)) & mask)];
+                code = (code << dims) | (e & mask);
+                state = e >>> dims;
+            }
+            long chunkMask = (1L << levelBits) - 1;
+            while (level > 0) {
+                level -= chunk;
+                int e = many[(state << levelBits) | (int) ((morton >>> (dims * level)) & chunkMask)];
+                code = (code << levelBits) | (e & chunkMask);
+                state = e >>> levelBits;
+            }
+            return code;
+        }
     }
 
     /** 32-bit code of a cell of a 65536 by 65536 grid; unsigned, so compare with {@link Integer#compareUnsigned}. */

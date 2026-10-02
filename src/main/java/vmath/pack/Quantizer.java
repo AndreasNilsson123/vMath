@@ -34,6 +34,7 @@ public final class Quantizer {
         this.sizeZ = bounds.maxZ() - bounds.minZ();
     }
 
+    /** The box the positions are quantized against. */
     public Aabbf bounds() {
         return bounds;
     }
@@ -62,6 +63,7 @@ public final class Quantizer {
                 bounds.minZ() + Norm.unpackUnorm16(z) * sizeZ);
     }
 
+    /** The position stored in the three unorm16 values at {@code src[offset .. offset + 2]}. */
     public Vec3f unpack(short[] src, int offset) {
         return unpack(src[offset], src[offset + 1], src[offset + 2]);
     }

@@ -18,14 +18,17 @@ import vmath.core.Vec3f;
 @ValueType
 public record Segmentf(float ax, float ay, float az, float bx, float by, float bz) {
 
+    /** The segment from {@code a} to {@code b}. */
     public static Segmentf of(Vec3f a, Vec3f b) {
         return new Segmentf(a.x(), a.y(), a.z(), b.x(), b.y(), b.z());
     }
 
+    /** The start point (parameter 0). */
     public Vec3f a() {
         return new Vec3f(ax, ay, az);
     }
 
+    /** The end point (parameter 1). */
     public Vec3f b() {
         return new Vec3f(bx, by, bz);
     }
@@ -35,15 +38,18 @@ public record Segmentf(float ax, float ay, float az, float bx, float by, float b
         return new Vec3f(bx - ax, by - ay, bz - az);
     }
 
+    /** The squared length; cheaper than {@link #length()}. */
     public float lengthSquared() {
         float dx = bx - ax, dy = by - ay, dz = bz - az;
         return dx * dx + dy * dy + dz * dz;
     }
 
+    /** The length. */
     public float length() {
         return (float) Math.sqrt(lengthSquared());
     }
 
+    /** The point halfway between the ends. */
     public Vec3f midpoint() {
         return new Vec3f((ax + bx) * 0.5f, (ay + by) * 0.5f, (az + bz) * 0.5f);
     }
@@ -84,11 +90,13 @@ public record Segmentf(float ax, float ay, float az, float bx, float by, float b
         return of(m.transformPosition(a()), m.transformPosition(b()));
     }
 
+    /** The same segment with double-precision components. */
     @FloatOnly
     public Segmentd toDouble() {
         return new Segmentd(ax, ay, az, bx, by, bz);
     }
 
+    /** The same segment with float components, each rounded to the nearest float. */
     @DoubleOnly
     public Segmentf toFloat() {
         return new Segmentf((float) ax, (float) ay, (float) az, (float) bx, (float) by, (float) bz);

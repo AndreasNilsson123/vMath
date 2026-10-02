@@ -18,16 +18,18 @@ Scope uses the roadmap's sizes: S ≈ hours, M ≈ days, L ≈ 1–2 weeks, XL =
 | Medium | 16 | Experimental surface, test strength outside `vmath.core`, duplicated container and traversal code, oversized classes, package layering, stale README/ROADMAP text, dependency lag, loaders without fuzzing. |
 | Low | 8 | Warnings, dead code, error-signalling style, suppressed lints, small gaps. |
 
+**Progress, 2026-10-02:** 20 of 28 items are ticked. The 8 open ones are only partly done (some are blocked on a decision of the owner or on hardware that is not here, the others are larger than the time spent), and each says exactly what is left in its **Status** line: TD-01, TD-06, TD-09, TD-10, TD-11, TD-14, TD-16, TD-22. The numbers in the table above and the Explanation paragraphs are those of the audit and are not rewritten.
+
 Index (tick when fixed):
 
 - [ ] **TD-01** High: GPU-facing code verified only against Java references
 - [x] **TD-02** High: release identity unresolved (group id, version against tag, licence holder)
-- [ ] **TD-03** High: 35% of public declarations have no doc comment
+- [x] **TD-03** High: 35% of public declarations have no doc comment
 - [x] **TD-04** High: thread-safety contracts missing; two concurrency hazards untested
 - [x] **TD-05** Medium: one third of the classes are `@Experimental` with no promotion plan
 - [ ] **TD-06** Medium: test strength unmeasured outside `vmath.core`; coverage ignores three modules
 - [x] **TD-07** Medium: kernel selection (SPI) logic barely tested, and repeated service lookups
-- [ ] **TD-08** Medium: copy-pasted container boilerplate
+- [x] **TD-08** Medium: copy-pasted container boilerplate
 - [ ] **TD-09** Medium: duplicated traversal and kernel code
 - [ ] **TD-10** Medium: oversized classes and methods
 - [ ] **TD-11** Medium: package layering and a single 17-package module
@@ -39,14 +41,14 @@ Index (tick when fixed):
 - [x] **TD-17** Medium: allocation in paths that read as allocation-free
 - [x] **TD-18** Medium: generated writers and new classes below the coverage of their neighbours; public methods no test calls
 - [x] **TD-19** Medium: loaders for untrusted input are not fuzzed
-- [ ] **TD-20** Medium: performance is not guarded in CI
+- [x] **TD-20** Medium: performance is not guarded in CI
 - [x] **TD-21** Low: test hygiene (threshold oracles, JIT-dependent tests, an assertion-free test, stdout)
 - [ ] **TD-22** Low: Valhalla readiness checked by string matching; Valhalla CI job cannot fail
 - [x] **TD-23** Low: compiler and javadoc warnings
 - [x] **TD-24** Low: dead and superseded code
 - [x] **TD-25** Low: inconsistent error signalling
 - [x] **TD-26** Low: live backing arrays exposed by the containers and `Mesh`
-- [ ] **TD-27** Low: suppressed lints and unchecked casts
+- [x] **TD-27** Low: suppressed lints and unchecked casts
 - [x] **TD-28** Low: known functional gaps recorded in prose only
 
 ---
@@ -91,6 +93,7 @@ None found. The closest calls are listed as High (TD-01, TD-04) with the reason 
 - **Estimated scope:** step 1 S, step 3 S, step 2 L to XL (needs a GPU runner or a software rasterizer such as Mesa llvmpipe/lavapipe on the CI machine).
 - **Testing required:** shader compilation as a test; GPU-versus-reference comparison on random scenes in all three depth conventions; reflection-versus-`LayoutValidator` for every `@GpuStruct` in the repository; a fence-ordering test against the real API.
 - **Depends on:** DOC-5 (sample app) overlaps step 2. TD-04 for the ring's threading contract.
+- **Status:** Partly done 2026-10-02: step 1 is written, `gl/ShaderCompileTest` compiles the object and cluster culling shaders, `ClusterGrid.glslLookup` and `DualParaboloid.glsl` with glslangValidator or glslc and CI installs glslang. On this machine no compiler is installed, so the test is skipped here and **has never run against a real compiler**. Step 3 is only partly done: `FormatNumbersTest` checks that `PackedFormat`, `VertexFormat` and `TextureFormat` agree on the size wherever two of them carry the same Vulkan number, and the Javadoc no longer says the numbers were checked against the Khronos headers (they were entered by hand); no test reads the headers. **Open:** step 2 (GPU run against the references) and the header comparison.
 
 ### TD-02 — Release identity is unresolved
 
@@ -118,6 +121,7 @@ None found. The closest calls are listed as High (TD-01, TD-04) with the reason 
 - **Estimated scope:** L (about 670 declarations; the arithmetic ones are quick).
 - **Testing required:** the `javadoc` task with `missing` enabled per package and `-Xwerror`; a check that generated twins receive the template comments.
 - **Depends on:** INF-5 (the roadmap item this is the remainder of). Pairs with TD-12.
+- **Status:** Done 2026-10-02: every public and protected declaration of the published modules has a doc comment, enforced by `PublicDocsTest` (it parses the sources and templates with javac's tree API; it counted 821 undocumented declarations at the start, more than the audit's 673 because it also counts constructors, enum constants and interface members, and none now). The comments for the generated twins are the templates', written in precision-neutral words. Not done: `@param`/`@return` tags on every method (the doclint `-missing` group stays off for them), and the unpublished `vmath-bench` and `vmath-codegen` (javadoc is disabled there, TD-23).
 
 ### TD-04 — Thread-safety contracts are mostly unwritten, and two hazards are untested
 
@@ -157,6 +161,7 @@ None found. The closest calls are listed as High (TD-01, TD-04) with the reason 
 - **Estimated scope:** M (the runs are mostly waiting; the fixes depend on what they find).
 - **Testing required:** the new tests themselves; a floor per added module.
 - **Depends on:** none. TD-18 and TD-21 are likely to shrink as a result.
+- **Status:** Partly done 2026-10-02: JaCoCo covers `vmath-simd` and `vmath-codegen` with floors in their `check`; PIT was run on `spatial` (76.9% killed), `mesh` (74.9%), `bulk` (87.9%) and `gltf` (84.8%), all in docs/COVERAGE.md, and the gaps found in `CascadeCasters`, `FastMaps`, `FloatElements` and `FrameDirtyRanges` were closed and re-measured (52.5 to 79.2%, 28.6 to 72.7%, 82.1 to 96.4%, 66.7 to 93.3%). **Open:** the other roughly 1 850 surviving mutants have not been analysed one by one; the weakest classes are listed in COVERAGE.md.
 
 ### TD-07 — Kernel selection (SPI) logic is barely tested, and does repeated service lookups
 
@@ -179,6 +184,7 @@ None found. The closest calls are listed as High (TD-01, TD-04) with the reason 
 - **Estimated scope:** M.
 - **Testing required:** the existing container tests unchanged plus the allocation-contract tests (the delegation must stay allocation-free and JIT-inlinable); a before/after run of `BulkBench` to show no slowdown.
 - **Depends on:** none. Supersedes the roadmap's MEM-3 for the containers.
+- **Status:** Done 2026-10-02 for the five containers whose mechanics are identical: `Vec3fArray`, `Vec4fArray`, `QuatArray`, `Mat4fArray` and `TransformArray` extend the new public `FloatElements` (growth, bounds checks, strided and buffer writers, compaction; the constructor is package-private; the minimum capacity is now 1 everywhere). Growth now fails with a message instead of overflowing. `BoundsArray` (six parallel arrays) and `SegmentFloatArray` (off-heap) keep their own code. Measured with JMH `BulkBench` before and after, two rounds each, 2 forks of 5 iterations: every benchmark within noise (for example `transformPositions` 222.7 and 197.2 us before, 229.9 and 193.4 us after; `quatSlerp` 7 365 and 7 249 us before, 7 267 and 7 312 us after); the allocation contract and the container tests pass unchanged, and `FloatElementsTest` runs the shared mechanics on all five. japicmp: reports the moved methods as removed (a false alarm of the tool for inherited methods; they are inherited and the old calls resolve at run time), passes as compatible once the methods are not `final`.
 
 ### TD-09 — Duplicated traversal and kernel code
 
@@ -190,6 +196,7 @@ None found. The closest calls are listed as High (TD-01, TD-04) with the reason 
 - **Estimated scope:** M.
 - **Testing required:** the BVH and tree oracle tests unchanged; `FrameBench` and `SpatialStructBench` before and after (no regression); the allocation contract.
 - **Depends on:** TD-10 (same classes), TD-20 (benchmarks need to catch a regression).
+- **Status:** Partly done 2026-10-02: the frustum plane test and the ray slab test (`inverse`, `entry`) of `BvhQuery` and `DynamicAabbTree` are one package-private `NodeTests`; the SIMD providers share `SimdSupport`; `CullKernelBench` says that its loops are deliberate copies. Measured before and after (JMH, 2 forks, two rounds; `DynamicTreeBench` and `SpatialStructBench`): no change beyond the noise, which was large here (the same untouched benchmark moved by up to 30% between runs; in the quieter round `frustumQuery` was 501.7 us before and 515.5 us after, `frustumQueryStaticReference` 89.3 and 84.1 us). Ray traversal has no benchmark. **Open:** the repeated windows of `UniformGrid` and `LooseOctree`, and the `Query` classes' leaf loops.
 
 ### TD-10 — Oversized classes and methods
 
@@ -202,6 +209,7 @@ None found. The closest calls are listed as High (TD-01, TD-04) with the reason 
 - **Estimated scope:** L for `Gltf` and the `mesh` builds together, M for the trees.
 - **Testing required:** the existing tests plus a before/after comparison of outputs on the real-asset tests (`RealGltfAssetsTest`) and the property tests; JMH where a method is timed (`HierarchyBench`, `SpatialStructBench`).
 - **Depends on:** TD-09 (same trees), TD-19 (fuzz the loader before restructuring it).
+- **Status:** Partly done 2026-10-02: `Gltf` went from 1 228 to 1 069 lines by moving its JSON access, accessor-format and clip-resampling helpers into `JsonAccess`, `AccessorFormat` and `ClipResampling` (package-private, same API, the glTF tests, the real-asset tests and the fuzz tests unchanged and green); `DynamicAabbTree` lost 40 lines to `NodeTests`. **Open:** the rest of `Gltf` (skins, animations, meshes need the instance state), the `mesh` builds and the long methods, which are algorithmic and well covered, and `UniformGrid`/`LooseOctree`.
 
 ### TD-11 — Package layering, and one module with 17 exported packages
 
@@ -212,6 +220,7 @@ None found. The closest calls are listed as High (TD-01, TD-04) with the reason 
 - **Estimated scope:** M for the moves, XL for the module split (templates and the generator need per-module directories).
 - **Testing required:** `ModuleDescriptorTest` per module, japicmp (the moves of stable classes need deprecation forwarders), the full build and the Valhalla build.
 - **Depends on:** TD-02 (coordinates), TD-05 (experimental classes move freely before promotion).
+- **Status:** Partly done 2026-10-02: `CascadeCasters` moved to `camera` (`spatial` no longer imports `camera`; `camera` now imports `spatial` and `bulk` for that one class) and the cone maths are `geo.NormalCone` (`mesh` uses it instead of `spatial`, though `Meshlets.addTo(ConeCull.Clusters)` still ties `mesh` to `spatial`); neither class was in the baseline, so nothing needed a forwarder. **Open, a decision for the owner:** whether `gpucull` stays in the core module, and the module split (INF-6), which is XL and changes the published artifacts.
 
 ### TD-12 — Stale README and ROADMAP text
 
@@ -247,6 +256,7 @@ None found. The closest calls are listed as High (TD-01, TD-04) with the reason 
 - **Estimated scope:** M.
 - **Testing required:** full build, Valhalla build, `japicmp` from a clean clone (no `build/` directory), `verifyPublication`, and a timing comparison of a no-change build.
 - **Depends on:** TD-13 (the catalog), TD-11 (a module split would multiply the duplication if done first).
+- **Status:** Partly done 2026-10-02: the JDK numbers (25 and 28) are in `gradle.properties` and every module reads them (before: literals in five scripts); the version catalog (TD-13) was already done. Measured: `--configuration-cache` is **not** usable yet: Gradle reports 9 problems in 6 tasks (`generateSources`, `exportBaselineSource`, `buildBaselineJar`, `stageBaselineJar`, `japicmp`, and one more), all 'cannot serialize Gradle script object references' from `doFirst` blocks and lazy values defined in the root script. **Open:** moving the root script into convention plugins (`build-logic`) and fixing those six tasks, and a CI step that runs the baseline path from a clean clone; both are M and were not started.
 
 ### TD-15 — Native memory ownership
 
@@ -271,6 +281,7 @@ None found. The closest calls are listed as High (TD-01, TD-04) with the reason 
 - **Estimated scope:** M for (a), S each for (b) and (c).
 - **Testing required:** the existing oracle tests (`AllocatorsTest` with its `validate()` invariant, `HilbertMortonTest` properties, `SortingTest`) unchanged; `MemBench` and `SortBench` before and after; record losses as well as wins, as the project does.
 - **Depends on:** TD-20 (so that the next regression is noticed).
+- **Status:** Partly done 2026-10-02: (b) done: the Hilbert encode is a table-driven automaton, 35 ns per 3D code instead of 104 (3.0 times), and the 1M-point locality order 97.6 ms instead of 186 ms (Morton 70.6 ms), with the same codes for every input (`HilbertAutomatonTest`); (c) was measured earlier as no clear win and left; (d) is documented as an oracle, no change; (e) is TD-07. **Open:** (a) `FreeListAllocator` still scans every block (O(blocks) per allocation, documented): I did not build the size-class index, because the allocator is experimental, meant for hundreds to thousands of live blocks, and a mistake in a new free-list structure costs more than the measured 0.4 us per call at 1 000 blocks.
 
 ### TD-17 — Allocation in paths that read as allocation-free
 
@@ -322,6 +333,7 @@ None found. The closest calls are listed as High (TD-01, TD-04) with the reason 
 ---
 
 ## 6. Low
+- **Status:** Done 2026-10-02 as far as it can be done without GitHub: `.github/workflows/perf.yml` runs a fixed JMH subset nightly and stores the JSON, and `scripts/perf_guard.py` checks ratios inside the run (per parameter set) and a 50% absolute limit against the previous night; run locally on a real result it passes (all ratios well inside their limits, for example Hilbert/Morton 5.2 to 6.1 against 12), and on a copy of that result with the Hilbert encode made 3 times slower it fails both the ratio and the absolute check. **Not verified:** the workflow itself has never run on GitHub, and the limits come from one local run, not from a week of nightly noise on shared runners.
 
 ### TD-21 — Test hygiene
 
@@ -343,6 +355,7 @@ None found. The closest calls are listed as High (TD-01, TD-04) with the reason 
 - **Estimated scope:** M for the processor, S for the CI change.
 - **Testing required:** golden tests for each rule (like `vmath-codegen`'s), a deliberately violating fixture that the processor must reject.
 - **Depends on:** TD-13 (pinning a build is a dependency decision).
+- **Status:** Partly done 2026-10-02: the string heuristics are replaced by `ValueTypeChecker`, which checks the identity rules (`==`/`!=`, `synchronized`, `identityHashCode` on value types) on the javac syntax tree of every source and template, with a golden test per rule and violating fixtures (`ValueTypeCheckerTest`); it has no type attribution, so it matches names declared with a value type in the same file. **Open:** the checker is a test, not the annotation processor of AF-9; the Valhalla CI job is still non-blocking because no stable early-access build number is pinned (that needs a decision on which build).
 
 ### TD-23 — Compiler and javadoc warnings
 
@@ -397,6 +410,7 @@ None found. The closest calls are listed as High (TD-01, TD-04) with the reason 
 - **Estimated scope:** M for the JSON types (touches `Gltf` heavily), S for the rest.
 - **Testing required:** `JsonTest`, `GltfTest` and the real-asset tests unchanged; TD-19's fuzz test first.
 - **Depends on:** TD-10, TD-19, TD-23.
+- **Status:** Done 2026-10-02 with one decision kept: no `@SuppressWarnings` is left in the library (the ring's fences are a `List<F>` since TD-04; the JSON tree is built from `JsonObject` and `JsonArray`, small package-private classes, so `instanceof` yields typed maps and lists and `Gltf` needs no unchecked cast; I did not build a sealed `JsonValue` hierarchy, which would have changed every accessor for no further gain), and `-Xlint:-preview` is now only on the Valhalla build. `-Xlint:-exports` stays: turned on, it reports exactly one warning for each of the 54 `@Experimental` classes (the annotation has class retention on purpose, for japicmp) and nothing else, which the build comment records.
 
 ### TD-28 — Known functional gaps are recorded in prose only
 

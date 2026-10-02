@@ -37,6 +37,7 @@ public final class FreeListAllocator {
     private int blocks;
     private long freeBytes;
 
+    /** An allocator over {@code capacity} bytes of offsets with no memory behind them ({@link #segment()} is {@code null}). */
     public FreeListAllocator(long capacity, Strategy strategy) {
         this(capacity, strategy, null);
     }
@@ -56,14 +57,17 @@ public final class FreeListAllocator {
         reset();
     }
 
+    /** The size of the range in bytes. */
     public long capacity() {
         return capacity;
     }
 
+    /** The bytes in free blocks; they may be split over several blocks, so a request this large can still fail. */
     public long freeBytes() {
         return freeBytes;
     }
 
+    /** The bytes in allocated blocks: {@code capacity() - freeBytes()}. */
     public long allocatedBytes() {
         return capacity - freeBytes;
     }
@@ -220,6 +224,7 @@ public final class FreeListAllocator {
         return size;
     }
 
+    /** The memory behind the offsets, or {@code null} for an allocator made from a capacity only. */
     public MemorySegment segment() {
         return backing;
     }

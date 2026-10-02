@@ -21,16 +21,20 @@ import vmath.annotations.ValueType;
 @ValueType
 public record Transformf(Vec3f translation, Quatf rotation, Vec3f scale) {
 
+    /** The identity. */
     public static final Transformf IDENTITY = new Transformf(Vec3f.ZERO, Quatf.IDENTITY, Vec3f.ONE);
 
+    /** A transform that only translates. */
     public static Transformf ofTranslation(Vec3f t) {
         return new Transformf(t, Quatf.IDENTITY, Vec3f.ONE);
     }
 
+    /** A transform that only rotates. */
     public static Transformf ofRotation(Quatf q) {
         return new Transformf(Vec3f.ZERO, q, Vec3f.ONE);
     }
 
+    /** A transform that only scales. */
     public static Transformf ofScale(Vec3f s) {
         return new Transformf(Vec3f.ZERO, Quatf.IDENTITY, s);
     }
@@ -46,6 +50,7 @@ public record Transformf(Vec3f translation, Quatf rotation, Vec3f scale) {
         return Math.abs(scale.x() - scale.y()) <= eps && Math.abs(scale.y() - scale.z()) <= eps;
     }
 
+    /** The point {@code p} transformed by this transform: scaled, rotated and translated. */
     public Vec3f transformPosition(Vec3f p) {
         return rotation.transform(p.mul(scale)).add(translation);
     }
@@ -88,28 +93,34 @@ public record Transformf(Vec3f translation, Quatf rotation, Vec3f scale) {
                 scale.lerp(other.scale, t));
     }
 
+    /** The rotation as a 4x4 matrix. */
     public Mat4f toMat4() {
         return Mat4f.translationRotateScale(translation, rotation, scale);
     }
 
+    /** The same transform as a {@link Mat4x3f}: translation, rotation and scale combined. */
     public Mat4x3f toMat4x3() {
         return Mat4x3f.translationRotateScale(translation, rotation, scale);
     }
 
+    /** True when every component differs from that of {@code o} by at most {@code eps}. */
     public boolean approxEquals(Transformf o, float eps) {
         return translation.approxEquals(o.translation, eps) && rotation.sameRotation(o.rotation, eps)
                 && scale.approxEquals(o.scale, eps);
     }
 
+    /** True when every component is finite (neither infinite nor NaN). */
     public boolean isFinite() {
         return translation.isFinite() && rotation.isFinite() && scale.isFinite();
     }
 
+    /** The same value with double components. */
     @FloatOnly
     public Transformd toDouble() {
         return new Transformd(translation.toDouble(), rotation.toDouble(), scale.toDouble());
     }
 
+    /** The same value with float components (rounded to the nearest float for double types). */
     @DoubleOnly
     public Transformf toFloat() {
         return new Transformf(translation.toFloat(), rotation.toFloat(), scale.toFloat());

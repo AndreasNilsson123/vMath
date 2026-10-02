@@ -20,6 +20,7 @@ public final class OcclusionStage implements CullStage {
 
     private final DepthBuffer buffer;
 
+    /** A stage that tests against {@code buffer}, which the caller keeps filled with the occluders of the current frame. */
     public OcclusionStage(DepthBuffer buffer) {
         this.buffer = buffer;
     }

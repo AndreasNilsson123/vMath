@@ -27,6 +27,7 @@ public record Mat4f(
         float m20, float m21, float m22, float m23,
         float m30, float m31, float m32, float m33) {
 
+    /** The identity matrix. */
     public static final Mat4f IDENTITY = new Mat4f(
             1f, 0f, 0f, 0f,
             0f, 1f, 0f, 0f,
@@ -35,6 +36,7 @@ public record Mat4f(
 
     // ---------------------------------------------------------------- factories
 
+    /** The matrix with the given columns. */
     public static Mat4f fromColumns(Vec4f c0, Vec4f c1, Vec4f c2, Vec4f c3) {
         return new Mat4f(
                 c0.x(), c0.y(), c0.z(), c0.w(),
@@ -52,6 +54,7 @@ public record Mat4f(
                 src[off + 12], src[off + 13], src[off + 14], src[off + 15]);
     }
 
+    /** A translation by the given offset. */
     public static Mat4f translation(float x, float y, float z) {
         return new Mat4f(
                 1f, 0f, 0f, 0f,
@@ -60,10 +63,12 @@ public record Mat4f(
                 x, y, z, 1f);
     }
 
+    /** A translation by the given offset. */
     public static Mat4f translation(Vec3f t) {
         return translation(t.x(), t.y(), t.z());
     }
 
+    /** A scale by the given factors along each axis. */
     public static Mat4f scaling(float sx, float sy, float sz) {
         return new Mat4f(
                 sx, 0f, 0f, 0f,
@@ -203,14 +208,17 @@ public record Mat4f(
                 -left.dot(eye), -upn.dot(eye), -dir.dot(eye), 1f);
     }
 
+    /** A rotation about the X axis by {@code angle} radians (right-handed: counter-clockwise looking down the axis toward the origin). */
     public static Mat4f rotationX(float angle) {
         return fromMat3(Mat3f.rotationX(angle));
     }
 
+    /** A rotation about the Y axis by {@code angle} radians (right-handed: counter-clockwise looking down the axis toward the origin). */
     public static Mat4f rotationY(float angle) {
         return fromMat3(Mat3f.rotationY(angle));
     }
 
+    /** A rotation about the Z axis by {@code angle} radians (right-handed: counter-clockwise looking down the axis toward the origin). */
     public static Mat4f rotationZ(float angle) {
         return fromMat3(Mat3f.rotationZ(angle));
     }
@@ -284,6 +292,7 @@ public record Mat4f(
                 m03 * x + m13 * y + m23 * z + m33 * w);
     }
 
+    /** The transpose: rows and columns exchanged. */
     public Mat4f transpose() {
         return new Mat4f(
                 m00, m10, m20, m30,
@@ -292,6 +301,7 @@ public record Mat4f(
                 m03, m13, m23, m33);
     }
 
+    /** The determinant. */
     public float determinant() {
         return (m00 * m11 - m01 * m10) * (m22 * m33 - m23 * m32)
                 + (m02 * m10 - m00 * m12) * (m21 * m33 - m23 * m31)
@@ -353,6 +363,7 @@ public record Mat4f(
 
     // ---------------------------------------------------------------- transforms
 
+    /** The matrix times the vector {@code v}. */
     public Vec4f transform(Vec4f v) {
         float x = v.x(), y = v.y(), z = v.z(), w = v.w();
         return new Vec4f(
@@ -392,6 +403,7 @@ public record Mat4f(
 
     // ---------------------------------------------------------------- accessors
 
+    /** The upper-left 3x3 block: the rotation and scale part. */
     public Mat3f upperLeft3x3() {
         return new Mat3f(
                 m00, m01, m02,
@@ -404,6 +416,7 @@ public record Mat4f(
         return upperLeft3x3().normal();
     }
 
+    /** The translation: the x, y and z of the last column. */
     public Vec3f getTranslation() {
         return new Vec3f(m30, m31, m32);
     }
@@ -417,6 +430,7 @@ public record Mat4f(
                 t.x(), t.y(), t.z(), m33);
     }
 
+    /** Column {@code c}. */
     public Vec4f column(int c) {
         return switch (c) {
             case 0 -> new Vec4f(m00, m01, m02, m03);
@@ -427,6 +441,7 @@ public record Mat4f(
         };
     }
 
+    /** Row {@code r}. */
     public Vec4f row(int r) {
         return switch (r) {
             case 0 -> new Vec4f(m00, m10, m20, m30);
@@ -437,6 +452,7 @@ public record Mat4f(
         };
     }
 
+    /** The element at {@code column} and {@code row}. */
     public float get(int column, int row) {
         return column(column).get(row);
     }
@@ -471,6 +487,7 @@ public record Mat4f(
         return Math.abs(m03) <= eps && Math.abs(m13) <= eps && Math.abs(m23) <= eps && Math.abs(m33 - 1f) <= eps;
     }
 
+    /** True when every element differs from that of {@code o} by at most {@code eps}. */
     public boolean approxEquals(Mat4f o, float eps) {
         for (int c = 0; c < 4; c++) {
             if (!column(c).approxEquals(o.column(c), eps)) {
@@ -480,6 +497,7 @@ public record Mat4f(
         return true;
     }
 
+    /** True when every component is finite (neither infinite nor NaN). */
     public boolean isFinite() {
         for (int c = 0; c < 4; c++) {
             Vec4f v = column(c);
@@ -511,6 +529,7 @@ public record Mat4f(
                 .put(index + 12, m30).put(index + 13, m31).put(index + 14, m32).put(index + 15, m33);
     }
 
+    /** The same value with double components. */
     @FloatOnly
     public Mat4d toDouble() {
         return new Mat4d(
@@ -520,6 +539,7 @@ public record Mat4f(
                 m30, m31, m32, m33);
     }
 
+    /** The same value with float components (rounded to the nearest float for double types). */
     @DoubleOnly
     public Mat4f toFloat() {
         return new Mat4f(

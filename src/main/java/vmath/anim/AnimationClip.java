@@ -21,7 +21,12 @@ public final class AnimationClip {
 
     /** The three animatable channels of a joint. */
     public enum Channel {
-        TRANSLATION(3), ROTATION(4), SCALE(3);
+        /** Position: three components, x y z. */
+        TRANSLATION(3),
+        /** Orientation: four components, a unit quaternion x y z w. */
+        ROTATION(4),
+        /** Scale: three components, x y z. */
+        SCALE(3);
 
         private final int components;
 
@@ -58,10 +63,12 @@ public final class AnimationClip {
         this.values = values;
     }
 
+    /** A builder for a clip that animates {@code jointCount} joints (at least 1). */
     public static Builder builder(int jointCount) {
         return new Builder(jointCount);
     }
 
+    /** The number of joints the clip's tracks may address. */
     public int jointCount() {
         return jointCount;
     }
@@ -71,6 +78,7 @@ public final class AnimationClip {
         return duration;
     }
 
+    /** The number of tracks: one per animated joint and channel. */
     public int trackCount() {
         return trackJoint.length;
     }
@@ -167,14 +175,17 @@ public final class AnimationClip {
             return this;
         }
 
+        /** Adds a translation track: {@code xyz} holds three floats per key; see {@link #track}. */
         public Builder translation(int joint, float[] times, float[] xyz) {
             return track(joint, Channel.TRANSLATION, times, xyz);
         }
 
+        /** Adds a rotation track: {@code xyzw} holds four floats per key (unit quaternions); see {@link #track}. */
         public Builder rotation(int joint, float[] times, float[] xyzw) {
             return track(joint, Channel.ROTATION, times, xyzw);
         }
 
+        /** Adds a scale track: {@code xyz} holds three floats per key; see {@link #track}. */
         public Builder scale(int joint, float[] times, float[] xyz) {
             return track(joint, Channel.SCALE, times, xyz);
         }
@@ -188,6 +199,7 @@ public final class AnimationClip {
             return this;
         }
 
+        /** Builds the clip from the tracks added so far; the builder may be reused. */
         public AnimationClip build() {
             int tracks = joints.size();
             int keys = 0;

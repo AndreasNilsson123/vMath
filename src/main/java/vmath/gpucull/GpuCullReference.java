@@ -60,6 +60,7 @@ public final class GpuCullReference {
         public int overflow;
         final HizState hiz = new HizState(); // the view-projection matrix and the depth convention, read once per pass so that a pass allocates nothing
 
+        /** Sets every counter to zero. */
         public void reset() {
             objects = 0;
             inFrustum = 0;

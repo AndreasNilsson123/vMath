@@ -36,6 +36,9 @@ Nothing has been released yet; the baseline for the compatibility check is the t
 - glTF (`vmath.gltf`, experimental): `Gltf` loader for `.gltf` and `.glb` (meshes, materials, nodes, skins to `Skeleton`, animations to `AnimationClip`).
 - Tests: allocation contract (`AllocationContractTest`), API parity (`ApiParityTest`); Javadoc lint in `check`.
 - Benchmarks: `BulkBench`, `FrameBench`, `InstanceWriteBench`; `CullAndDrawSample` (`./gradlew :vmath-bench:sample`).
+- Tests for the debt register (docs/technical-debt.md): `PublicDocsTest` (every public declaration has a doc comment), `ValueTypeChecker` (the JEP 401 identity rules on the syntax tree), `ShaderCompileTest` (compiles the generated GLSL when glslang is installed), `FormatNumbersTest`, seeded mutation fuzzers for the glTF and KTX2 readers (`LoaderFuzzTest`, `Ktx2FuzzTest`), `FloatElementsTest`, `FastMapsTest`, and an independent light-space oracle for `CascadeCasters`.
+- Performance guard: `.github/workflows/perf.yml` (nightly JMH subset) and `scripts/perf_guard.py` (ratios within a run, absolute change against the previous night).
+- JaCoCo coverage and floors for `vmath-simd` and `vmath-codegen`.
 
 ### Changed
 - Maven coordinates are `io.github.andreasnilsson123:vmath` (was `vmath:vmath`) and the version is `0.2.0-SNAPSHOT`; the JPMS module name is unchanged. The japicmp baseline tag is pinned in `gradle/baseline-commits.txt`.
@@ -46,6 +49,11 @@ Nothing has been released yet; the baseline for the compatibility check is the t
 - `Gltf.SkinData` has `rootTransform`; `MeshSimplifier.Result` has `remap` and `attributes` (experimental APIs).
 - `TransformMath.slerp` delegates to `QuatArray.slerp` (same result).
 - `Ktx2.parse` refuses a header whose dimensions describe a texture that cannot be addressed (`FormatException`), `TextureLayout` refuses one whose total size exceeds a `long` (`IllegalArgumentException`), and `TextureFormat.blocksWide/blocksHigh` no longer overflow near `Integer.MAX_VALUE` (found by the new loader fuzz tests; before: negative sizes).
+
+- `CascadeCasters` moved from `vmath.spatial` to `vmath.camera` (next to `Cascades`; `spatial` no longer imports `camera`), and the cone computation and single-cluster back-face test are in the new `vmath.geo.NormalCone` (`ConeCull` forwards to it; `mesh` uses it directly). Neither class was in a release.
+- `FloatElements` (public, cannot be extended outside the package) is the base class of `Vec3fArray`, `Vec4fArray`, `QuatArray`, `Mat4fArray` and `TransformArray`: the shared methods are inherited instead of repeated. Growth no longer overflows `int` silently for absurd sizes (`OutOfMemoryError` with a message).
+- `Gltf` keeps its JSON tree in `JsonObject` and `JsonArray` (package-private), so it needs no unchecked cast, and its accessor-format, JSON-access and clip-resampling helpers are the package-private classes `AccessorFormat`, `JsonAccess` and `ClipResampling`. The JDK numbers of the build are in `gradle.properties`. `BvhQuery` and `DynamicAabbTree` share their node tests (`NodeTests`), and the two SIMD providers share `SimdSupport`.
+- `Hilbert.encode2` and `encode3` are table-driven (an automaton over Morton digits): 35 ns per 3D code instead of 104 ns, the same codes; the locality order of 1M points with Hilbert went from 186 ms to 97.6 ms.
 
 ### Deprecated
 - `vmath.gl.Std140`, for removal: use `GlslType`, `StructLayout`, `GpuWriter` or a generated `@GpuStruct` writer.

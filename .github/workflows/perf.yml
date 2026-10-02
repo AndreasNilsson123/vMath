@@ -1,0 +1,47 @@
+name: Performance guard
+
+# Nightly, on a shared runner: a small stable subset of the JMH benchmarks, checked by ratios inside the run and by a generous absolute limit against the last
+# successful run (scripts/perf_guard.py). The raw results are kept as a build artifact. Documented numbers in docs/ come from a quiet machine, not from here.
+on:
+  schedule:
+    - cron: "0 4 * * *"
+  workflow_dispatch:
+
+jobs:
+  perf:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 25
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Previous result
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: jmh-previous
+          path: previous
+        # no artifact on the first run, or after expiry: the absolute check is then skipped
+      - name: Run the guarded benchmarks
+        run: >
+          ./gradlew :vmath-bench:jmh
+          "-Pjmh.args=-f 1 -wi 3 -i 5 -w 1 -r 1 -rf json -rff $GITHUB_WORKSPACE/jmh.json MatrixKernelBench.multiply SortBench.(radixOrderFloat|jdkSortPackedFloat|encodeMorton3|encodeHilbert3) MemBench.(uploadEverything|uploadDirtyOnePercent|freeListAllocateFree1000|slabAllocateFree1000)"
+      - name: Check
+        run: |
+          if [ -f previous/jmh.json ]; then python3 scripts/perf_guard.py jmh.json previous/jmh.json; else python3 scripts/perf_guard.py jmh.json; fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: jmh-${{ github.run_id }}
+          path: jmh.json
+          retention-days: 30
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: jmh-previous
+          path: jmh.json
+          overwrite: true

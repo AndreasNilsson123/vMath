@@ -24,6 +24,7 @@ public final class BoundsArray {
     private float[] maxZ;
     private int size;
 
+    /** An empty array with room for {@code capacity} boxes (at least 4); it grows as boxes are added. */
     public BoundsArray(int capacity) {
         int c = Math.max(capacity, 4);
         minX = new float[c];
@@ -34,14 +35,17 @@ public final class BoundsArray {
         maxZ = new float[c];
     }
 
+    /** The number of boxes. */
     public int size() {
         return size;
     }
 
+    /** The number of boxes that fit without growing. */
     public int capacity() {
         return minX.length;
     }
 
+    /** Removes all boxes; the capacity is kept. */
     public void clear() {
         size = 0;
     }
@@ -54,6 +58,7 @@ public final class BoundsArray {
         size = n;
     }
 
+    /** Makes room for {@code n} boxes; the arrays at least double when they have to grow, and the contents are kept. */
     public void ensureCapacity(int n) {
         if (n > minX.length) {
             int c = Math.max(n, minX.length * 2);
@@ -79,10 +84,12 @@ public final class BoundsArray {
         return i;
     }
 
+    /** Appends a box and returns its index. */
     public int add(Aabbf b) {
         return add(b.minX(), b.minY(), b.minZ(), b.maxX(), b.maxY(), b.maxZ());
     }
 
+    /** Replaces box {@code i}; {@link IndexOutOfBoundsException} for an index that is not below {@link #size()}. */
     public void set(int i, float x0, float y0, float z0, float x1, float y1, float z1) {
         checkIndex(i);
         minX[i] = x0;
@@ -93,10 +100,12 @@ public final class BoundsArray {
         maxZ[i] = z1;
     }
 
+    /** Replaces box {@code i}; {@link IndexOutOfBoundsException} for an index that is not below {@link #size()}. */
     public void set(int i, Aabbf b) {
         set(i, b.minX(), b.minY(), b.minZ(), b.maxX(), b.maxY(), b.maxZ());
     }
 
+    /** Box {@code i} as a value (allocates); {@link IndexOutOfBoundsException} for an index that is not below {@link #size()}. */
     public Aabbf get(int i) {
         checkIndex(i);
         return new Aabbf(minX[i], minY[i], minZ[i], maxX[i], maxY[i], maxZ[i]);
@@ -108,50 +117,62 @@ public final class BoundsArray {
         }
     }
 
+    /** The minimum x of box {@code i}. The single-component getters do not check the index against the size. */
     public float minX(int i) {
         return minX[i];
     }
 
+    /** The minimum y of box {@code i}. */
     public float minY(int i) {
         return minY[i];
     }
 
+    /** The minimum z of box {@code i}. */
     public float minZ(int i) {
         return minZ[i];
     }
 
+    /** The maximum x of box {@code i}. */
     public float maxX(int i) {
         return maxX[i];
     }
 
+    /** The maximum y of box {@code i}. */
     public float maxY(int i) {
         return maxY[i];
     }
 
+    /** The maximum z of box {@code i}. */
     public float maxZ(int i) {
         return maxZ[i];
     }
 
+    /** The live array of minimum x values, one per box; replaced when the array grows. */
     public float[] minXs() {
         return minX;
     }
 
+    /** The live array of minimum y values, one per box; replaced when the array grows. */
     public float[] minYs() {
         return minY;
     }
 
+    /** The live array of minimum z values, one per box; replaced when the array grows. */
     public float[] minZs() {
         return minZ;
     }
 
+    /** The live array of maximum x values, one per box; replaced when the array grows. */
     public float[] maxXs() {
         return maxX;
     }
 
+    /** The live array of maximum y values, one per box; replaced when the array grows. */
     public float[] maxYs() {
         return maxY;
     }
 
+    /** The live array of maximum z values, one per box; replaced when the array grows. */
     public float[] maxZs() {
         return maxZ;
     }

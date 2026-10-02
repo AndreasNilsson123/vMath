@@ -78,6 +78,7 @@ public final class PersistentBufferRing<F> implements AutoCloseable {
         this.fences = new java.util.ArrayList<>(java.util.Collections.nCopies(framesInFlight, (F) null));
     }
 
+    /** The number of frames that may be in flight at once, which is the number of regions. */
     public int framesInFlight() {
         return frames;
     }
@@ -190,6 +191,7 @@ public final class PersistentBufferRing<F> implements AutoCloseable {
         }
     }
 
+    /** The mapped segment the offsets are relative to. */
     public MemorySegment segment() {
         return mapped;
     }

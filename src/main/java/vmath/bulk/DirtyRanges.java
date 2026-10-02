@@ -22,6 +22,7 @@ public final class DirtyRanges {
     /** Receives the changed runs: elements {@code [from, to)}. */
     @FunctionalInterface
     public interface RangeVisitor {
+        /** Called once per run of changed elements, {@code from} inclusive to {@code to} exclusive. */
         void range(int from, int to);
     }
 
@@ -37,6 +38,7 @@ public final class DirtyRanges {
         this.words = new long[(capacity + 63) >>> 6];
     }
 
+    /** The number of elements the set covers. */
     public int capacity() {
         return capacity;
     }
@@ -59,6 +61,7 @@ public final class DirtyRanges {
         }
     }
 
+    /** Marks element {@code i} as changed; {@link IndexOutOfBoundsException} for an element outside the set. */
     public void mark(int i) {
         check(i);
         words[i >>> 6] |= 1L << i;
@@ -90,6 +93,7 @@ public final class DirtyRanges {
         markRange(0, capacity);
     }
 
+    /** Whether element {@code i} is marked. */
     public boolean isDirty(int i) {
         check(i);
         return (words[i >>> 6] & (1L << i)) != 0L;
@@ -100,6 +104,7 @@ public final class DirtyRanges {
         Arrays.fill(words, 0L);
     }
 
+    /** True when no element is marked. */
     public boolean isEmpty() {
         for (long w : words) {
             if (w != 0L) {

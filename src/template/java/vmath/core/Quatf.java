@@ -19,6 +19,7 @@ import vmath.annotations.ValueType;
 @ValueType
 public record Quatf(float x, float y, float z, float w) {
 
+    /** The identity. */
     public static final Quatf IDENTITY = new Quatf(0f, 0f, 0f, 1f);
 
     /** Rotation of {@code angle} radians about {@code axis} (normalized internally). */
@@ -26,6 +27,7 @@ public record Quatf(float x, float y, float z, float w) {
         return fromAxisAngle(angle, axis.x(), axis.y(), axis.z());
     }
 
+    /** Rotation of {@code angle} radians about the axis {@code (ax, ay, az)}, normalized internally; a zero axis gives NaN components. */
     public static Quatf fromAxisAngle(float angle, float ax, float ay, float az) {
         float half = angle * 0.5f;
         float s = (float) Math.sin(half);
@@ -33,16 +35,19 @@ public record Quatf(float x, float y, float z, float w) {
         return new Quatf(ax * invLen * s, ay * invLen * s, az * invLen * s, (float) Math.cos(half));
     }
 
+    /** A rotation about the X axis by {@code angle} radians (right-handed: counter-clockwise looking down the axis toward the origin). */
     public static Quatf rotationX(float angle) {
         float half = angle * 0.5f;
         return new Quatf((float) Math.sin(half), 0f, 0f, (float) Math.cos(half));
     }
 
+    /** A rotation about the Y axis by {@code angle} radians (right-handed: counter-clockwise looking down the axis toward the origin). */
     public static Quatf rotationY(float angle) {
         float half = angle * 0.5f;
         return new Quatf(0f, (float) Math.sin(half), 0f, (float) Math.cos(half));
     }
 
+    /** A rotation about the Z axis by {@code angle} radians (right-handed: counter-clockwise looking down the axis toward the origin). */
     public static Quatf rotationZ(float angle) {
         float half = angle * 0.5f;
         return new Quatf(0f, 0f, (float) Math.sin(half), (float) Math.cos(half));
@@ -57,6 +62,7 @@ public record Quatf(float x, float y, float z, float w) {
                 w * r.w - x * r.x - y * r.y - z * r.z);
     }
 
+    /** The conjugate {@code (-x, -y, -z, w)}; for a unit quaternion this is the inverse rotation. */
     public Quatf conjugate() {
         return new Quatf(-x, -y, -z, w);
     }
@@ -67,14 +73,17 @@ public record Quatf(float x, float y, float z, float w) {
         return new Quatf(-x * inv, -y * inv, -z * inv, w * inv);
     }
 
+    /** The dot product. */
     public float dot(Quatf o) {
         return x * o.x + y * o.y + z * o.z + w * o.w;
     }
 
+    /** The squared length; cheaper than {@link #length()}. */
     public float lengthSquared() {
         return x * x + y * y + z * z + w * w;
     }
 
+    /** The length. */
     public float length() {
         return (float) Math.sqrt(lengthSquared());
     }
@@ -159,14 +168,17 @@ public record Quatf(float x, float y, float z, float w) {
         return (float) (a <= Math.PI ? a : 2.0 * Math.PI - a);
     }
 
+    /** The rotation as a 3x3 matrix. */
     public Mat3f toMat3() {
         return Mat3f.rotation(this);
     }
 
+    /** The rotation as a 4x4 matrix. */
     public Mat4f toMat4() {
         return Mat4f.rotation(this);
     }
 
+    /** Component {@code i}: 0 is x, 1 is y, 2 is z, 3 is w; {@link IndexOutOfBoundsException} for any other index. */
     public float get(int i) {
         return switch (i) {
             case 0 -> x;
@@ -269,6 +281,7 @@ public record Quatf(float x, float y, float z, float w) {
         return axisRotation(order.third(), c).mul(axisRotation(order.second(), b)).mul(axisRotation(order.first(), a));
     }
 
+    /** The rotation for the three angles given as a vector; see the overload with three separate angles. */
     public static Quatf fromEuler(EulerOrder order, Vec3f angles) {
         return fromEuler(order, angles.x(), angles.y(), angles.z());
     }
@@ -439,6 +452,7 @@ public record Quatf(float x, float y, float z, float w) {
         return fromAxisAngle(len * dt, omega).mul(this).normalize();
     }
 
+    /** True when every component differs from that of {@code o} by at most {@code eps}. */
     public boolean approxEquals(Quatf o, float eps) {
         return Math.abs(x - o.x) <= eps && Math.abs(y - o.y) <= eps
                 && Math.abs(z - o.z) <= eps && Math.abs(w - o.w) <= eps;
@@ -453,11 +467,13 @@ public record Quatf(float x, float y, float z, float w) {
         return new Quatf(-x, -y, -z, -w);
     }
 
+    /** The same value with double components. */
     @FloatOnly
     public Quatd toDouble() {
         return new Quatd(x, y, z, w);
     }
 
+    /** The same value with float components (rounded to the nearest float for double types). */
     @DoubleOnly
     public Quatf toFloat() {
         return new Quatf((float) x, (float) y, (float) z, (float) w);

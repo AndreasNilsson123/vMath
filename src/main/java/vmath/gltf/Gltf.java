@@ -24,6 +24,9 @@ import vmath.core.Mat4f;
 import vmath.core.Quatf;
 import vmath.core.Vec3f;
 import vmath.mesh.Mesh;
+import static vmath.gltf.JsonAccess.*;
+import static vmath.gltf.AccessorFormat.*;
+import static vmath.gltf.ClipResampling.*;
 
 /**
  * A glTF 2.0 loader: reads a {@code .gltf} (JSON plus buffers) or a {@code .glb} (binary container) and gives access to meshes, materials, the node tree,
@@ -55,15 +58,24 @@ public final class Gltf {
 
     /** Loads the bytes behind a buffer or image URI that is not a data URI. */
     public interface UriResolver {
+        /**
+         * The bytes of the file {@code uri} names, a URI relative to the .gltf file as it appears in the JSON (not a data URI, which the reader decodes itself); throw {@link IOException} when it cannot be read.
+         */
         byte[] resolve(String uri) throws IOException;
     }
 
-    public static final int MODE_TRIANGLES = 4, MODE_TRIANGLE_STRIP = 5, MODE_TRIANGLE_FAN = 6;
+    /** Primitive mode of separate triangles (glTF mode 4). */
+    public static final int MODE_TRIANGLES = 4;
+    /** Primitive mode of a triangle strip (glTF mode 5); {@code toMesh} converts it to separate triangles. */
+    public static final int MODE_TRIANGLE_STRIP = 5;
+    /** Primitive mode of a triangle fan (glTF mode 6); {@code toMesh} converts it to separate triangles. */
+    public static final int MODE_TRIANGLE_FAN = 6;
 
     /** A primitive of a mesh: its topology mode, attribute name to accessor, index accessor ({@code -1} for none) and material ({@code -1} for none). */
     public record Primitive(int mode, Map<String, Integer> attributes, int indices, int material) {
     }
 
+    /** A mesh: its name (may be null) and its primitives. */
     public record MeshData(String name, List<Primitive> primitives) {
     }
 
@@ -73,6 +85,7 @@ public final class Gltf {
                            float[] emissiveFactor, int emissiveTexture, String alphaMode, float alphaCutoff, boolean doubleSided) {
     }
 
+    /** A texture: the index of its image ({@code -1} when absent) and of its sampler ({@code -1} for the default sampler). */
     public record Texture(int source, int sampler) {
     }
 
@@ -80,6 +93,7 @@ public final class Gltf {
     public record Image(String name, String uri, int bufferView, String mimeType) {
     }
 
+    /** A sampler: the glTF (OpenGL) enum values of the magnification and minification filters ({@code -1} when absent) and of the wrap modes (10497, repeat, when absent). */
     public record Sampler(int magFilter, int minFilter, int wrapS, int wrapT) {
     }
 
@@ -199,16 +213,10 @@ public final class Gltf {
             json = new String(data, off, data.length - off, StandardCharsets.UTF_8);
         }
         Object parsed = Json.parse(json);
-        if (!(parsed instanceof Map)) {
+        if (!(parsed instanceof JsonObject root)) {
             throw new GltfException("the top level of a glTF file must be an object");
         }
-        @SuppressWarnings("unchecked")
-        Map<String, Object> root = (Map<String, Object>) parsed;
         return new Gltf(root, bin, resolver);
-    }
-
-    private static int le32(byte[] d, int o) {
-        return (d[o] & 0xFF) | (d[o + 1] & 0xFF) << 8 | (d[o + 2] & 0xFF) << 16 | (d[o + 3] & 0xFF) << 24;
     }
 
     private Gltf(Map<String, Object> root, byte[] glbBin, UriResolver resolver) {
@@ -404,76 +412,7 @@ public final class Gltf {
         }
     }
 
-    // ---------------------------------------------------------------- JSON helpers
-
-    @SuppressWarnings("unchecked")
-    private static Map<String, Object> obj(Object o, String what) {
-        if (!(o instanceof Map)) {
-            throw new GltfException(what + " must be an object");
-        }
-        return (Map<String, Object>) o;
-    }
-
-    @SuppressWarnings("unchecked")
-    private static List<Object> list(Object o) {
-        if (o == null) {
-            return List.of();
-        }
-        if (!(o instanceof List)) {
-            throw new GltfException("expected an array");
-        }
-        return (List<Object>) o;
-    }
-
-    private static double num(Object o, String what) {
-        if (!(o instanceof Double d)) {
-            throw new GltfException(what + " must be a number");
-        }
-        return d;
-    }
-
-    private static long lng(Map<String, Object> m, String key, long dflt) {
-        Object o = m.get(key);
-        if (o == null) {
-            return dflt;
-        }
-        double d = num(o, key);
-        if (d != Math.rint(d) || Math.abs(d) > 9.0e15) {
-            throw new GltfException(key + " must be an integer: " + d);
-        }
-        return (long) d;
-    }
-
-    private static double dbl(Map<String, Object> m, String key, double dflt) {
-        Object o = m.get(key);
-        return o == null ? dflt : num(o, key);
-    }
-
-    private static String str(Map<String, Object> m, String key, String dflt) {
-        Object o = m.get(key);
-        if (o == null) {
-            return dflt;
-        }
-        if (!(o instanceof String s)) {
-            throw new GltfException(key + " must be a string");
-        }
-        return s;
-    }
-
-    private static float[] floats(Object o, int n, float[] dflt, String what) {
-        if (o == null) {
-            return dflt;
-        }
-        List<Object> l = list(o);
-        if (l.size() != n) {
-            throw new GltfException(what + " needs " + n + " numbers, has " + l.size());
-        }
-        float[] out = new float[n];
-        for (int i = 0; i < n; i++) {
-            out[i] = (float) num(l.get(i), what);
-        }
-        return out;
-    }
+    // ---------------------------------------------------------------- reference checks
 
     private int accessorRef(Object o, String what) {
         int a = (int) num(o, what);
@@ -485,54 +424,67 @@ public final class Gltf {
 
     // ---------------------------------------------------------------- simple access
 
+    /** The number of meshes. */
     public int meshCount() {
         return meshes.size();
     }
 
+    /** Mesh {@code i}; {@link IndexOutOfBoundsException} for a bad index (the same for every indexed accessor below). */
     public MeshData mesh(int i) {
         return meshes.get(i);
     }
 
+    /** The number of materials. */
     public int materialCount() {
         return materials.size();
     }
 
+    /** Material {@code i}. */
     public Material material(int i) {
         return materials.get(i);
     }
 
+    /** The number of textures. */
     public int textureCount() {
         return textures.size();
     }
 
+    /** Texture {@code i}. */
     public Texture texture(int i) {
         return textures.get(i);
     }
 
+    /** The number of images. */
     public int imageCount() {
         return images.size();
     }
 
+    /** Image {@code i}. */
     public Image image(int i) {
         return images.get(i);
     }
 
+    /** The number of samplers. */
     public int samplerCount() {
         return samplers.size();
     }
 
+    /** Sampler {@code i}. */
     public Sampler sampler(int i) {
         return samplers.get(i);
     }
 
+    /** The number of nodes. */
     public int nodeCount() {
         return nodes.size();
     }
 
+    /** Node {@code i}. */
     public Node node(int i) {
         return nodes.get(i);
     }
 
+    /** The number of scenes. */
     public int sceneCount() {
         return scenes.size();
     }
@@ -547,6 +499,7 @@ public final class Gltf {
         return defaultScene;
     }
 
+    /** The number of accessors. */
     public int accessorCount() {
         return accessors.size();
     }
@@ -566,56 +519,7 @@ public final class Gltf {
 
     // ---------------------------------------------------------------- accessors
 
-    private static int componentSize(int componentType) {
-        return switch (componentType) {
-            case 5120, 5121 -> 1;
-            case 5122, 5123 -> 2;
-            case 5125, 5126 -> 4;
-            default -> throw new GltfException("unknown componentType " + componentType);
-        };
-    }
-
-    private static int typeComponents(String type) {
-        return switch (type) {
-            case "SCALAR" -> 1;
-            case "VEC2" -> 2;
-            case "VEC3" -> 3;
-            case "VEC4", "MAT2" -> 4;
-            case "MAT3" -> 9;
-            case "MAT4" -> 16;
-            default -> throw new GltfException("unknown accessor type " + type);
-        };
-    }
-
-    private static int matrixRows(String type) {
-        return switch (type) {
-            case "MAT2" -> 2;
-            case "MAT3" -> 3;
-            case "MAT4" -> 4;
-            default -> 0;
-        };
-    }
-
-    /** Bytes of one element; matrix columns are padded to a multiple of 4 bytes. */
-    private static int elementBytes(String type, int compSize) {
-        int rows = matrixRows(type);
-        if (rows == 0) {
-            return typeComponents(type) * compSize;
-        }
-        int column = (rows * compSize + 3) & ~3;
-        return column * rows;
-    }
-
-    /** Byte offset of component {@code c} inside an element. */
-    private static int componentOffset(String type, int compSize, int c) {
-        int rows = matrixRows(type);
-        if (rows == 0) {
-            return c * compSize;
-        }
-        int column = (rows * compSize + 3) & ~3;
-        return (c / rows) * column + (c % rows) * compSize;
-    }
-
+    /** What accessor {@code accessor} declares about its data; nothing is read from the buffers. */
     public AccessorInfo accessorInfo(int accessor) {
         Map<String, Object> a = accessors.get(accessor);
         String type = str(a, "type", null);
@@ -735,31 +639,6 @@ public final class Gltf {
             throw new GltfException(where + " refers to buffer view " + bv + " which does not exist");
         }
         return views[bv];
-    }
-
-    private static float convert(byte[] b, int p, int componentType, boolean normalized) {
-        switch (componentType) {
-            case 5120: {
-                int v = b[p];
-                return normalized ? Math.max(v / 127f, -1f) : v;
-            }
-            case 5121: {
-                int v = b[p] & 0xFF;
-                return normalized ? v / 255f : v;
-            }
-            case 5122: {
-                int v = (short) ((b[p] & 0xFF) | (b[p + 1] << 8));
-                return normalized ? Math.max(v / 32767f, -1f) : v;
-            }
-            case 5123: {
-                int v = (b[p] & 0xFF) | (b[p + 1] & 0xFF) << 8;
-                return normalized ? v / 65535f : v;
-            }
-            case 5125:
-                return le32(b, p) & 0xFFFFFFFFL;
-            default:
-                return Float.intBitsToFloat(le32(b, p));
-        }
     }
 
     /** All components of an accessor as floats ({@code count * components} of them), normalized integers mapped to [0, 1] or [-1, 1]. */
@@ -984,6 +863,7 @@ public final class Gltf {
 
     // ---------------------------------------------------------------- skins
 
+    /** The number of skins. */
     public int skinCount() {
         return list(root.get("skins")).size();
     }
@@ -1108,10 +988,12 @@ public final class Gltf {
 
     // ---------------------------------------------------------------- animations
 
+    /** The number of animations. */
     public int animationCount() {
         return list(root.get("animations")).size();
     }
 
+    /** The name of animation {@code animation}, or {@code null} when the file gives none. */
     public String animationName(int animation) {
         return str(obj(list(root.get("animations")).get(animation), "animation"), "name", null);
     }
@@ -1184,66 +1066,4 @@ public final class Gltf {
         return builder.build();
     }
 
-    private static float[][] stepToLinear(float[] times, float[] values, int comps) {
-        int n = times.length;
-        float[] t = new float[n * 2];
-        float[] v = new float[n * 2 * comps];
-        int k = 0;
-        for (int i = 0; i < n; i++) {
-            t[k] = times[i];
-            System.arraycopy(values, i * comps, v, k * comps, comps);
-            k++;
-            if (i + 1 < n) {
-                float hold = times[i + 1] - (times[i + 1] - times[i]) * 1e-3f;
-                if (hold > times[i] && hold < times[i + 1]) {
-                    t[k] = hold;
-                    System.arraycopy(values, i * comps, v, k * comps, comps);
-                    k++;
-                }
-            }
-        }
-        return new float[][] {Arrays.copyOf(t, k), Arrays.copyOf(v, k * comps)};
-    }
-
-    private static float[][] resampleCubic(float[] times, float[] values, int comps, float rate) {
-        int n = times.length;
-        if (n == 1) {
-            return new float[][] {times.clone(), Arrays.copyOfRange(values, comps, comps * 2)};
-        }
-        List<Float> outT = new ArrayList<>();
-        List<float[]> outV = new ArrayList<>();
-        float dt = 1f / rate;
-        for (int k = 0; k + 1 < n; k++) {
-            float t0 = times[k], t1 = times[k + 1], span = t1 - t0;
-            int samples = Math.max(1, (int) Math.ceil(span / dt));
-            for (int j = 0; j < samples; j++) {
-                float t = t0 + span * j / samples;
-                if (j > 0 && !(t > outT.get(outT.size() - 1))) {
-                    continue;
-                }
-                float s = (t - t0) / span;
-                float s2 = s * s, s3 = s2 * s;
-                float h00 = 2 * s3 - 3 * s2 + 1, h10 = s3 - 2 * s2 + s, h01 = -2 * s3 + 3 * s2, h11 = s3 - s2;
-                float[] v = new float[comps];
-                for (int c = 0; c < comps; c++) {
-                    float p0 = values[(k * 3 + 1) * comps + c], m0 = values[(k * 3 + 2) * comps + c];
-                    float p1 = values[((k + 1) * 3 + 1) * comps + c], m1 = values[((k + 1) * 3) * comps + c];
-                    v[c] = h00 * p0 + h10 * span * m0 + h01 * p1 + h11 * span * m1;
-                }
-                outT.add(t);
-                outV.add(v);
-            }
-        }
-        outT.add(times[n - 1]);
-        float[] last = new float[comps];
-        System.arraycopy(values, ((n - 1) * 3 + 1) * comps, last, 0, comps);
-        outV.add(last);
-        float[] t = new float[outT.size()];
-        float[] v = new float[outT.size() * comps];
-        for (int i = 0; i < t.length; i++) {
-            t[i] = outT.get(i);
-            System.arraycopy(outV.get(i), 0, v, i * comps, comps);
-        }
-        return new float[][] {t, v};
-    }
 }

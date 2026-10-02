@@ -12,18 +12,22 @@ import vmath.core.Vec3f;
 @ValueType
 public record Trianglef(float ax, float ay, float az, float bx, float by, float bz, float cx, float cy, float cz) {
 
+    /** The triangle with the given vertices. */
     public static Trianglef of(Vec3f a, Vec3f b, Vec3f c) {
         return new Trianglef(a.x(), a.y(), a.z(), b.x(), b.y(), b.z(), c.x(), c.y(), c.z());
     }
 
+    /** The first vertex. */
     public Vec3f a() {
         return new Vec3f(ax, ay, az);
     }
 
+    /** The second vertex. */
     public Vec3f b() {
         return new Vec3f(bx, by, bz);
     }
 
+    /** The third vertex. */
     public Vec3f c() {
         return new Vec3f(cx, cy, cz);
     }
@@ -38,14 +42,17 @@ public record Trianglef(float ax, float ay, float az, float bx, float by, float 
         return b().sub(a()).cross(c().sub(a()));
     }
 
+    /** The area: half the length of {@link #normal()}. */
     public float area() {
         return normal().length() * 0.5f;
     }
 
+    /** The centroid: the mean of the three vertices. */
     public Vec3f centroid() {
         return new Vec3f((ax + bx + cx) / 3f, (ay + by + cy) / 3f, (az + bz + cz) / 3f);
     }
 
+    /** The smallest axis-aligned box that contains the triangle. */
     public Aabbf aabb() {
         return new Aabbf(
                 Math.min(ax, Math.min(bx, cx)), Math.min(ay, Math.min(by, cy)), Math.min(az, Math.min(bz, cz)),
@@ -105,11 +112,13 @@ public record Trianglef(float ax, float ay, float az, float bx, float by, float 
         return a.fma(ab, vb * denom).fma(ac, vc * denom);
     }
 
+    /** The same triangle with double-precision components. */
     @FloatOnly
     public Triangled toDouble() {
         return new Triangled(ax, ay, az, bx, by, bz, cx, cy, cz);
     }
 
+    /** The same triangle with float components, each rounded to the nearest float. */
     @DoubleOnly
     public Trianglef toFloat() {
         return new Trianglef((float) ax, (float) ay, (float) az, (float) bx, (float) by, (float) bz, (float) cx, (float) cy, (float) cz);

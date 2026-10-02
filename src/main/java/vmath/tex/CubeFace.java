@@ -12,7 +12,18 @@ import vmath.core.Vec3f;
  */
 @Experimental("the orientation conventions are checked against the specification table only, not against a GPU")
 public enum CubeFace {
-    POSITIVE_X, NEGATIVE_X, POSITIVE_Y, NEGATIVE_Y, POSITIVE_Z, NEGATIVE_Z;
+    /** The face the +X axis points into. */
+    POSITIVE_X,
+    /** The face the -X axis points into. */
+    NEGATIVE_X,
+    /** The face the +Y axis points into. */
+    POSITIVE_Y,
+    /** The face the -Y axis points into. */
+    NEGATIVE_Y,
+    /** The face the +Z axis points into. */
+    POSITIVE_Z,
+    /** The face the -Z axis points into. */
+    NEGATIVE_Z;
 
     /** The face a direction points at (the axis with the largest magnitude; ties go to x, then y, then z). */
     public static CubeFace of(float x, float y, float z) {

@@ -80,14 +80,19 @@ public final class SmallFloat {
 
     // ---------------------------------------------------------------- R11G11B10F
 
+    /**
+     * Packs three non-negative floats into 11-11-10 bit floats: red in bits 0 to 10, green 11 to 21, blue 22 to 31. Negative values become 0, large finite ones clamp to {@link #MAX_R11} and {@link #MAX_B10}, infinity and NaN are kept.
+     */
     public static int packR11G11B10F(float r, float g, float b) {
         return encodeUnsigned(r, 6) | (encodeUnsigned(g, 6) << 11) | (encodeUnsigned(b, 5) << 22);
     }
 
+    /** {@link #packR11G11B10F(float, float, float)} for a vector. */
     public static int packR11G11B10F(Vec3f rgb) {
         return packR11G11B10F(rgb.x(), rgb.y(), rgb.z());
     }
 
+    /** The three floats stored in a value made by {@link #packR11G11B10F(float, float, float)}. */
     public static Vec3f unpackR11G11B10F(int packed) {
         return new Vec3f(decodeUnsigned(packed & 0x7FF, 6), decodeUnsigned((packed >>> 11) & 0x7FF, 6),
                 decodeUnsigned((packed >>> 22) & 0x3FF, 5));
@@ -127,10 +132,14 @@ public final class SmallFloat {
         return rm | (gm << 9) | (bm << 18) | (Math.min(shared, E5_MAX_EXPONENT) << 27);
     }
 
+    /** {@link #packRgb9E5(float, float, float)} for a vector. */
     public static int packRgb9E5(Vec3f rgb) {
         return packRgb9E5(rgb.x(), rgb.y(), rgb.z());
     }
 
+    /**
+     * The three floats stored in a value made by {@link #packRgb9E5(float, float, float)}: three 9-bit mantissas in bits 0 to 26 and the shared 5-bit exponent in bits 27 to 31.
+     */
     public static Vec3f unpackRgb9E5(int packed) {
         int shared = packed >>> 27;
         double scale = Math.scalb(1.0, shared - E5_BIAS - E5_MANTISSA_BITS);

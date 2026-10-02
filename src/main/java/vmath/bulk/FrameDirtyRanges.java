@@ -18,6 +18,7 @@ public final class FrameDirtyRanges {
 
     private final DirtyRanges[] slots;
 
+    /** Sets for elements {@code 0 .. capacity - 1}, one for each of {@code slots} buffers (at least 1), all clean. */
     public FrameDirtyRanges(int capacity, int slots) {
         if (slots < 1) {
             throw new IllegalArgumentException("slots must be at least 1: " + slots);
@@ -28,26 +29,31 @@ public final class FrameDirtyRanges {
         }
     }
 
+    /** The number of buffers, one set each. */
     public int slots() {
         return slots.length;
     }
 
+    /** The number of elements each set covers. */
     public int capacity() {
         return slots[0].capacity();
     }
 
+    /** Grows every set to at least {@code n} elements; the new elements are clean. */
     public void ensureCapacity(int n) {
         for (DirtyRanges d : slots) {
             d.ensureCapacity(n);
         }
     }
 
+    /** Marks element {@code i} in every slot. */
     public void mark(int i) {
         for (DirtyRanges d : slots) {
             d.mark(i);
         }
     }
 
+    /** Marks elements {@code [from, to)} in every slot. */
     public void markRange(int from, int to) {
         for (DirtyRanges d : slots) {
             d.markRange(from, to);

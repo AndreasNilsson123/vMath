@@ -57,6 +57,7 @@ public final class DrawCommandBuffer {
         return pad16 ? (kind.bytes + 15L) & ~15L : kind.bytes;
     }
 
+    /** Bytes between the starts of consecutive commands in this buffer. */
     public long stride() {
         return stride;
     }
@@ -121,10 +122,12 @@ public final class DrawCommandBuffer {
         return addArrays(c.count(), c.instanceCount(), c.first(), c.baseInstance());
     }
 
+    /** Appends a command given as a record; returns its index. */
     public int add(DrawElementsIndirect c) {
         return addElements(c.count(), c.instanceCount(), c.firstIndex(), c.baseVertex(), c.baseInstance());
     }
 
+    /** Appends a dispatch given as a record; returns its index. */
     public int add(DispatchIndirect c) {
         return addDispatch(c.x(), c.y(), c.z());
     }

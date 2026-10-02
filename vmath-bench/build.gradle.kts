@@ -4,9 +4,11 @@ plugins {
 
 // -Pvalhalla: the core library is then compiled with preview features on JDK 28, so its consumers must be too
 val valhalla = providers.gradleProperty("valhalla").isPresent
+// the JDK numbers live in gradle.properties (docs/technical-debt.md TD-14)
+val jdk = property(if (valhalla) "vmath.valhallaJdk" else "vmath.jdk").toString().toInt()
 
 java {
-    toolchain { languageVersion.set(JavaLanguageVersion.of(if (valhalla) 28 else 25)) }
+    toolchain { languageVersion.set(JavaLanguageVersion.of(jdk)) }
 }
 
 dependencies {
@@ -21,7 +23,7 @@ dependencies {
 tasks.withType<JavaCompile>().configureEach {
     options.encoding = "UTF-8"
     if (valhalla) {
-        options.release.set(28)
+        options.release.set(jdk)
         options.compilerArgs.add("--enable-preview")
     }
 }
@@ -33,7 +35,7 @@ tasks.register<JavaExec>("jmh") {
     description = "Runs the JMH benchmarks. Pass JMH arguments with -Pjmh.args."
     classpath = sourceSets.main.get().runtimeClasspath
     mainClass.set("org.openjdk.jmh.Main")
-    javaLauncher.set(javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(if (valhalla) 28 else 25)) })
+    javaLauncher.set(javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(jdk)) })
     // The SIMD kernels need the Vector API. JMH benchmarks run in forked JVMs, which do not inherit this task's
     // jvmArgs, so pass it to the forks as well (and preview features when the classes were compiled with them).
     val vmArgs = if (valhalla) "--add-modules=jdk.incubator.vector --enable-preview" else "--add-modules=jdk.incubator.vector"
@@ -49,7 +51,7 @@ tasks.register<JavaExec>("sample") {
     description = "Runs CullAndDrawSample."
     classpath = sourceSets.main.get().runtimeClasspath
     mainClass.set("vmath.bench.sample.CullAndDrawSample")
-    javaLauncher.set(javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(if (valhalla) 28 else 25)) })
+    javaLauncher.set(javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(jdk)) })
     jvmArgs((if (valhalla) "--add-modules=jdk.incubator.vector --enable-preview" else "--add-modules=jdk.incubator.vector").split(" "))
 }
 

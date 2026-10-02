@@ -26,6 +26,7 @@ public final class FrustumCuller implements FrustumKernel {
     private final float[][] perPlane = new float[6][CHUNK];
     private final float[] planes = new float[24];
 
+    /** A scalar frustum kernel with its own scratch memory; use one per thread. */
     public FrustumCuller() {
     }
 

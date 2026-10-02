@@ -43,6 +43,7 @@ public final class ArenaAllocator {
         }
     }
 
+    /** The size of the range in bytes. */
     public long capacity() {
         return capacity;
     }
@@ -52,6 +53,7 @@ public final class ArenaAllocator {
         return used;
     }
 
+    /** The bytes still available, ignoring the padding a later aligned request may need: {@code capacity() - used()}. */
     public long remaining() {
         return capacity - used;
     }

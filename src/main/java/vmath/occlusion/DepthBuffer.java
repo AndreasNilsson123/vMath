@@ -92,10 +92,12 @@ public final class DepthBuffer {
         }
     }
 
+    /** The width of the finest level, in pixels. */
     public int width() {
         return width;
     }
 
+    /** The height of the finest level, in pixels. */
     public int height() {
         return height;
     }

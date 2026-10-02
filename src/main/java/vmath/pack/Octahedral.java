@@ -53,6 +53,7 @@ public final class Octahedral {
         return new Vec3f(vx, vy, vz).normalize();
     }
 
+    /** {@link #decode(float, float)} for a vector. */
     public static Vec3f decode(Vec2f p) {
         return decode(p.x(), p.y());
     }
@@ -69,6 +70,7 @@ public final class Octahedral {
         return bestOfFour(x, y, z, 32767f, true);
     }
 
+    /** The unit vector for a value made by {@link #pack16}: two snorm16, {@code x} in the low half. */
     public static Vec3f unpack16(int packed) {
         return decode(Norm.unpackSnorm16(packed), Norm.unpackSnorm16(packed >>> 16));
     }
@@ -85,6 +87,7 @@ public final class Octahedral {
         return bestOfFour(x, y, z, 127f, false);
     }
 
+    /** The unit vector for a value made by {@link #pack8}: two snorm8 in the low 16 bits, {@code x} in the low byte. */
     public static Vec3f unpack8(int packed) {
         return decode(Norm.unpackSnorm8(packed), Norm.unpackSnorm8(packed >>> 8));
     }

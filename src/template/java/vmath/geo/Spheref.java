@@ -13,14 +13,17 @@ import vmath.core.Vec3f;
 @ValueType
 public record Spheref(float cx, float cy, float cz, float radius) {
 
+    /** The sphere with the given centre and radius. */
     public static Spheref of(Vec3f center, float radius) {
         return new Spheref(center.x(), center.y(), center.z(), radius);
     }
 
+    /** The sphere's centre. */
     public Vec3f center() {
         return new Vec3f(cx, cy, cz);
     }
 
+    /** True when the point is inside the sphere or on its surface. */
     public boolean contains(Vec3f p) {
         float dx = p.x() - cx, dy = p.y() - cy, dz = p.z() - cz;
         return dx * dx + dy * dy + dz * dz <= radius * radius;
@@ -44,6 +47,7 @@ public record Spheref(float cx, float cy, float cz, float radius) {
         return dx * dx + dy * dy + dz * dz <= r * r;
     }
 
+    /** True when the sphere and the box share at least a point. */
     public boolean overlaps(Aabbf box) {
         return box.distanceSquared(center()) <= radius * radius;
     }
@@ -76,15 +80,18 @@ public record Spheref(float cx, float cy, float cz, float radius) {
         return new Spheref(c.x(), c.y(), c.z(), radius * s);
     }
 
+    /** The smallest axis-aligned box that contains the sphere. */
     public Aabbf aabb() {
         return new Aabbf(cx - radius, cy - radius, cz - radius, cx + radius, cy + radius, cz + radius);
     }
 
+    /** The same sphere with double-precision components. */
     @FloatOnly
     public Sphered toDouble() {
         return new Sphered(cx, cy, cz, radius);
     }
 
+    /** The same sphere with float components, each rounded to the nearest float. */
     @DoubleOnly
     public Spheref toFloat() {
         return new Spheref((float) cx, (float) cy, (float) cz, (float) radius);

@@ -14,26 +14,32 @@ public final class IntList {
     private int[] data;
     private int size;
 
+    /** An empty list with room for 64 values. */
     public IntList() {
         this(64);
     }
 
+    /** An empty list with room for {@code capacity} values (at least 4). */
     public IntList(int capacity) {
         this.data = new int[Math.max(capacity, 4)];
     }
 
+    /** The number of values. */
     public int size() {
         return size;
     }
 
+    /** True when the list holds no value. */
     public boolean isEmpty() {
         return size == 0;
     }
 
+    /** Removes all values; the capacity is kept. */
     public void clear() {
         size = 0;
     }
 
+    /** Appends a value; the array doubles when it is full. */
     public void add(int v) {
         if (size == data.length) {
             data = Arrays.copyOf(data, size * 2);
@@ -41,6 +47,7 @@ public final class IntList {
         data[size++] = v;
     }
 
+    /** The value at {@code i}; {@link IndexOutOfBoundsException} for an index that is not below {@link #size()}. */
     public int get(int i) {
         if (i < 0 || i >= size) {
             throw new IndexOutOfBoundsException(i);
@@ -53,6 +60,7 @@ public final class IntList {
         return data;
     }
 
+    /** A copy of the values. */
     public int[] toArray() {
         return Arrays.copyOf(data, size);
     }

@@ -3,13 +3,16 @@
 
 plugins {
     `java-library`
+    jacoco
 }
 
 // -Pvalhalla: the core library is then compiled with preview features on JDK 28, so its consumers must be too
 val valhalla = providers.gradleProperty("valhalla").isPresent
+// the JDK numbers live in gradle.properties (docs/technical-debt.md TD-14)
+val jdk = property(if (valhalla) "vmath.valhallaJdk" else "vmath.jdk").toString().toInt()
 
 java {
-    toolchain { languageVersion.set(JavaLanguageVersion.of(if (valhalla) 28 else 25)) }
+    toolchain { languageVersion.set(JavaLanguageVersion.of(jdk)) }
     withSourcesJar()
 }
 
@@ -28,7 +31,7 @@ tasks.withType<JavaCompile>().configureEach {
     options.encoding = "UTF-8"
     options.compilerArgs.addAll(listOf("-Xlint:all", "--add-modules=jdk.incubator.vector"))
     if (valhalla) {
-        options.release.set(28)
+        options.release.set(jdk)
         options.compilerArgs.add("--enable-preview")
     }
 }
@@ -53,7 +56,43 @@ tasks.javadoc {
         addStringOption("-add-modules", "jdk.incubator.vector")
         if (valhalla) {
             addBooleanOption("-enable-preview", true)
-            addStringOption("source", "28")
+            addStringOption("source", jdk.toString())
         }
     }
+}
+
+// Coverage (docs/COVERAGE.md, TD-06). Not on the -Pvalhalla build: the JaCoCo release in use does not read JDK 28 class files.
+jacoco {
+    toolVersion = libs.versions.jacoco.get()
+}
+
+tasks.jacocoTestReport {
+    dependsOn(tasks.test)
+    onlyIf { !providers.gradleProperty("valhalla").isPresent }
+    reports {
+        xml.required.set(true)
+        html.required.set(true)
+    }
+}
+
+tasks.test {
+    extensions.configure<JacocoTaskExtension> { isEnabled = !providers.gradleProperty("valhalla").isPresent }
+    finalizedBy(tasks.jacocoTestReport)
+}
+
+// Floors two to three points under what was measured (docs/COVERAGE.md).
+tasks.jacocoTestCoverageVerification {
+    dependsOn(tasks.test)
+    onlyIf { !providers.gradleProperty("valhalla").isPresent }
+    violationRules {
+        rule {
+            element = "BUNDLE"
+            limit { counter = "LINE"; minimum = "0.92".toBigDecimal() }
+            limit { counter = "BRANCH"; minimum = "0.90".toBigDecimal() }
+        }
+    }
+}
+
+tasks.check {
+    dependsOn(tasks.jacocoTestCoverageVerification)
 }

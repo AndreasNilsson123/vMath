@@ -13,8 +13,30 @@ package vmath.core;
  * first axis are proper Euler angles.
  */
 public enum EulerOrder {
-    XYZ(0, 1, 2), XZY(0, 2, 1), YXZ(1, 0, 2), YZX(1, 2, 0), ZXY(2, 0, 1), ZYX(2, 1, 0),
-    XYX(0, 1, 0), XZX(0, 2, 0), YXY(1, 0, 1), YZY(1, 2, 1), ZXZ(2, 0, 2), ZYZ(2, 1, 2);
+    /** Rotate about world X, then Y, then Z (Tait-Bryan angles). */
+    XYZ(0, 1, 2),
+    /** Rotate about world X, then Z, then Y (Tait-Bryan angles). */
+    XZY(0, 2, 1),
+    /** Rotate about world Y, then X, then Z (Tait-Bryan angles). */
+    YXZ(1, 0, 2),
+    /** Rotate about world Y, then Z, then X (Tait-Bryan angles). */
+    YZX(1, 2, 0),
+    /** Rotate about world Z, then X, then Y (Tait-Bryan angles). */
+    ZXY(2, 0, 1),
+    /** Rotate about world Z, then Y, then X (Tait-Bryan angles). */
+    ZYX(2, 1, 0),
+    /** Rotate about world X, then Y, then X (proper Euler angles). */
+    XYX(0, 1, 0),
+    /** Rotate about world X, then Z, then X (proper Euler angles). */
+    XZX(0, 2, 0),
+    /** Rotate about world Y, then X, then Y (proper Euler angles). */
+    YXY(1, 0, 1),
+    /** Rotate about world Y, then Z, then Y (proper Euler angles). */
+    YZY(1, 2, 1),
+    /** Rotate about world Z, then X, then Z (proper Euler angles). */
+    ZXZ(2, 0, 2),
+    /** Rotate about world Z, then Y, then Z (proper Euler angles). */
+    ZYZ(2, 1, 2);
 
     private final int first;
     private final int second;
@@ -31,10 +53,12 @@ public enum EulerOrder {
         return first;
     }
 
+    /** Axis index (0 = X, 1 = Y, 2 = Z) of the second rotation applied. */
     public int second() {
         return second;
     }
 
+    /** Axis index (0 = X, 1 = Y, 2 = Z) of the third rotation applied. */
     public int third() {
         return third;
     }

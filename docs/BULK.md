@@ -128,9 +128,10 @@ win at a million** (six passes over 8-byte keys are memory-bound, and the run-to
 Prefix sum of 1 000 000 `int`s: 465 us sequential, 330 us with `exclusiveParallel(…, 8)`; at 100 000 elements the parallel version is slower (84 us against 43 us). A scan is memory-bound,
 so only multi-million-element arrays gain, and only a little.
 
-Locality order of 1 000 000 random points: Morton 75 ms, Hilbert 186 ms (+-27); the difference is the encode, 6 ns per Morton code against 104 ns per Hilbert code. The path through 50 000 random
-points in the unit cube (`SortingTest`): input order 33 114, Morton 1 787, Hilbert 1 427, so the Hilbert path is 20% shorter. A branch-free rewrite of the Hilbert encode loop (mask arithmetic
-instead of `if`) made it 11% faster (117 to 104 ns); a table-driven version that handles several levels per lookup would be the next step and has not been tried.
+Locality order of 1 000 000 random points (2026-10-02, JMH `SortBench`, one fork, five iterations): Morton 70.6 ms (+-14.5), Hilbert 97.6 ms (+-5.5); the difference is the encode, 5.8 ns per Morton code against 35 ns per Hilbert code. The path through 50 000 random
+points in the unit cube (`SortingTest`): input order 33 114, Morton 1 787, Hilbert 1 427, so the Hilbert path is 20% shorter.
+
+How the Hilbert encode got there (3D, 21 bits per axis, ns per code): Skilling's loop over the bits 117; the same loop written branch-free (mask arithmetic instead of `if`) 104; **table-driven 35**, in which the algorithm is run as a finite automaton over Morton digits (48 states, found by exploring from the identity at class initialisation) with one lookup per two levels, 3.0 times faster and the same code for every input (`HilbertAutomatonTest` compares it with the bit-by-bit algorithm on every cell of the small grids, random cells at every width of 2D and 3D, and the extreme cells). The 1M-point locality order went from 186 ms to 97.6 ms, so Hilbert order now costs 38% more than Morton order instead of 2.5 times. The 2D encode uses the same automaton (16 states, four levels per lookup). The decoders are still the bit-by-bit algorithm.
 
 ## Space-filling curve codes
 

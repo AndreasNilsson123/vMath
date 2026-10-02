@@ -16,6 +16,7 @@ public final class BvhStage implements CullStage {
     private final BvhQuery query;
     private final VisibilitySet scratch;
 
+    /** A stage that queries {@code bvh} with the context's frustum; it keeps the objects the tree reports visible. */
     public BvhStage(StaticBvh bvh) {
         this.query = new BvhQuery(bvh);
         this.scratch = new VisibilitySet(bvh.primitiveCount());

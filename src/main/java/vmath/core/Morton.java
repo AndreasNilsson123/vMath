@@ -45,6 +45,7 @@ public final class Morton {
         return spread3(x) | (spread3(y) << 1) | (spread3(z) << 2);
     }
 
+    /** The coordinates of a code made by {@link #encode3(int, int, int)}. */
     public static Vec3i decode3(long code) {
         return new Vec3i((int) compact3(code), (int) compact3(code >>> 1), (int) compact3(code >>> 2));
     }
@@ -74,6 +75,7 @@ public final class Morton {
         return spread2(x) | (spread2(y) << 1);
     }
 
+    /** The coordinates of a code made by {@link #encode2(int, int)}. */
     public static Vec2i decode2(long code) {
         return new Vec2i((int) compact2(code), (int) compact2(code >>> 1));
     }
@@ -83,6 +85,7 @@ public final class Morton {
         return (int) encode3(x & 0x3FF, y & 0x3FF, z & 0x3FF);
     }
 
+    /** The coordinates of a code made by {@link #encode3Int(int, int, int)}. */
     public static Vec3i decode3Int(int code) {
         return decode3(code & 0x3FFFFFFFL);
     }
@@ -92,6 +95,7 @@ public final class Morton {
         return (int) encode2(x & 0xFFFF, y & 0xFFFF);
     }
 
+    /** The coordinates of a code made by {@link #encode2Int(int, int)}. */
     public static Vec2i decode2Int(int code) {
         return decode2(code & 0xFFFFFFFFL);
     }

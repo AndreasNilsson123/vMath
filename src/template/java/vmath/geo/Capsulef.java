@@ -18,18 +18,22 @@ import vmath.core.Vec3f;
 @ValueType
 public record Capsulef(float ax, float ay, float az, float bx, float by, float bz, float radius) {
 
+    /** The capsule around the segment from {@code a} to {@code b}. */
     public static Capsulef of(Vec3f a, Vec3f b, float radius) {
         return new Capsulef(a.x(), a.y(), a.z(), b.x(), b.y(), b.z(), radius);
     }
 
+    /** The capsule around {@code axis}. */
     public static Capsulef of(Segmentf axis, float radius) {
         return new Capsulef(axis.ax(), axis.ay(), axis.az(), axis.bx(), axis.by(), axis.bz(), radius);
     }
 
+    /** The centre of the first end sphere. */
     public Vec3f a() {
         return new Vec3f(ax, ay, az);
     }
 
+    /** The centre of the second end sphere. */
     public Vec3f b() {
         return new Vec3f(bx, by, bz);
     }
@@ -79,11 +83,13 @@ public record Capsulef(float ax, float ay, float az, float bx, float by, float b
         return of(segment().transform(m), radius * s);
     }
 
+    /** The same capsule with double-precision components. */
     @FloatOnly
     public Capsuled toDouble() {
         return new Capsuled(ax, ay, az, bx, by, bz, radius);
     }
 
+    /** The same capsule with float components, each rounded to the nearest float. */
     @DoubleOnly
     public Capsulef toFloat() {
         return new Capsulef((float) ax, (float) ay, (float) az, (float) bx, (float) by, (float) bz, (float) radius);

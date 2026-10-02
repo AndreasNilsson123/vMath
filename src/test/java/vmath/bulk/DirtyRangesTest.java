@@ -238,4 +238,28 @@ class DirtyRangesTest {
         dirty.markAll();
         assertEquals(n, dirty.forSlot(2).count());
     }
+
+    @Test
+    void frameDirtyRangesKeepOneSetPerSlot() {
+        FrameDirtyRanges f = new FrameDirtyRanges(100, 3);
+        assertEquals(3, f.slots());
+        assertEquals(100, f.capacity());
+        f.mark(5);
+        f.markRange(10, 20);
+        for (int slot = 0; slot < 3; slot++) {
+            assertTrue(f.forSlot(slot).isDirty(5), "mark reaches slot " + slot);
+            assertTrue(f.forSlot(slot).isDirty(10) && f.forSlot(slot).isDirty(19) && !f.forSlot(slot).isDirty(20), "markRange reaches slot " + slot);
+        }
+        f.forSlot(1).clear();
+        assertTrue(f.forSlot(0).isDirty(5) && !f.forSlot(1).isDirty(5), "slots are cleared independently");
+        f.ensureCapacity(500);
+        assertEquals(500, f.capacity());
+        for (int slot = 0; slot < 3; slot++) {
+            assertEquals(500, f.forSlot(slot).capacity(), "ensureCapacity grows slot " + slot);
+        }
+        assertThrows(IndexOutOfBoundsException.class, () -> f.forSlot(3));
+        assertThrows(IndexOutOfBoundsException.class, () -> f.forSlot(-1));
+        assertThrows(IllegalArgumentException.class, () -> new FrameDirtyRanges(10, 0));
+        assertEquals(1, new FrameDirtyRanges(10, 1).slots());
+    }
 }

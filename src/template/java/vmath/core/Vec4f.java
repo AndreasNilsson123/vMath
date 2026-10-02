@@ -16,9 +16,12 @@ import java.nio.FloatBuffer;
 @ValueType
 public record Vec4f(float x, float y, float z, float w) {
 
+    /** The zero vector. */
     public static final Vec4f ZERO = new Vec4f(0f, 0f, 0f, 0f);
+    /** The vector with every component 1. */
     public static final Vec4f ONE = new Vec4f(1f, 1f, 1f, 1f);
 
+    /** A vector with every component equal to {@code s}. */
     public static Vec4f splat(float s) {
         return new Vec4f(s, s, s, s);
     }
@@ -33,14 +36,17 @@ public record Vec4f(float x, float y, float z, float w) {
         return new Vec4f(v.x(), v.y(), v.z(), 0f);
     }
 
+    /** The sum {@code this + o}. */
     public Vec4f add(Vec4f o) {
         return new Vec4f(x + o.x, y + o.y, z + o.z, w + o.w);
     }
 
+    /** The difference {@code this - o}. */
     public Vec4f sub(Vec4f o) {
         return new Vec4f(x - o.x, y - o.y, z - o.z, w - o.w);
     }
 
+    /** Every component multiplied by {@code s}. */
     public Vec4f mul(float s) {
         return new Vec4f(x * s, y * s, z * s, w * s);
     }
@@ -50,18 +56,22 @@ public record Vec4f(float x, float y, float z, float w) {
         return new Vec4f(x * o.x, y * o.y, z * o.z, w * o.w);
     }
 
+    /** Every component negated. */
     public Vec4f negate() {
         return new Vec4f(-x, -y, -z, -w);
     }
 
+    /** The dot product. */
     public float dot(Vec4f o) {
         return x * o.x + y * o.y + z * o.z + w * o.w;
     }
 
+    /** The squared length. */
     public float lengthSquared() {
         return x * x + y * y + z * z + w * w;
     }
 
+    /** The length. */
     public float length() {
         return (float) Math.sqrt(lengthSquared());
     }
@@ -90,10 +100,12 @@ public record Vec4f(float x, float y, float z, float w) {
         return new Vec4f(a * inv, b * inv, c * inv, d * inv);
     }
 
+    /** The linear interpolation {@code this + (o - this) * t}; {@code t} is not clamped. */
     public Vec4f lerp(Vec4f o, float t) {
         return new Vec4f(x + (o.x - x) * t, y + (o.y - y) * t, z + (o.z - z) * t, w + (o.w - w) * t);
     }
 
+    /** The first three components. */
     public Vec3f xyz() {
         return new Vec3f(x, y, z);
     }
@@ -104,10 +116,12 @@ public record Vec4f(float x, float y, float z, float w) {
         return new Vec3f(x * inv, y * inv, z * inv);
     }
 
+    /** The sum of this and the vector with the given components. */
     public Vec4f add(float ox, float oy, float oz, float ow) {
         return new Vec4f(x + ox, y + oy, z + oz, w + ow);
     }
 
+    /** Every component divided by {@code s}; a zero divisor gives infinities or NaN, as in IEEE arithmetic. */
     public Vec4f div(float s) {
         float inv = 1f / s;
         return new Vec4f(x * inv, y * inv, z * inv, w * inv);
@@ -118,11 +132,13 @@ public record Vec4f(float x, float y, float z, float w) {
         return new Vec4f(x + a.x * s, y + a.y * s, z + a.z * s, w + a.w * s);
     }
 
+    /** The squared distance to {@code o}; cheaper than {@link #distance}. */
     public float distanceSquared(Vec4f o) {
         float dx = x - o.x, dy = y - o.y, dz = z - o.z, dw = w - o.w;
         return dx * dx + dy * dy + dz * dz + dw * dw;
     }
 
+    /** The distance to {@code o}. */
     public float distance(Vec4f o) {
         return (float) Math.sqrt(distanceSquared(o));
     }
@@ -140,22 +156,27 @@ public record Vec4f(float x, float y, float z, float w) {
         return new Vec4f(x * inv, y * inv, z * inv, w * inv);
     }
 
+    /** The component-wise minimum. */
     public Vec4f min(Vec4f o) {
         return new Vec4f(Math.min(x, o.x), Math.min(y, o.y), Math.min(z, o.z), Math.min(w, o.w));
     }
 
+    /** The component-wise maximum. */
     public Vec4f max(Vec4f o) {
         return new Vec4f(Math.max(x, o.x), Math.max(y, o.y), Math.max(z, o.z), Math.max(w, o.w));
     }
 
+    /** The absolute value of every component. */
     public Vec4f abs() {
         return new Vec4f(Math.abs(x), Math.abs(y), Math.abs(z), Math.abs(w));
     }
 
+    /** The smallest component. */
     public float minComponent() {
         return Math.min(Math.min(Math.min(x, y), z), w);
     }
 
+    /** The largest component. */
     public float maxComponent() {
         return Math.max(Math.max(Math.max(x, y), z), w);
     }
@@ -170,6 +191,7 @@ public record Vec4f(float x, float y, float z, float w) {
         return new Vec4f(Math.min(Math.max(x, lo.x), hi.x), Math.min(Math.max(y, lo.y), hi.y), Math.min(Math.max(z, lo.z), hi.z), Math.min(Math.max(w, lo.w), hi.w));
     }
 
+    /** Every component clamped to {@code [lo, hi]}. */
     public Vec4f clamp(float lo, float hi) {
         return new Vec4f(Math.min(Math.max(x, lo), hi), Math.min(Math.max(y, lo), hi), Math.min(Math.max(z, lo), hi), Math.min(Math.max(w, lo), hi));
     }
@@ -179,10 +201,12 @@ public record Vec4f(float x, float y, float z, float w) {
         return clamp(0f, 1f);
     }
 
+    /** Every component rounded down to a whole number. */
     public Vec4f floor() {
         return new Vec4f((float) Math.floor(x), (float) Math.floor(y), (float) Math.floor(z), (float) Math.floor(w));
     }
 
+    /** Every component rounded up to a whole number. */
     public Vec4f ceil() {
         return new Vec4f((float) Math.ceil(x), (float) Math.ceil(y), (float) Math.ceil(z), (float) Math.ceil(w));
     }
@@ -266,6 +290,7 @@ public record Vec4f(float x, float y, float z, float w) {
         return ref.dot(incident) < 0f ? this : negate();
     }
 
+    /** Component {@code i} (0 is x, 1 is y, and so on); {@link IndexOutOfBoundsException} for any other index. */
     public float get(int i) {
         return switch (i) {
             case 0 -> x;
@@ -276,11 +301,13 @@ public record Vec4f(float x, float y, float z, float w) {
         };
     }
 
+    /** True when every component differs from that of {@code o} by at most {@code eps}. */
     public boolean approxEquals(Vec4f o, float eps) {
         return Math.abs(x - o.x) <= eps && Math.abs(y - o.y) <= eps
                 && Math.abs(z - o.z) <= eps && Math.abs(w - o.w) <= eps;
     }
 
+    /** Writes the components to {@code dst[off ..]} in order. */
     public void writeTo(float[] dst, int off) {
         dst[off] = x;
         dst[off + 1] = y;
@@ -293,11 +320,13 @@ public record Vec4f(float x, float y, float z, float w) {
         dst.put(index, x).put(index + 1, y).put(index + 2, z).put(index + 3, w);
     }
 
+    /** The same value with double components. */
     @FloatOnly
     public Vec4d toDouble() {
         return new Vec4d(x, y, z, w);
     }
 
+    /** The same value with float components (rounded to the nearest float for double types). */
     @DoubleOnly
     public Vec4f toFloat() {
         return new Vec4f((float) x, (float) y, (float) z, (float) w);

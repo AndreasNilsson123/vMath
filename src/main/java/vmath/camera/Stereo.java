@@ -15,7 +15,9 @@ import vmath.core.Mat4f;
 @Experimental("the set of helpers may grow; the signatures are expected to stay")
 public final class Stereo {
 
+    /** The left eye. */
     public static final int LEFT = 0;
+    /** The right eye. */
     public static final int RIGHT = 1;
 
     private Stereo() {

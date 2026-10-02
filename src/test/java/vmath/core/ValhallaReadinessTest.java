@@ -87,22 +87,25 @@ class ValhallaReadinessTest {
     }
 
     @Test
-    void sourcesAvoidReferenceEqualityOnValueTypes() throws IOException {
+    void sourcesRespectTheIdentityRules() throws IOException {
         List<Path> roots = List.of(Path.of("src/main/java/vmath"), Path.of("src/template/java/vmath"));
-        // Heuristic: flag '==' or '!=' next to a static constant of a value type, e.g. 'v == Vec3f.ZERO'.
-        var pattern = java.util.regex.Pattern.compile("[!=]=\\s*(Vec[234]|Quat|Mat[34])[fd]\\.[A-Z_]+");
+        List<String> found = new java.util.ArrayList<>();
+        int checked = 0;
         for (Path root : roots) {
             if (!Files.isDirectory(root)) {
                 continue;
             }
             try (var files = Files.walk(root)) {
                 for (Path p : files.filter(f -> f.toString().endsWith(".java")).toList()) {
-                    var m = pattern.matcher(Files.readString(p));
-                    if (m.find()) {
-                        fail(p + ": reference comparison '" + m.group() + "'; use equals() or approxEquals()");
+                    checked++;
+                    for (ValueTypeChecker.Violation v : ValueTypeChecker.check(p.getFileName().toString(), Files.readString(p))) {
+                        found.add(p + ": " + v);
                     }
                 }
             }
+        }
+        if (checked > 0) {
+            assertTrue(found.isEmpty(), "identity-sensitive use of value types:\n" + String.join("\n", found));
         }
     }
 }

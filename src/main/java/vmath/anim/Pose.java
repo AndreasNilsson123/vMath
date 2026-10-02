@@ -30,6 +30,7 @@ public final class Pose {
         setToBind(skeleton);
     }
 
+    /** The number of joints. */
     public int jointCount() {
         return joints;
     }
@@ -39,6 +40,7 @@ public final class Pose {
         return trs;
     }
 
+    /** Sets every joint to the identity: no translation, no rotation, scale 1. */
     public void setIdentity() {
         for (int j = 0; j < joints; j++) {
             int o = j * TransformMath.TRS;
@@ -51,16 +53,19 @@ public final class Pose {
         }
     }
 
+    /** Copies the bind pose of {@code skeleton} into this pose; the joint counts must be equal. */
     public void setToBind(Skeleton skeleton) {
         requireJoints(skeleton.jointCount());
         System.arraycopy(skeleton.bindArray(), 0, trs, 0, trs.length);
     }
 
+    /** Copies every joint of {@code other}, which must have the same joint count. */
     public void copyFrom(Pose other) {
         requireJoints(other.joints);
         System.arraycopy(other.trs, 0, trs, 0, trs.length);
     }
 
+    /** Sets the translation of {@code joint}. */
     public void setTranslation(int joint, float x, float y, float z) {
         int o = joint * TransformMath.TRS;
         trs[o] = x;
@@ -78,6 +83,7 @@ public final class Pose {
         Skeleton.normalize(trs, o);
     }
 
+    /** Sets the scale of {@code joint}. */
     public void setScale(int joint, float x, float y, float z) {
         int o = joint * TransformMath.TRS + 7;
         trs[o] = x;

@@ -10,5 +10,8 @@ import vmath.bulk.VisibilitySet;
  */
 public interface CullStage {
 
+    /**
+     * Clears the bit of every object in {@code visible} that this stage rejects, and leaves the other bits alone. {@code bounds} holds the objects' boxes; {@code ctx} the view.
+     */
     void cull(CullContext ctx, BoundsArray bounds, VisibilitySet visible);
 }

@@ -33,6 +33,7 @@ public final class RadixSorter {
     private int[] converted = new int[0];
     private long[] longConverted = new long[0];
 
+    /** A sorter with no buffers yet; they are allocated by the first sort, or by {@link #reserve}. */
     public RadixSorter() {
     }
 

@@ -31,6 +31,7 @@ public record Aabbf(float minX, float minY, float minZ, float maxX, float maxY, 
                 Math.max(a.x(), b.x()), Math.max(a.y(), b.y()), Math.max(a.z(), b.z()));
     }
 
+    /** The box with the given centre and half the edge lengths on each axis. */
     public static Aabbf fromCenterHalfExtent(Vec3f center, Vec3f half) {
         return new Aabbf(
                 center.x() - half.x(), center.y() - half.y(), center.z() - half.z(),
@@ -53,14 +54,17 @@ public record Aabbf(float minX, float minY, float minZ, float maxX, float maxY, 
         return new Aabbf(x0, y0, z0, x1, y1, z1);
     }
 
+    /** The corner with the smallest coordinates. */
     public Vec3f min() {
         return new Vec3f(minX, minY, minZ);
     }
 
+    /** The corner with the largest coordinates. */
     public Vec3f max() {
         return new Vec3f(maxX, maxY, maxZ);
     }
 
+    /** The centre of the box. */
     public Vec3f center() {
         return new Vec3f((minX + maxX) * 0.5f, (minY + maxY) * 0.5f, (minZ + maxZ) * 0.5f);
     }
@@ -70,10 +74,12 @@ public record Aabbf(float minX, float minY, float minZ, float maxX, float maxY, 
         return new Vec3f(maxX - minX, maxY - minY, maxZ - minZ);
     }
 
+    /** Half the edge lengths: the distance from the centre to each face. */
     public Vec3f halfSize() {
         return new Vec3f((maxX - minX) * 0.5f, (maxY - minY) * 0.5f, (maxZ - minZ) * 0.5f);
     }
 
+    /** True when some minimum is above its maximum: the box holds no point (see {@code EMPTY}). */
     public boolean isEmpty() {
         return minX > maxX || minY > maxY || minZ > maxZ;
     }
@@ -83,12 +89,14 @@ public record Aabbf(float minX, float minY, float minZ, float maxX, float maxY, 
         return new Vec3f((i & 1) == 0 ? minX : maxX, (i & 2) == 0 ? minY : maxY, (i & 4) == 0 ? minZ : maxZ);
     }
 
+    /** The smallest box that contains both boxes. */
     public Aabbf union(Aabbf o) {
         return new Aabbf(
                 Math.min(minX, o.minX), Math.min(minY, o.minY), Math.min(minZ, o.minZ),
                 Math.max(maxX, o.maxX), Math.max(maxY, o.maxY), Math.max(maxZ, o.maxZ));
     }
 
+    /** The smallest box that contains this box and the point. */
     public Aabbf union(Vec3f p) {
         return new Aabbf(
                 Math.min(minX, p.x()), Math.min(minY, p.y()), Math.min(minZ, p.z()),
@@ -114,6 +122,7 @@ public record Aabbf(float minX, float minY, float minZ, float maxX, float maxY, 
                 && minZ <= o.maxZ && maxZ >= o.minZ;
     }
 
+    /** True when the point is inside the box or on its surface. */
     public boolean contains(Vec3f p) {
         return p.x() >= minX && p.x() <= maxX && p.y() >= minY && p.y() <= maxY && p.z() >= minZ && p.z() <= maxZ;
     }
@@ -176,16 +185,19 @@ public record Aabbf(float minX, float minY, float minZ, float maxX, float maxY, 
         return new Spheref(cx, cy, cz, (float) Math.sqrt(hx * hx + hy * hy + hz * hz));
     }
 
+    /** True when every one of the six bounds is within {@code eps} of the other box's. */
     public boolean approxEquals(Aabbf o, float eps) {
         return Math.abs(minX - o.minX) <= eps && Math.abs(minY - o.minY) <= eps && Math.abs(minZ - o.minZ) <= eps
                 && Math.abs(maxX - o.maxX) <= eps && Math.abs(maxY - o.maxY) <= eps && Math.abs(maxZ - o.maxZ) <= eps;
     }
 
+    /** The same box with double-precision bounds. */
     @FloatOnly
     public Aabbd toDouble() {
         return new Aabbd(minX, minY, minZ, maxX, maxY, maxZ);
     }
 
+    /** The same box with float bounds, each rounded to the nearest float. */
     @DoubleOnly
     public Aabbf toFloat() {
         return new Aabbf((float) minX, (float) minY, (float) minZ, (float) maxX, (float) maxY, (float) maxZ);

@@ -25,22 +25,37 @@ public sealed interface GlslType {
 
     // ---------------------------------------------------------------- constants
 
+    /** The GLSL type {@code float}. */
     Scalar FLOAT = new Scalar("float");
+    /** The GLSL type {@code int}. */
     Scalar INT = new Scalar("int");
+    /** The GLSL type {@code uint}. */
     Scalar UINT = new Scalar("uint");
 
+    /** The GLSL type {@code vec2}. */
     Vec VEC2 = new Vec(FLOAT, 2);
+    /** The GLSL type {@code vec3}. */
     Vec VEC3 = new Vec(FLOAT, 3);
+    /** The GLSL type {@code vec4}. */
     Vec VEC4 = new Vec(FLOAT, 4);
+    /** The GLSL type {@code ivec2}. */
     Vec IVEC2 = new Vec(INT, 2);
+    /** The GLSL type {@code ivec3}. */
     Vec IVEC3 = new Vec(INT, 3);
+    /** The GLSL type {@code ivec4}. */
     Vec IVEC4 = new Vec(INT, 4);
+    /** The GLSL type {@code uvec2}. */
     Vec UVEC2 = new Vec(UINT, 2);
+    /** The GLSL type {@code uvec3}. */
     Vec UVEC3 = new Vec(UINT, 3);
+    /** The GLSL type {@code uvec4}. */
     Vec UVEC4 = new Vec(UINT, 4);
 
+    /** The GLSL type {@code mat2}. */
     Mat MAT2 = new Mat(2, 2);
+    /** The GLSL type {@code mat3}. */
     Mat MAT3 = new Mat(3, 3);
+    /** The GLSL type {@code mat4}. */
     Mat MAT4 = new Mat(4, 4);
 
     /** {@code matCxR} with {@code cols} columns of {@code rows} components; e.g. {@code mat(4, 3)} is {@code mat4x3}. */
@@ -48,6 +63,7 @@ public sealed interface GlslType {
         return new Mat(cols, rows);
     }
 
+    /** An array of {@code length} (at least 1) elements of {@code element}; arrays of arrays are not allowed. */
     static Array array(GlslType element, int length) {
         return new Array(element, length);
     }
@@ -69,6 +85,7 @@ public sealed interface GlslType {
 
     /** A vector of 2 to 4 scalars. In std140/std430 a 2-vector aligns to 8 and 3- and 4-vectors to 16. */
     record Vec(Scalar component, int length) implements GlslType {
+        /** Checks the length: 2 to 4. */
         public Vec {
             if (length < 2 || length > 4) {
                 throw new IllegalArgumentException("vector length must be 2..4: " + length);
@@ -105,6 +122,7 @@ public sealed interface GlslType {
      * column vector's own alignment, and scalar packs them tightly.
      */
     record Mat(int cols, int rows) implements GlslType {
+        /** Checks the dimensions: 2 to 4 in each. */
         public Mat {
             if (cols < 2 || cols > 4 || rows < 2 || rows > 4) {
                 throw new IllegalArgumentException("matrix dimensions must be 2..4: " + cols + "x" + rows);
@@ -139,6 +157,7 @@ public sealed interface GlslType {
 
     /** A fixed-length array. The {@link #stride} is what differs between layouts. */
     record Array(GlslType element, int length) implements GlslType {
+        /** Checks the length (at least 1) and that the element is not itself an array. */
         public Array {
             if (length < 1) {
                 throw new IllegalArgumentException("array length must be >= 1: " + length);
@@ -176,6 +195,7 @@ public sealed interface GlslType {
 
     /** A struct type. Members are laid out in declaration order, each at the next offset that satisfies its alignment. */
     record Struct(String name, List<Member> members) implements GlslType {
+        /** Checks that the struct has members and that their names are distinct. */
         public Struct {
             members = List.copyOf(members);
             if (members.isEmpty()) {

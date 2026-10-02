@@ -23,6 +23,9 @@ import vmath.annotations.Experimental;
 @Experimental("a first cut of texture addressing; 3D and compressed-array corner cases are lightly tested")
 public record TextureLayout(TextureFormat format, int width, int height, int depth, int levels, int layers, int faces) {
 
+    /**
+     * Checks the arguments: a non-null format, every dimension and the layer count at least 1, {@code faces} 1 or 6, {@code levels} between 1 and the number the dimensions allow, and a total size that fits a {@code long}; {@link IllegalArgumentException} otherwise.
+     */
     public TextureLayout {
         if (format == null) {
             throw new IllegalArgumentException("format");
@@ -74,16 +77,19 @@ public record TextureLayout(TextureFormat format, int width, int height, int dep
         return Math.max(1, size >> level);
     }
 
+    /** The width in texels of {@code level} (0 is the finest); {@link IndexOutOfBoundsException} for a level the texture does not have. */
     public int levelWidth(int level) {
         checkLevel(level);
         return levelSize(width, level);
     }
 
+    /** The height in texels of {@code level}. */
     public int levelHeight(int level) {
         checkLevel(level);
         return levelSize(height, level);
     }
 
+    /** The depth in texels of {@code level}. */
     public int levelDepth(int level) {
         checkLevel(level);
         return levelSize(depth, level);

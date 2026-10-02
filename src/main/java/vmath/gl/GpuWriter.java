@@ -40,14 +40,17 @@ public final class GpuWriter {
         return MemorySegment.ofBuffer(buffer);
     }
 
+    /** Writes a float at byte {@code offset}. */
     public static void putFloat(MemorySegment dst, long offset, float v) {
         dst.set(F, offset, v);
     }
 
+    /** Writes an int at byte {@code offset}. */
     public static void putInt(MemorySegment dst, long offset, int v) {
         dst.set(I, offset, v);
     }
 
+    /** Writes 8 bytes: x, then y. */
     public static void putVec2(MemorySegment dst, long offset, Vec2f v) {
         dst.set(F, offset, v.x());
         dst.set(F, offset + 4, v.y());
@@ -60,6 +63,7 @@ public final class GpuWriter {
         dst.set(F, offset + 8, v.z());
     }
 
+    /** Writes 16 bytes: x, y, z, w. */
     public static void putVec4(MemorySegment dst, long offset, Vec4f v) {
         dst.set(F, offset, v.x());
         dst.set(F, offset + 4, v.y());
@@ -75,11 +79,13 @@ public final class GpuWriter {
         dst.set(F, offset + 12, q.w());
     }
 
+    /** Writes 8 bytes: x, then y. */
     public static void putIVec2(MemorySegment dst, long offset, Vec2i v) {
         dst.set(I, offset, v.x());
         dst.set(I, offset + 4, v.y());
     }
 
+    /** Writes 12 bytes; the fourth slot of an {@code ivec3} is padding and is not touched. */
     public static void putIVec3(MemorySegment dst, long offset, Vec3i v) {
         dst.set(I, offset, v.x());
         dst.set(I, offset + 4, v.y());
@@ -129,10 +135,12 @@ public final class GpuWriter {
 
     // ---------------------------------------------------------------- readers, mainly for tests and debugging
 
+    /** Reads a float at byte {@code offset}. */
     public static float getFloat(MemorySegment src, long offset) {
         return src.get(F, offset);
     }
 
+    /** Reads an int at byte {@code offset}. */
     public static int getInt(MemorySegment src, long offset) {
         return src.get(I, offset);
     }

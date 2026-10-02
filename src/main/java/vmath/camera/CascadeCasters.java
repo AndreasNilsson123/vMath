@@ -1,11 +1,12 @@
-package vmath.spatial;
+package vmath.camera;
 
 import vmath.bulk.BoundsArray;
 import vmath.bulk.VisibilitySet;
-import vmath.camera.Cameraf;
 import vmath.camera.Cascades.Cascade;
 import vmath.core.Mat4f;
 import vmath.core.Vec3f;
+import vmath.spatial.CullContext;
+import vmath.spatial.CullStage;
 
 /**
  * A {@link CullStage} that keeps only the objects that can throw a shadow onto what the camera sees in one cascade.
@@ -57,6 +58,9 @@ public final class CascadeCasters implements CullStage {
     private final float sliceMaxX;
     private final float sliceMaxY;
 
+    /**
+     * A stage for {@code cascade}, cut from {@code camera}'s view. {@code margin} (at least 0, a light-space distance such as the shadow filter radius) widens the footprint test.
+     */
     public CascadeCasters(Cameraf camera, Cascade cascade, float margin) {
         if (!(margin >= 0f)) {
             throw new IllegalArgumentException("margin must be >= 0: " + margin);

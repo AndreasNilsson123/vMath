@@ -43,6 +43,7 @@ public final class StaticBvh {
 
     // ------------------------------------------------------------------ accessors
 
+    /** The number of nodes; node 0 is the root. Zero for a tree over no primitives. */
     public int nodeCount() {
         return nodeCount;
     }
@@ -52,10 +53,12 @@ public final class StaticBvh {
         return order.length;
     }
 
+    /** The largest number of primitives a leaf may hold, as given to the builder. */
     public int maxLeafSize() {
         return maxLeafSize;
     }
 
+    /** Whether {@code node} is a leaf; a leaf holds {@code primitiveCount(node)} primitives starting at {@code firstPrimitive(node)} in {@link #order()}. */
     public boolean isLeaf(int node) {
         return right[node] == 0;
     }

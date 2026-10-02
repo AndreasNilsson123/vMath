@@ -55,10 +55,12 @@ public final class VertexBufferLayout {
         this.perInstance = perInstance;
     }
 
+    /** A builder for a layout; attributes are laid out in the order they are added. */
     public static Builder builder() {
         return new Builder();
     }
 
+    /** The attributes in memory order. */
     public List<Attribute> attributes() {
         return attributes;
     }
@@ -160,6 +162,7 @@ public final class VertexBufferLayout {
             return this;
         }
 
+        /** Builds the layout; {@link IllegalStateException} when no attribute was added. */
         public VertexBufferLayout build() {
             if (list.isEmpty()) {
                 throw new IllegalStateException("a vertex buffer layout needs at least one attribute");

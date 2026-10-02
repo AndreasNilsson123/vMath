@@ -182,8 +182,8 @@ A mesh that is skinned should always be simplified with its weights. `ClusterHie
 
 `Meshlets.build(mesh, maxVertices, maxTriangles)` (default 64 and 124) cuts a mesh into small clusters for mesh shaders and cluster culling. The layout is
 meshoptimizer's: a concatenated vertex list (source-mesh indices), concatenated triangles as three byte-sized local indices, and per meshlet an offset and a count
-for each. Each meshlet has a bounding sphere (centre of its vertex box, radius to the farthest vertex) and a normal cone (`ConeCull.computeCone`), so
-`ConeCull.backfacing` and `ConeCull.Clusters` (`addTo`) work on them directly. `writeDescriptors` and `writeBounds` fill 16-byte and 32-byte GPU records.
+for each. Each meshlet has a bounding sphere (centre of its vertex box, radius to the farthest vertex) and a normal cone (`NormalCone.compute`), so
+`NormalCone.backfacing` and `ConeCull.Clusters` (`addTo`) work on them directly. `writeDescriptors` and `writeBounds` fill 16-byte and 32-byte GPU records.
 
 The builder is a greedy grower (seed, then the adjacent triangle with the fewest new vertices, nearest the centre), with the seed chosen among the next 32 unused
 triangles as the one with the fewest unused neighbours. Tested on six shapes and six limit pairs from 3/1 to 255/512: every triangle lands in exactly one meshlet,

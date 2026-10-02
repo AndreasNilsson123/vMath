@@ -34,6 +34,7 @@ public final class ColorSpaces {
         return 0.2126f * r + 0.7152f * g + 0.0722f * b;
     }
 
+    /** The relative luminance of a linear sRGB colour, as {@link #luminance(float, float, float)}. */
     public static float luminance(Vec3f linearRgb) {
         return luminance(linearRgb.x(), linearRgb.y(), linearRgb.z());
     }
@@ -135,24 +136,28 @@ public final class ColorSpaces {
         out[2] = b + m;
     }
 
+    /** RGB to HSV as a vector {@code (hue in degrees, saturation, value)}; allocates the result, the array form does not. */
     public static Vec3f rgbToHsv(Vec3f rgb) {
         float[] o = new float[3];
         rgbToHsv(rgb.x(), rgb.y(), rgb.z(), o);
         return new Vec3f(o[0], o[1], o[2]);
     }
 
+    /** HSV (hue in degrees, saturation, value) to RGB as a vector; allocates the result, the array form does not. */
     public static Vec3f hsvToRgb(Vec3f hsv) {
         float[] o = new float[3];
         hsvToRgb(hsv.x(), hsv.y(), hsv.z(), o);
         return new Vec3f(o[0], o[1], o[2]);
     }
 
+    /** RGB to HSL as a vector {@code (hue in degrees, saturation, lightness)}; allocates the result, the array form does not. */
     public static Vec3f rgbToHsl(Vec3f rgb) {
         float[] o = new float[3];
         rgbToHsl(rgb.x(), rgb.y(), rgb.z(), o);
         return new Vec3f(o[0], o[1], o[2]);
     }
 
+    /** HSL (hue in degrees, saturation, lightness) to RGB as a vector; allocates the result, the array form does not. */
     public static Vec3f hslToRgb(Vec3f hsl) {
         float[] o = new float[3];
         hslToRgb(hsl.x(), hsl.y(), hsl.z(), o);
@@ -209,12 +214,14 @@ public final class ColorSpaces {
         oklabToLinearSrgb(l0 + (out[0] - l0) * t, a0 + (out[1] - a0) * t, c0 + (out[2] - c0) * t, out);
     }
 
+    /** Linear sRGB to Oklab as a vector {@code (L, a, b)}; allocates the result, the array form does not. */
     public static Vec3f linearSrgbToOklab(Vec3f rgb) {
         float[] o = new float[3];
         linearSrgbToOklab(rgb.x(), rgb.y(), rgb.z(), o);
         return new Vec3f(o[0], o[1], o[2]);
     }
 
+    /** Oklab {@code (L, a, b)} to linear sRGB as a vector; allocates the result, the array form does not. */
     public static Vec3f oklabToLinearSrgb(Vec3f lab) {
         float[] o = new float[3];
         oklabToLinearSrgb(lab.x(), lab.y(), lab.z(), o);

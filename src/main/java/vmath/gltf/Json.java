@@ -1,7 +1,5 @@
 package vmath.gltf;
 
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -84,9 +82,9 @@ final class Json {
         return value;
     }
 
-    private Map<String, Object> object(int depth) {
+    private JsonObject object(int depth) {
         pos++; // {
-        Map<String, Object> map = new LinkedHashMap<>();
+        JsonObject map = new JsonObject();
         skipWhitespace();
         if (pos < s.length() && s.charAt(pos) == '}') {
             pos++;
@@ -119,9 +117,9 @@ final class Json {
         }
     }
 
-    private List<Object> array(int depth) {
+    private JsonArray array(int depth) {
         pos++; // [
-        List<Object> list = new ArrayList<>();
+        JsonArray list = new JsonArray();
         skipWhitespace();
         if (pos < s.length() && s.charAt(pos) == ']') {
             pos++;

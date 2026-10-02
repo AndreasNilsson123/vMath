@@ -4,12 +4,12 @@ import java.lang.foreign.MemorySegment;
 import vmath.annotations.Experimental;
 import vmath.gl.DrawCommandBuffer;
 import vmath.gl.GpuWriter;
-import vmath.spatial.ConeCull;
+import vmath.geo.NormalCone;
 
 /**
  * The CPU reference of GPU-driven <b>cluster</b> culling with continuous level of detail: for every cluster of a {@link vmath.mesh.ClusterHierarchy}, choose it or not by the
  * projected error of its level and of its parent ({@code error * pixelScale / distance}: chosen when its own is within {@code pixelBudget} and its parent's is not, the rule of
- * {@link vmath.mesh.ClusterHierarchy#select}), then frustum test its bounding sphere, back-face test it with its normal cone ({@link ConeCull#backfacing}), and Hi-Z test the box
+ * {@link vmath.mesh.ClusterHierarchy#select}), then frustum test its bounding sphere, back-face test it with its normal cone ({@link NormalCone#backfacing}), and Hi-Z test the box
  * around its sphere. A survivor appends one indirect draw command ({@code DrawElementsIndirect}: its {@code firstIndex} and {@code indexCount}, one instance,
  * {@code baseInstance = } the cluster index, so the vertex shader finds the cluster through {@code gl_BaseInstance}) to the command buffer; on a GPU the slot comes from an atomic
  * counter and the draw count is read by {@code glMultiDrawElementsIndirectCount}. A command that does not fit in the buffer is dropped and counted.
@@ -33,6 +33,7 @@ public final class ClusterCullReference {
         public Counters() {
         }
 
+        /** Clusters looked at, before any test. */
         public int clusters;
         /** Clusters whose level of detail is the right one for the view. */
         public int lodSelected;
@@ -48,6 +49,7 @@ public final class ClusterCullReference {
         public int overflow;
         private final HizState hiz = new HizState();
 
+        /** Sets every counter to zero. */
         public void reset() {
             clusters = 0;
             lodSelected = 0;
@@ -100,7 +102,7 @@ public final class ClusterCullReference {
             }
             counters.inFrustum++;
             long c = o + ClusterCullObjectGpu.OFFSET_CONE;
-            if (ConeCull.backfacing(cx, cy, cz, r, f(clusters, c), f(clusters, c + 4), f(clusters, c + 8), f(clusters, c + 12), ex, ey, ez)) {
+            if (NormalCone.backfacing(cx, cy, cz, r, f(clusters, c), f(clusters, c + 4), f(clusters, c + 8), f(clusters, c + 12), ex, ey, ez)) {
                 counters.backFacing++;
                 continue;
             }

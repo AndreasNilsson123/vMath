@@ -9,6 +9,7 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import vmath.bulk.BoundsArray;
 import vmath.bulk.VisibilitySet;
+import vmath.camera.CascadeCasters;
 import vmath.camera.Cameraf;
 import vmath.camera.Cascades;
 import vmath.camera.Cascades.Cascade;
@@ -280,5 +281,90 @@ class ShadowCullTest {
         Cameraf cam = randomCamera();
         Cascade c = Cascades.fit(cam, 0.3f, 10f, new Vec3f(0f, -1f, 0f), 512, true, 50f, DepthRange.ZERO_TO_ONE);
         assertThrows(IllegalArgumentException.class, () -> new CascadeCasters(cam, c, -1f));
+    }
+
+    /** The light-space box of a world box, from its eight corners, in double precision: {minX, minY, minZ, maxX, maxY, maxZ}. */
+    private static double[] lightBox(vmath.core.Mat4f m, Aabbf box) {
+        double[] r = {Double.MAX_VALUE, Double.MAX_VALUE, Double.MAX_VALUE, -Double.MAX_VALUE, -Double.MAX_VALUE, -Double.MAX_VALUE};
+        for (int i = 0; i < 8; i++) {
+            double x = (i & 1) == 0 ? box.minX() : box.maxX(), y = (i & 2) == 0 ? box.minY() : box.maxY(), z = (i & 4) == 0 ? box.minZ() : box.maxZ();
+            double[] p = {m.m00() * x + m.m10() * y + m.m20() * z + m.m30(), m.m01() * x + m.m11() * y + m.m21() * z + m.m31(),
+                    m.m02() * x + m.m12() * y + m.m22() * z + m.m32()};
+            for (int k = 0; k < 3; k++) {
+                r[k] = Math.min(r[k], p[k]);
+                r[k + 3] = Math.max(r[k + 3], p[k]);
+            }
+        }
+        return r;
+    }
+
+    /**
+     * The stage keeps a box exactly when its light-space bound overlaps the slice's light-space footprint (grown by the margin on the sides, open toward the light):
+     * checked against an independent double-precision computation, in both directions. A box that overlaps by more than the rounding tolerance must be kept (never lose a
+     * caster); one that misses by more than the margin plus the tolerance must go (the stage must actually cull, not just be conservative).
+     */
+    @Test
+    void casterCullingMatchesAnIndependentLightSpaceComputation() {
+        int mustKeep = 0;
+        int mustCull = 0;
+        for (int trial = 0; trial < 40; trial++) {
+            Cameraf cam = randomCamera();
+            // every fourth light is nearly vertical, where the cascade's light view switches its up axis from +Y to +X (and different matrix entries are zero)
+            Vec3f lightDir = trial % 4 == 3 ? new Vec3f((float) rnd.range(-0.1, 0.1), trial % 8 == 3 ? -1f : 1f, (float) rnd.range(-0.1, 0.1)).normalize()
+                    : rnd.nextVec3f().normalize();
+            float margin = trial % 3 == 0 ? 0f : (float) rnd.range(0.05, 2);
+            Cascade c = Cascades.fitAll(cam, 3, 0.7f, 120f, lightDir, 1024, trial % 2 == 0, 200f, DepthRange.ZERO_TO_ONE).get(trial % 3);
+            CascadeCasters stage = new CascadeCasters(cam, c, margin);
+            // the footprint of the slice in light space, from its eight corners
+            double th = Math.tan(cam.fovy() * 0.5);
+            double[] slice = {Double.MAX_VALUE, Double.MAX_VALUE, Double.MAX_VALUE, -Double.MAX_VALUE, -Double.MAX_VALUE, -Double.MAX_VALUE};
+            for (int i = 0; i < 8; i++) {
+                double d = (i & 4) == 0 ? c.sliceNear() : c.sliceFar();
+                double h = th * d, w = h * cam.aspect();
+                Vec3f corner = cam.position().add(cam.forward().mul((float) d)).add(cam.right().mul((float) ((i & 1) == 0 ? -w : w)))
+                        .add(cam.up().mul((float) ((i & 2) == 0 ? -h : h)));
+                double[] q = lightBox(c.lightView(), Aabbf.of(corner, corner));
+                for (int k = 0; k < 3; k++) {
+                    slice[k] = Math.min(slice[k], q[k]);
+                    slice[k + 3] = Math.max(slice[k + 3], q[k + 3]);
+                }
+            }
+            int n = 400;
+            BoundsArray b = new BoundsArray(n);
+            Aabbf[] boxes = new Aabbf[n];
+            Vec3f mid = cam.position().add(cam.forward().mul((c.sliceNear() + c.sliceFar()) * 0.5f));
+            float spread = c.sliceFar() * 0.5f;
+            for (int i = 0; i < n; i++) {
+                // half the boxes near the slice itself (so the footprint's edges are sampled), half spread around it
+                Vec3f centre = mid.add(rnd.nextVec3f().mul(spread));
+                if (i % 2 == 0) {
+                    float d = (float) rnd.range(c.sliceNear(), c.sliceFar());
+                    centre = cam.position().add(cam.forward().mul(d)).add(cam.right().mul((float) (rnd.range(-1.3, 1.3) * th * d * cam.aspect())))
+                            .add(cam.up().mul((float) (rnd.range(-1.3, 1.3) * th * d))).sub(lightDir.mul((float) rnd.range(-20, 60)));
+                }
+                boxes[i] = Aabbf.fromCenterHalfExtent(centre,
+                        new Vec3f((float) rnd.range(0.05, 4), (float) rnd.range(0.05, 4), (float) rnd.range(0.05, 4)));
+                b.add(boxes[i]);
+            }
+            VisibilitySet vis = all(n);
+            stage.cull(null, b, vis);
+            double tol = 1e-3 * (1 + Math.max(Math.abs(slice[3]), Math.abs(slice[4])));
+            for (int i = 0; i < n; i++) {
+                double[] q = lightBox(c.lightView(), boxes[i]);
+                // overlap along each axis, positive when they overlap: x and y against the slice grown by the margin, z open toward the light (larger z in light space is farther)
+                double ox = Math.min(q[3], slice[3] + margin) - Math.max(q[0], slice[0] - margin);
+                double oy = Math.min(q[4], slice[4] + margin) - Math.max(q[1], slice[1] - margin);
+                double oz = q[5] - slice[2];
+                double worst = Math.min(ox, Math.min(oy, oz));
+                if (worst > tol) {
+                    mustKeep++;
+                    assertTrue(vis.get(i), "a box overlapping the slice's footprint by " + worst + " was culled (trial " + trial + ", box " + i + ")");
+                } else if (worst < -tol) {
+                    mustCull++;
+                    assertFalse(vis.get(i), "a box missing the footprint by " + -worst + " was kept (trial " + trial + ", box " + i + ")");
+                }
+            }
+        }
+        assertTrue(mustKeep > 1000 && mustCull > 500, "the scenes must exercise both directions: " + mustKeep + " kept, " + mustCull + " culled");
     }
 }

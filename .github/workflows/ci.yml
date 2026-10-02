@@ -22,6 +22,9 @@ jobs:
         with:
           distribution: temurin
           java-version: 25
+      - name: Install glslang (ShaderCompileTest compiles the generated GLSL; it is skipped without a compiler)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y glslang-tools
       - uses: gradle/actions/setup-gradle@v4
       - name: Build and test (fixed seed)
         if: github.event_name != 'schedule'

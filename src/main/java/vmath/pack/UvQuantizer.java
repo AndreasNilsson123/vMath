@@ -55,22 +55,27 @@ public final class UvQuantizer {
         return new UvQuantizer(u0, v0, u1, v1, bits);
     }
 
+    /** The number of bits per coordinate. */
     public int bits() {
         return bits;
     }
 
+    /** The smallest u the rectangle covers. */
     public float minU() {
         return minU;
     }
 
+    /** The smallest v the rectangle covers. */
     public float minV() {
         return minV;
     }
 
+    /** The extent of the rectangle in u. */
     public float sizeU() {
         return sizeU;
     }
 
+    /** The extent of the rectangle in v. */
     public float sizeV() {
         return sizeV;
     }
@@ -85,6 +90,7 @@ public final class UvQuantizer {
         return sizeU > 0f ? Quantize.unorm((u - minU) / sizeU, bits) : 0;
     }
 
+    /** The code of {@code v} (clamped to the rectangle). */
     public int quantizeV(float v) {
         return sizeV > 0f ? Quantize.unorm((v - minV) / sizeV, bits) : 0;
     }
@@ -95,10 +101,12 @@ public final class UvQuantizer {
         dst[offset + 1] = (short) quantizeV(v);
     }
 
+    /** The u that {@code code} stands for. */
     public float unpackU(int code) {
         return minU + (float) ((double) (code & levels) / levels * sizeU);
     }
 
+    /** The v that {@code code} stands for. */
     public float unpackV(int code) {
         return minV + (float) ((double) (code & levels) / levels * sizeV);
     }
@@ -108,6 +116,7 @@ public final class UvQuantizer {
         return sizeU / (2f * levels);
     }
 
+    /** The largest error in v for points inside the rectangle. */
     public float maxErrorV() {
         return sizeV / (2f * levels);
     }

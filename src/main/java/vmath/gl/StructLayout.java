@@ -43,6 +43,7 @@ public record StructLayout(Struct struct, GpuLayout layout, int alignment, long 
         return field(member).offset();
     }
 
+    /** The named member's field (its offset, size and type); {@link IllegalArgumentException} for a name the struct does not have. */
     public Field field(String member) {
         for (Field f : fields) {
             if (f.name().equals(member)) {

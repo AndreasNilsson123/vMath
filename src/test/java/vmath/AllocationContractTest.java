@@ -26,7 +26,7 @@ import vmath.geo.Spheref;
 import vmath.occlusion.DepthBuffer;
 import vmath.occlusion.OcclusionStage;
 import vmath.spatial.BvhQuery;
-import vmath.spatial.CascadeCasters;
+import vmath.camera.CascadeCasters;
 import vmath.spatial.ConeCull;
 import vmath.spatial.CullContext;
 import vmath.spatial.CullPipeline;

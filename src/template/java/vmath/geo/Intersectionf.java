@@ -7,7 +7,7 @@ import vmath.core.Vec3f;
 
 /**
  * Ray casts and shape queries. Ray routines return the distance {@code t} along the ray (in units of the ray
- * direction) of the first hit within {@code [0, tMax]}, or {@link Float#POSITIVE_INFINITY} for a miss, so
+ * direction) of the first hit within {@code [0, tMax]}, or {@code +Infinity} for a miss, so
  * {@code t < tMax} and {@code Math.min} compose naturally when searching for the nearest hit. A ray that starts
  * inside a solid volume reports {@code t = 0}.
  *
@@ -47,6 +47,9 @@ public final class Intersectionf {
         return tNear;
     }
 
+    /**
+     * The distance {@code t} along the ray to the first point of the sphere, in units of the ray's direction: 0 when the origin is inside, {@code +Infinity} for a miss, for a sphere behind the origin and when the hit is beyond {@code tMax}.
+     */
     public static float raySphere(Rayf ray, Spheref s, float tMax) {
         float lx = ray.ox() - s.cx(), ly = ray.oy() - s.cy(), lz = ray.oz() - s.cz();
         float c = lx * lx + ly * ly + lz * lz - s.radius() * s.radius();

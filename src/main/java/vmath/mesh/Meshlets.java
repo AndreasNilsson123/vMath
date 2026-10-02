@@ -4,6 +4,7 @@ import java.lang.foreign.MemorySegment;
 import java.util.Arrays;
 import vmath.annotations.Experimental;
 import vmath.gl.GpuWriter;
+import vmath.geo.NormalCone;
 import vmath.spatial.ConeCull;
 
 /**
@@ -20,8 +21,8 @@ import vmath.spatial.ConeCull;
  * average fill. Triangle winding is preserved (a meshlet triangle is the source triangle with its corners renamed).
  *
  * <p><b>Bounds.</b> The sphere is the centre of the meshlet's vertex box with the radius reaching the farthest vertex (conservative, not minimal). The cone is
- * {@link ConeCull#computeCone}: axis and cutoff (the sine of the half-angle), with cutoff 1 (never culls) when the triangle normals spread too wide. The pair
- * plugs straight into {@link ConeCull#backfacing} and {@link ConeCull.Clusters}.
+ * {@link NormalCone#compute}: axis and cutoff (the sine of the half-angle), with cutoff 1 (never culls) when the triangle normals spread too wide. The pair
+ * plugs straight into {@link NormalCone#backfacing} and {@link ConeCull.Clusters}.
  *
  * <p><b>Thread safety.</b> Immutable after construction, so it can be shared between threads freely. The arrays it hands out are its own storage: do
  * not modify them.
@@ -243,7 +244,7 @@ public final class Meshlets {
             sphere[meshlets * 4 + 1] = sy;
             sphere[meshlets * 4 + 2] = sz;
             sphere[meshlets * 4 + 3] = (float) Math.nextUp(Math.sqrt(r2)) * (1f + 1e-6f);
-            ConeCull.computeCone(normals, 0, localTris, cone, meshlets * 4);
+            NormalCone.compute(normals, 0, localTris, cone, meshlets * 4);
             meshlets++;
         }
         return new Meshlets(meshlets, Arrays.copyOf(vo, meshlets), Arrays.copyOf(vc, meshlets), Arrays.copyOf(to, meshlets), Arrays.copyOf(tc, meshlets),
@@ -269,14 +270,17 @@ public final class Meshlets {
 
     // ---------------------------------------------------------------- access
 
+    /** The number of meshlets. */
     public int count() {
         return count;
     }
 
+    /** The position of the meshlet's first entry in {@link #vertices()}. */
     public int vertexOffset(int meshlet) {
         return vertexOffset[meshlet];
     }
 
+    /** The number of vertices of the meshlet. */
     public int vertexCount(int meshlet) {
         return vertexCount[meshlet];
     }
@@ -286,6 +290,7 @@ public final class Meshlets {
         return triangleOffset[meshlet];
     }
 
+    /** The number of triangles of the meshlet. */
     public int triangleCount(int meshlet) {
         return triangleCount[meshlet];
     }
@@ -305,14 +310,17 @@ public final class Meshlets {
         return sphere[m * 4];
     }
 
+    /** The y of the meshlet's bounding sphere centre. */
     public float sphereY(int m) {
         return sphere[m * 4 + 1];
     }
 
+    /** The z of the meshlet's bounding sphere centre. */
     public float sphereZ(int m) {
         return sphere[m * 4 + 2];
     }
 
+    /** The radius of the meshlet's bounding sphere. */
     public float sphereRadius(int m) {
         return sphere[m * 4 + 3];
     }
@@ -322,10 +330,12 @@ public final class Meshlets {
         return cone[m * 4];
     }
 
+    /** The y of the normal cone axis. */
     public float coneAxisY(int m) {
         return cone[m * 4 + 1];
     }
 
+    /** The z of the normal cone axis. */
     public float coneAxisZ(int m) {
         return cone[m * 4 + 2];
     }

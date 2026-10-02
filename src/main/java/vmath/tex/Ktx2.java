@@ -30,9 +30,13 @@ public final class Ktx2 {
     /** Bytes of one level index entry. */
     public static final int LEVEL_INDEX_ENTRY_BYTES = 24;
 
+    /** No supercompression: the level data is stored as it is. */
     public static final int SUPERCOMPRESSION_NONE = 0;
+    /** Basis Universal BasisLZ supercompression. */
     public static final int SUPERCOMPRESSION_BASIS_LZ = 1;
+    /** Zstandard supercompression of each level. */
     public static final int SUPERCOMPRESSION_ZSTD = 2;
+    /** zlib (deflate) supercompression of each level. */
     public static final int SUPERCOMPRESSION_ZLIB = 3;
 
     /** One entry of the level index; level 0 is the largest image. Offsets are from the start of the file. */
@@ -47,14 +51,17 @@ public final class Ktx2 {
                          int supercompressionScheme, int dfdByteOffset, int dfdByteLength, int kvdByteOffset, int kvdByteLength,
                          long sgdByteOffset, long sgdByteLength, Level[] levels) {
 
+        /** The format of {@code vkFormat}, or {@code null} when it is not one of {@link TextureFormat}. */
         public TextureFormat format() {
             return TextureFormat.fromVkFormat(vkFormat);
         }
 
+        /** Whether the file is a cube map (six faces). */
         public boolean isCube() {
             return faceCount == 6;
         }
 
+        /** Whether the level data is supercompressed and has to be decompressed before use. */
         public boolean isSupercompressed() {
             return supercompressionScheme != SUPERCOMPRESSION_NONE;
         }
@@ -79,6 +86,7 @@ public final class Ktx2 {
     public static final class FormatException extends IllegalArgumentException {
         private static final long serialVersionUID = 1L;
 
+        /** A header that is not well formed, or whose dimensions describe a texture that cannot be addressed. */
         public FormatException(String message) {
             super(message);
         }

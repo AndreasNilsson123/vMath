@@ -87,6 +87,7 @@ public final class UniformGrid {
         }
     }
 
+    /** The side of a grid cell. */
     public float cellSize() {
         return cellSize;
     }
@@ -108,10 +109,14 @@ public final class UniformGrid {
 
     // ---------------------------------------------------------------- updates
 
+    /** Adds an object with the given box and returns its handle; {@code userData} is what queries report for it. */
     public int insert(Aabbf b, int userData) {
         return insert(b.minX(), b.minY(), b.minZ(), b.maxX(), b.maxY(), b.maxZ(), userData);
     }
 
+    /**
+     * Adds an object with the box given by its six bounds and returns its handle; {@code userData} is what queries report for it. The box must be ordered and lie within 2^20 cells of the origin ({@link IllegalArgumentException} otherwise).
+     */
     public int insert(float minX, float minY, float minZ, float maxX, float maxY, float maxZ, int userData) {
         checkBox(minX, minY, minZ, maxX, maxY, maxZ);
         int h = allocateObject();
@@ -161,6 +166,7 @@ public final class UniformGrid {
         return true;
     }
 
+    /** As the six-bounds {@code move}, with the box given as an {@link Aabbf}. */
     public boolean move(int handle, Aabbf b) {
         return move(handle, b.minX(), b.minY(), b.minZ(), b.maxX(), b.maxY(), b.maxZ());
     }
@@ -183,10 +189,12 @@ public final class UniformGrid {
 
     // ---------------------------------------------------------------- inspection
 
+    /** True when {@code handle} names an object currently in the grid. */
     public boolean isValid(int handle) {
         return handle >= 0 && handle < objectHigh && alive[handle];
     }
 
+    /** The {@code userData} given when the object was inserted; {@link IllegalArgumentException} for a handle that is not in the grid. */
     public int userData(int handle) {
         requireLive(handle);
         return item[handle];

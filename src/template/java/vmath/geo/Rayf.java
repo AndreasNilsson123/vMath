@@ -15,6 +15,7 @@ import vmath.core.Vec3f;
 @ValueType
 public record Rayf(float ox, float oy, float oz, float dx, float dy, float dz) {
 
+    /** The ray from {@code origin} along {@code direction} (not normalized; {@code t} is in units of its length). */
     public static Rayf of(Vec3f origin, Vec3f direction) {
         return new Rayf(origin.x(), origin.y(), origin.z(), direction.x(), direction.y(), direction.z());
     }
@@ -24,14 +25,17 @@ public record Rayf(float ox, float oy, float oz, float dx, float dy, float dz) {
         return of(from, to.sub(from));
     }
 
+    /** The ray's start point. */
     public Vec3f origin() {
         return new Vec3f(ox, oy, oz);
     }
 
+    /** The ray's direction, as given (not normalized). */
     public Vec3f direction() {
         return new Vec3f(dx, dy, dz);
     }
 
+    /** The point at parameter {@code t}: {@code origin + t * direction}. */
     public Vec3f pointAt(float t) {
         return new Vec3f(ox + dx * t, oy + dy * t, oz + dz * t);
     }
@@ -54,11 +58,13 @@ public record Rayf(float ox, float oy, float oz, float dx, float dy, float dz) {
         return of(m.transformPosition(origin()), m.transformDirection(direction()));
     }
 
+    /** The same ray with double-precision components. */
     @FloatOnly
     public Rayd toDouble() {
         return new Rayd(ox, oy, oz, dx, dy, dz);
     }
 
+    /** The same ray with float components, each rounded to the nearest float. */
     @DoubleOnly
     public Rayf toFloat() {
         return new Rayf((float) ox, (float) oy, (float) oz, (float) dx, (float) dy, (float) dz);

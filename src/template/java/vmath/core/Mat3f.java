@@ -22,11 +22,13 @@ public record Mat3f(
         float m10, float m11, float m12,
         float m20, float m21, float m22) {
 
+    /** The identity matrix. */
     public static final Mat3f IDENTITY = new Mat3f(
             1f, 0f, 0f,
             0f, 1f, 0f,
             0f, 0f, 1f);
 
+    /** The matrix with the given columns. */
     public static Mat3f fromColumns(Vec3f c0, Vec3f c1, Vec3f c2) {
         return new Mat3f(
                 c0.x(), c0.y(), c0.z(),
@@ -42,6 +44,7 @@ public record Mat3f(
                 src[off + 6], src[off + 7], src[off + 8]);
     }
 
+    /** A scale by the given factors along each axis. */
     public static Mat3f scaling(float sx, float sy, float sz) {
         return new Mat3f(
                 sx, 0f, 0f,
@@ -49,6 +52,7 @@ public record Mat3f(
                 0f, 0f, sz);
     }
 
+    /** A rotation about the X axis by {@code angle} radians (right-handed: counter-clockwise looking down the axis toward the origin). */
     public static Mat3f rotationX(float angle) {
         float c = (float) Math.cos(angle), s = (float) Math.sin(angle);
         return new Mat3f(
@@ -57,6 +61,7 @@ public record Mat3f(
                 0f, -s, c);
     }
 
+    /** A rotation about the Y axis by {@code angle} radians (right-handed: counter-clockwise looking down the axis toward the origin). */
     public static Mat3f rotationY(float angle) {
         float c = (float) Math.cos(angle), s = (float) Math.sin(angle);
         return new Mat3f(
@@ -65,6 +70,7 @@ public record Mat3f(
                 s, 0f, c);
     }
 
+    /** A rotation about the Z axis by {@code angle} radians (right-handed: counter-clockwise looking down the axis toward the origin). */
     public static Mat3f rotationZ(float angle) {
         float c = (float) Math.cos(angle), s = (float) Math.sin(angle);
         return new Mat3f(
@@ -125,6 +131,7 @@ public record Mat3f(
                 m02 * b.m20 + m12 * b.m21 + m22 * b.m22);
     }
 
+    /** The matrix times the vector {@code v}. */
     public Vec3f transform(Vec3f v) {
         float x = v.x(), y = v.y(), z = v.z();
         return new Vec3f(
@@ -133,6 +140,7 @@ public record Mat3f(
                 m02 * x + m12 * y + m22 * z);
     }
 
+    /** The transpose: rows and columns exchanged. */
     public Mat3f transpose() {
         return new Mat3f(
                 m00, m10, m20,
@@ -140,6 +148,7 @@ public record Mat3f(
                 m02, m12, m22);
     }
 
+    /** The determinant. */
     public float determinant() {
         return (m00 * m11 - m01 * m10) * m22
                 + (m02 * m10 - m00 * m12) * m21
@@ -169,6 +178,7 @@ public record Mat3f(
         return invert().transpose();
     }
 
+    /** Column {@code c}. */
     public Vec3f column(int c) {
         return switch (c) {
             case 0 -> new Vec3f(m00, m01, m02);
@@ -178,6 +188,7 @@ public record Mat3f(
         };
     }
 
+    /** Row {@code r}. */
     public Vec3f row(int r) {
         return switch (r) {
             case 0 -> new Vec3f(m00, m10, m20);
@@ -187,6 +198,7 @@ public record Mat3f(
         };
     }
 
+    /** The element at {@code column} and {@code row}. */
     public float get(int column, int row) {
         return switch (column * 3 + row) {
             case 0 -> m00; case 1 -> m01; case 2 -> m02;
@@ -203,6 +215,7 @@ public record Mat3f(
                 && Float.isFinite(m20) && Float.isFinite(m21) && Float.isFinite(m22);
     }
 
+    /** True when every element differs from that of {@code o} by at most {@code eps}. */
     public boolean approxEquals(Mat3f o, float eps) {
         return Math.abs(m00 - o.m00) <= eps && Math.abs(m01 - o.m01) <= eps && Math.abs(m02 - o.m02) <= eps
                 && Math.abs(m10 - o.m10) <= eps && Math.abs(m11 - o.m11) <= eps && Math.abs(m12 - o.m12) <= eps
@@ -223,11 +236,13 @@ public record Mat3f(
                 .put(index + 6, m20).put(index + 7, m21).put(index + 8, m22);
     }
 
+    /** The same value with double components. */
     @FloatOnly
     public Mat3d toDouble() {
         return new Mat3d(m00, m01, m02, m10, m11, m12, m20, m21, m22);
     }
 
+    /** The same value with float components (rounded to the nearest float for double types). */
     @DoubleOnly
     public Mat3f toFloat() {
         return new Mat3f(

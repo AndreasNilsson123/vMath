@@ -51,6 +51,7 @@ public final class RingAllocator {
         this.frameTotal = new long[maxFrames];
     }
 
+    /** The size of the ring in bytes. */
     public long capacity() {
         return capacity;
     }
@@ -141,6 +142,7 @@ public final class RingAllocator {
         retiredTotal = 0;
     }
 
+    /** The memory behind the offsets, or {@code null} for a ring made from a capacity only. */
     public MemorySegment segment() {
         return backing;
     }

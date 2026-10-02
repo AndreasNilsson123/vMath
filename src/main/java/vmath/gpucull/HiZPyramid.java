@@ -89,22 +89,27 @@ public final class HiZPyramid {
         };
     }
 
+    /** The number of levels, from the full-resolution level 0 down to a single texel. */
     public int levels() {
         return levels;
     }
 
+    /** The width in texels of {@code level} (0 is the finest). */
     public int width(int level) {
         return widths[level];
     }
 
+    /** The height in texels of {@code level} (0 is the finest). */
     public int height(int level) {
         return heights[level];
     }
 
+    /** Whether row 0 of every level is at NDC y = +1 (the top of the screen), as in a Vulkan-style framebuffer. */
     public boolean yDown() {
         return yDown;
     }
 
+    /** The depth convention of the depth values this pyramid was built from. */
     public DepthRange depthRange() {
         return range;
     }

@@ -20,7 +20,9 @@ public final class LocalityOrder {
 
     /** Which curve to follow. */
     public enum Curve {
+        /** Z-order: cheap to compute, with larger jumps between neighbouring cells. */
         MORTON,
+        /** Hilbert order: better locality, at several times the cost of Morton per code. */
         HILBERT
     }
 

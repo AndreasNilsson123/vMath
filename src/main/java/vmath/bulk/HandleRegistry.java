@@ -32,10 +32,12 @@ public final class HandleRegistry {
     private int size;
     private int freeHead = -1;
 
+    /** An empty registry with room for 16 entities; it grows as handles are created. */
     public HandleRegistry() {
         this(16);
     }
 
+    /** An empty registry with room for {@code capacity} entities (at least 1); it grows as handles are created. */
     public HandleRegistry(int capacity) {
         int c = Math.max(capacity, 1);
         generation = new int[c];
@@ -54,6 +56,7 @@ public final class HandleRegistry {
         return (int) (handle >>> 32);
     }
 
+    /** The handle for {@code slot} and {@code generation}: the generation in the high 32 bits, the slot in the low 32. */
     public static long pack(int slot, int generation) {
         return ((long) generation << 32) | (slot & 0xFFFFFFFFL);
     }

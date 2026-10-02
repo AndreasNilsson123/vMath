@@ -26,10 +26,15 @@ public final class ToneMap {
 
     /** The curve to apply; used by the array method {@link #apply}. */
     public enum Curve {
+        /** {@link #reinhard}: {@code x / (1 + x)}. */
         REINHARD,
+        /** {@link #reinhardExtended}: Reinhard with a white point (the {@code whitePoint} argument of the array method). */
         REINHARD_EXTENDED,
+        /** {@link #aces}: the Narkowicz fit of the ACES filmic curve. */
         ACES,
+        /** {@link #hable}: the "Uncharted 2" filmic curve. */
         HABLE,
+        /** {@link #exposure}: {@code 1 - exp(-x)}. */
         EXPOSURE
     }
 

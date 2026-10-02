@@ -154,7 +154,7 @@ objects under `cullBelow` pixels are removed from the `VisibilitySet`. Previous 
   Draw the chosen level with weight `1 - fade` and the next with `fade`; the blend is continuous across the threshold because just
   above it the object is already fully the lower level.
 
-**`ConeCull`** skips whole clusters (meshlets) of back-facing triangles. `computeCone` turns a cluster's triangle normals into an
+**`ConeCull`** skips whole clusters (meshlets) of back-facing triangles; the cone computation and the single-cluster test are `vmath.geo.NormalCone` (plain geometry, so `mesh` does not need `spatial` for them) and `ConeCull` forwards to it and adds `Clusters`. `computeCone` turns a cluster's triangle normals into an
 axis and a `cutoff` (the sine of the cone's half-angle); a cluster is culled when
 `dot(center - eye, axis) >= cutoff * |center - eye| + radius`. The sphere term makes it conservative: the tests check against real
 triangle geometry that a cluster with any front-facing triangle is never culled (400 random patches x 40 eyes, plus an
@@ -164,12 +164,12 @@ is the SoA container with `cull(eye, visible)` and `cullOrthographic(dir, visibl
 ## Shadows and local lights
 
 **Cascades.** `Cascade.frustum()` is the volume the shadow map covers (a box around the slice, pushed `casterDistance` toward the
-light), so feeding it to a frustum stage already keeps casters outside the view. `CascadeCasters(camera, cascade, margin)` is the
+light), so feeding it to a frustum stage already keeps casters outside the view. `CascadeCasters(camera, cascade, margin)` (in `vmath.camera`, next to `Cascades`) is the
 tighter second stage: in light space an object can only shadow the slice if its footprint overlaps the slice's footprint and it is
 not entirely beyond the slice's far side. A stabilised cascade is fitted around the slice's bounding sphere, so its box is far
 bigger than the slice: in a test scene the tight stage kept 499 objects where the cascade's own volume held 1186. It is
 conservative (tested by sampling shadow rays from points in the slice back toward the light: none is ever removed); `margin`
-widens the footprint by the shadow filter radius. Typical use, per cascade:
+widens the footprint by the shadow filter radius. A second test compares every keep and cull decision against an independent double-precision light-space computation, in both directions (boxes that overlap the footprint by more than the rounding tolerance are kept, boxes that miss it by more are culled). Typical use, per cascade:
 `ctx = new CullContext(cascade.frustum(), ...)`, then `CullPipeline.of(new CullStages.Frustum(), new CascadeCasters(camera, cascade, margin))`.
 
 **Point and spot lights.** `LightCull.pointLight` (exact box-to-light distance) and `LightCull.spotLight` (bounding-sphere against
