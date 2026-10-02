@@ -143,10 +143,12 @@ Consistency first, then features. All new features are written once in float and
       *Partial: `Vec2i` and `Vec3i` (hand-written, `IntVecTest`); `Vec4i` and long variants are open.*
 - [ ] **CORE-7 (P2, M)** `Mat2`, `Mat2x3`/`Mat3x2` (2D transforms), 2D helpers (rotate, perp-dot, winding).
 - [ ] **CORE-8 (P2, M)** Dual quaternions, `Pose` (Quat + Vec3, rigid-only, 28 B), rigid inverse/compose fast paths.
-- [ ] **CORE-9 (P2, M)** Fast math: polynomial `sin/cos/atan2/acos/exp/log`, fast `invSqrt`, documented max error each,
-      with tests against `Math`. Opt-in `FastMath` class, never silently substituted.
-- [ ] **CORE-10 (P2, M)** Robustness: `Predicates` (orient2d/3d, incircle/insphere, adaptive-precision), `DoubleDouble` type,
-      stable `normalize` / angle-between / cross-based formulas.
+- [x] **CORE-9 (P2, M)** Fast math: polynomial `sin/cos/atan2/acos/exp/log`, fast `invSqrt`, documented max error each,
+      with tests against `Math`. Opt-in `FastMath` class, never silently substituted.  
+      *Done (experimental): `FastMath` with `sin`, `cos`, `atan`, `atan2`, `acos`, `asin`, `exp`, `log` (documented and tested bounds, 1.25 to 2.5 times faster than `Math`); `invSqrt` was built, measured twice as slow as `1f / (float) Math.sqrt(x)` and removed. See `docs/FASTMATH.md`.*
+- [x] **CORE-10 (P2, M)** Robustness: `Predicates` (orient2d/3d, incircle/insphere, adaptive-precision), `DoubleDouble` type,
+      stable `normalize` / angle-between / cross-based formulas.  
+      *Done (experimental): `Predicates` (exact sign: floating-point filter, then expansion arithmetic; checked against `BigDecimal`), `DoubleDouble` (32 digits), and `Quat.angle()` made stable (`normalize` and the vector angles already were). Two stages rather than Shewchuk's four. See `docs/ROBUSTNESS.md`.*
 - [x] **CORE-11 (P2, S)** Consistent `hashCode`/`equals` semantics doc (`-0.0`, NaN) and epsilon-hash helpers for spatial hashing.  
       *Done: `docs/EQUALITY.md` and `EqualityContractTest` (record `equals`/`hashCode` on every type and component, both precisions: -0.0 differs from 0.0, every NaN equals every NaN), and `SpatialHash` (cell indices, hashes, exact packed keys, epsilon-neighbourhood lookup with a tested guarantee, canonical float keys).*
 - [ ] **CORE-12 (P3, M)** Optional `ToString`/`fromString` formats, `Vec.parse`, debug formatter for matrices.

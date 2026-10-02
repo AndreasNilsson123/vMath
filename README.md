@@ -125,7 +125,7 @@ What the library does not do (yet), in one place; each row names the document th
 | Animation | No inverse kinematics, morph targets, animation compression or dual-quaternion skinning; `AnimationClip` interpolates linearly (the glTF loader converts STEP and CUBICSPLINE curves) | `docs/ANIMATION.md` |
 | Colour | No wide-gamut spaces (Display P3, Rec. 2020), no gamut mapping, no AgX or other image-formation transforms | `docs/COLOR.md` |
 | Formats | No entropy-coded vertex and index buffer compression (the quantization it needs is built) | `docs/FORMATS.md` |
-| Geometry and maths | No convex hulls or GJK, curves, polygon triangulation, robust predicates, fast-math approximations, 2x2 matrices, dual quaternions | `docs/ROADMAP.md` |
+| Geometry and maths | No convex hulls or GJK, curves, polygon triangulation, 2x2 matrices, dual quaternions | `docs/ROADMAP.md` |
 | Utilities | No random-number or noise generators, springs and smoothing, debug-draw geometry | `docs/ROADMAP.md` |
 | Modularity | One JPMS module exports all packages; a consumer cannot depend on a subset | `docs/technical-debt.md` TD-11 |
 
@@ -145,7 +145,7 @@ Allocation findings and the performance contract are in [docs/PERFORMANCE.md](do
 
 Versioning and the `@Experimental` marker: [docs/VERSIONING.md](docs/VERSIONING.md); changes: [CHANGELOG.md](CHANGELOG.md). The backlog is [docs/ROADMAP.md](docs/ROADMAP.md) and the known weaknesses are in
 [docs/technical-debt.md](docs/technical-debt.md); design notes and measurements are in `docs/` (CODEGEN, CULLING, GPU, CAMERA, FORMATS, TEXTURES, GLTF, ROBUSTNESS, PERFORMANCE, API-COMPAT, BULK, MEMORY, COLOR, COOKBOOK, EQUALITY, COVERAGE,
-PUBLISHING; the first review of the code is kept in `docs/history.md`).
+PUBLISHING, FASTMATH; the first review of the code is kept in `docs/history.md`).
 
 The largest open items: inverse kinematics and look-at constraints, random and noise utilities, curves, hulls and polygon geometry, robust predicates and fast math, portal culling and temporal occlusion, and running the GPU layer
 against a real graphics API (the shader text and the upload ring are only tested against Java references so far).

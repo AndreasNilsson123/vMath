@@ -162,10 +162,14 @@ public record Quatf(float x, float y, float z, float w) {
                 s0 * w + s1 * target.w).normalize();
     }
 
-    /** Rotation angle in radians along the shortest arc, in [0, PI]. Assumes unit length. */
+    /**
+     * Rotation angle in radians along the shortest arc, in [0, PI]. Computed as {@code 2 atan2(|xyz|, |w|)}, which keeps full precision for tiny rotations (where
+     * {@code acos(w)} sees only {@code w} rounded to 1) and for rotations near PI, and does not depend on the length of the quaternion.
+     */
     public float angle() {
-        double a = 2.0 * Math.acos(Math.max(-1.0, Math.min(1.0, w)));
-        return (float) (a <= Math.PI ? a : 2.0 * Math.PI - a);
+        double dx = x, dy = y, dz = z;
+        double v = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        return (float) (2.0 * Math.atan2(v, Math.abs(w)));
     }
 
     /** The rotation as a 3x3 matrix. */

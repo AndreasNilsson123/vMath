@@ -40,6 +40,8 @@ Nothing has been released yet; the baseline for the compatibility check is the t
 - Performance guard: `.github/workflows/perf.yml` (nightly JMH subset) and `scripts/perf_guard.py` (ratios within a run, absolute change against the previous night).
 - JaCoCo coverage and floors for `vmath-simd` and `vmath-codegen`.
 
+- Core (experimental): `FastMath` (`sin`, `cos`, `atan`, `atan2`, `acos`, `asin`, `exp`, `log` with documented and tested error bounds), `Predicates` (exact `orient2d`, `orient3d`, `incircle`, `insphere`), `DoubleDouble` (106-bit arithmetic). `docs/FASTMATH.md`, `docs/ROBUSTNESS.md`.
+
 ### Changed
 - Maven coordinates are `io.github.andreasnilsson123:vmath` (was `vmath:vmath`) and the version is `0.2.0-SNAPSHOT`; the JPMS module name is unchanged. The japicmp baseline tag is pinned in `gradle/baseline-commits.txt`.
 - Build: JUnit 6.1.3, japicmp 0.26.2, JOML 1.10.9 (test oracle), JaCoCo 0.8.15, Gradle 9.8.0; versions live in `gradle/libs.versions.toml`; Dependabot proposes updates; the library and its tests compile with `-Werror`.
@@ -58,6 +60,7 @@ Nothing has been released yet; the baseline for the compatibility check is the t
 - Tests: `FreeListReferenceTest` (against a list model), `SmallFeatureTest` (`SmallFeature` and `Distance` stages against their formulas), `HilbertAutomatonTest`; `ShaderCompileTest` has run against glslang 16.6.0 and passed.
 
 ### Fixed
+- `Quat.angle()` was 0 or very coarse for rotations under about 1e-3 radians in float (it used `acos(w)`); it is `2 atan2(|xyz|, |w|)` now.
 - `BvhQuery.raycast` and `DynamicAabbTree.Query.raycast` missed a box when the ray's origin lay exactly on one of its faces and the ray's direction was zero along that axis (an axis-parallel ray running along a face): the slab test produced an empty interval. Now such a ray touches the box, as `Intersectionf.rayAabb` says. Found by seed 23 of the nightly-style sweep; `BvhTest` and `DynamicAabbTreeTest` have the case.
 - `CamerafTest.frustumAgreesWithTheProjection` expected the wrong side of the near plane for reversed-Z cameras (a test bug, the frustum was right).
 

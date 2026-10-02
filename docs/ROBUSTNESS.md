@@ -91,6 +91,36 @@ The value types are records, so `equals` and `hashCode` are exact and bitwise-li
 keys**, and infinities compare by sign. `approxEquals(other, eps)` is the opposite: -0 equals 0, and NaN, and even infinity against the same infinity, are never
 approximately equal (the difference is NaN). `SpatialHash` has the epsilon-neighbourhood helpers for hashing positions (`docs/EQUALITY.md`).
 
+## Exact predicates, double-double and stable formulas (CORE-10)
+
+**`Predicates`** (experimental) answers the four questions a convex hull, a Delaunay triangulation or a mesh boolean keeps asking with a sign that is **always exact**:
+`orient2d` (counter-clockwise, clockwise or collinear), `orient3d` (above, below or on the plane of a triangle), `incircle` and `insphere` (inside, outside or on the circle or sphere
+through the others). Plain floating point answers them wrongly for nearly degenerate input: in `PredicatesTest` the ordinary double determinant had the wrong sign in 6.3% of the
+`orient2d` cases (3 781 of 60 000), 6.4% of the `orient3d` cases (2 571 of 40 000), 14% of the `incircle` cases (5 535 of 40 000) and 12% of the `insphere` cases (2 488 of 20 000),
+because the cases are built to be hard: points exactly on a line, plane, circle or sphere of an integer lattice at several scales, and points that are on one up to the last bits.
+
+How: each predicate evaluates its determinant in double and also a bound on the rounding error of that evaluation (Shewchuk's bounds, doubled); when the result is larger than the
+bound its sign cannot be wrong and it is returned, which is almost every call. Otherwise the determinant is computed exactly with expansion arithmetic (`Expansions`: sums and products
+of unevaluated sums of doubles, with `Math.fma` for the exact product of two doubles) and the sign of the largest component is returned. Every result is verified against `BigDecimal`
+arithmetic, which is exact for doubles, on the hard cases above (the expansion operations are also checked on their own, on random doubles over 80 binary orders of magnitude); the tests
+also check that exactly degenerate input returns exactly zero and that swapping two points flips the sign. They were run with seeds 1 to 3 at 40 000 trials as well as the default.
+
+Cost (JMH `PredicatesBench`, one fork, ns per call, 2026-10-02): on random points `orient2d` 2.6 against 1.9 for the plain formula, `orient3d` 7.2, `incircle` 6.2, `insphere` 22; on
+exactly degenerate points, which always take the exact stage, `orient2d` 86, `orient3d` 184, `incircle` about 370 (a noisy figure) and `insphere` about 1 330. So the exact stage costs
+30 to 60 times the filter, and a mesh in which most triples are collinear or coplanar will pay it often. There is no middle stage (Shewchuk's adaptive predicates have a cheaper
+second step with a tighter bound); it was not built because the exact stage is already microseconds.
+
+Range: coordinates must be finite, and zero or between `1e-20` and `1e20` in magnitude, so that no intermediate product overflows or underflows (floats are always fine). The conventions
+(which side is positive) are in the class comment and are tested against the triple product and the unit circle and sphere.
+
+**`DoubleDouble`** (experimental) is a number held as `hi + lo`, two doubles: 106 bits, 32 digits. Addition, subtraction, multiplication and division have a relative error under `2^-102`
+(`DoubleDouble.EPSILON`, 2.0e-31); measured against 80-digit `BigDecimal`: add 2.4e-32, multiply 4.0e-32, divide 2.9e-32, square root 3.5e-32, and addition under cancellation 0 relative
+to the size of the operands. `twoSum` and `twoProduct` are exact. A sum of one million times 0.1 is off by 1.3e-6 in double and exactly right in `DoubleDouble`.
+
+**Stable formulas.** The angle between two vectors was already `atan2(|a x b|, a . b)`, and `normalize` already survives overflow and underflow (see Normalizing above); this pass added
+`StableFormulasTest` for both and fixed `Quat.angle()`, which used `2 acos(w)`: for a rotation of 1e-5 radians a float `w` rounds to exactly 1 and the angle came out as 0. It is now
+`2 atan2(|xyz|, |w|)`, accurate for tiny rotations and rotations near pi, and independent of the quaternion's length.
+
 ## What this does not cover
 
 Shapes (`geo`), culling, meshes and the bulk arrays have their own NaN policies, documented with them (overlap tests are written as "not separated", so NaN
