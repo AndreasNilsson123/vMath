@@ -10,48 +10,19 @@ Sizes: S ≈ hours, M ≈ days, L ≈ 1–2 weeks, XL = multi-week. `→` marks 
 
 ## 1. Where we are
 
-Solid base: 12 immutable `/*value*/ record`s (Vec2/3/4, Quat, Mat3/4 × f/d), JOML-oracle property tests,
-Valhalla readiness test, std140 writers, and a float→double generator. ~2.4k lines of main code.
+The first milestones of the backlog are done; the remaining boxes below are the roadmap. In numbers (October 2026): about 23,000 lines of hand-written main code and 4,300 lines of float templates (the generator emits the double
+twins), 15 packages in one JPMS module (`vmath.core`, `geo`, `bulk`, `spatial`, `camera`, `occlusion`, `mesh`, `anim`, `gltf`, `tex`, `pack`, `gl`, `gpucull`, `mem`, `color`), three further modules (`vmath-annotations`, `vmath-codegen`, `vmath-simd`) and the benchmarks;
+108 test sources with JOML and brute-force oracles, a zero-allocation contract test, 96.8% of lines and 90.7% of branches covered, and a mutation-tested core (`docs/COVERAGE.md`); CI on Linux and Windows with a nightly random-seed build and a Valhalla job;
+an API-compatibility check against the tagged baseline. What is measured is in `docs/PERFORMANCE.md`, `BULK.md`, `MEMORY.md`, `GPU.md`, `COLOR.md`; what is known to be weak is in `docs/technical-debt.md`. The findings of the first review of the code, which this backlog was written
+to answer, are in `docs/history.md`.
 
-Findings from reading the code:
-
-**Generation is text-based and comment-driven** (`tools/GenDouble.java`)
-- Markers are magic comments (`// @float-only-begin/end`, `// @eps-double`, `/*value*/`). Nothing checks them
-  (a typo silently changes output) and IDEs don't know about them.
-- Conversion is per-line regex (`float`→`double`, `(float)` stripping, literal rewriting). It also rewrites
-  comments and strings, and can't express precision-specific logic (`Math.fma`, `Float.MIN_NORMAL`,
-  bit tricks, `FloatBuffer` vs `DoubleBuffer`, `float[]` bulk paths).
-- Double-only members live as text blocks inside the generator (`DOUBLE_EXTRAS`), so they are uncompiled,
-  untested until generated, and invisible to the IDE.
-- Only `vmath/core` and the hard-coded filename regex `(Vec[234]|Quat|Mat[34])f` are handled. Every new
-  package (`geo`, `bulk`, …) would need generator edits.
-- The Valhalla switch is a *second* text hack (a Gradle `filter` replacing `/*value*/ record`), and
-  `ValhallaReadinessTest` string-matches source for it.
-- Generated `*d.java` are checked in, and a stale-check is needed to keep them honest.
-
-**API surface is uneven across types**
-- `Vec3f` has `add(x,y,z)`, `distanceSquared`, `angle`, `abs`, `normalizeOrZero`; `Vec2f`/`Vec4f` lack most of these
-  (`Vec4f` has no `div`, `fma`, `min`, `max`, `abs`, `distance`).
-- `isFinite` exists only on `Mat4f`. No `Mat3` axis-angle, no `Mat2` at all.
-- Missing basics: `reflect/refract/project/clamp/floor/ceil/fract/saturate/smoothstep/sign/mix`, `Quat` from matrix /
-  from-to / euler / look rotation, `Mat4` decomposition, `ortho`, `frustum`, inverse projection, `lookTo`.
-- No integer vectors (grid/voxel/chunk coordinates, texture sizes).
-
-**Output paths are float-only and narrow**
-- `writeTo` covers `float[]` and `FloatBuffer` only. No `ByteBuffer`, no `MemorySegment`, no read-back (`readFrom`).
-- `Std140` handles `vec3`, `mat3`, `mat4` only: no scalars, `vec2`, `vec4`, arrays, structs, std430 or scalar layout.
-
-**Missing infrastructure**
-- No JMH module (the README's "allocations disappear" claim is unverified), no CI, no `module-info.java`,
-  no API-compat check, no javadoc build. Baseline JDK 21 predates FFM (`MemorySegment`) going final in 22.
-
-**Nothing above the math layer yet:** no shapes, no culling, no spatial structures, no bulk containers.
+**What is not proven yet:** nothing in the GPU-facing layer (shader text, layout validation against drivers, the persistent upload ring) has run against a real graphics API (`docs/technical-debt.md` TD-01).
 
 ---
 
 ## 2. Architecture and rules
 
-Proposed modules (Gradle multi-project; each a JPMS module):
+Planned modules (INF-6, open; today the `core`, `geo`, `bulk`, `spatial`, `gl`, `mesh`, ... packages are all in the one module `vmath`, and only `vmath-annotations`, `vmath-codegen`, `vmath-simd` and `vmath-bench` are separate):
 
 | Module | Contents |
 |---|---|

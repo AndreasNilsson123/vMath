@@ -13,7 +13,11 @@ import vmath.core.Vec3f;
  *
  * <p>For whole blocks (std140, std430 and scalar layouts, arrays, nested structs, generated writers) use {@link GlslType},
  * {@link StructLayout} and {@link GpuWriter} instead; this class covers only three member types.
+ *
+ * @deprecated superseded by {@link GlslType}, {@link StructLayout}, {@link GpuWriter} and the generated {@code @GpuStruct} writers, which cover every member type and layout;
+ *             it will be removed in a later release
  */
+@Deprecated(since = "0.2.0", forRemoval = true)
 public final class Std140 {
 
     private Std140() {

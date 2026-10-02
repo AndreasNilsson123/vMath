@@ -209,7 +209,7 @@ public record Mat3f(
                 && Math.abs(m20 - o.m20) <= eps && Math.abs(m21 - o.m21) <= eps && Math.abs(m22 - o.m22) <= eps;
     }
 
-    /** Writes 9 tightly packed column-major values. For std140 uniforms use {@code vmath.gl.Std140}. */
+    /** Writes 9 tightly packed column-major values. For std140 uniforms use {@code vmath.gl.GpuWriter} or a generated {@code @GpuStruct} writer. */
     public void writeTo(float[] dst, int off) {
         dst[off] = m00; dst[off + 1] = m01; dst[off + 2] = m02;
         dst[off + 3] = m10; dst[off + 4] = m11; dst[off + 5] = m12;

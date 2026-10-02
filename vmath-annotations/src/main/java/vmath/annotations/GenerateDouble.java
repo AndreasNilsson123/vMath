@@ -16,6 +16,10 @@ import java.lang.annotation.Target;
 @Target(ElementType.TYPE)
 public @interface GenerateDouble {
 
-    /** Simple name of the double twin. Empty means derive it from the template name. */
+    /**
+     * Simple name of the double twin. Empty means derive it from the template name.
+     *
+     * @return the twin's simple name, or empty to derive it
+     */
     String twin() default "";
 }

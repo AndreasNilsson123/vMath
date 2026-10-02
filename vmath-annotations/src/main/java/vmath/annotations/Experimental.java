@@ -18,6 +18,10 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.CLASS)
 @Target({ElementType.TYPE, ElementType.METHOD, ElementType.CONSTRUCTOR, ElementType.FIELD})
 public @interface Experimental {
-    /** Why it is experimental or what is expected to change. */
+    /**
+     * Why it is experimental or what is expected to change.
+     *
+     * @return the explanation, empty if none is given
+     */
     String value() default "";
 }

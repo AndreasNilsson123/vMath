@@ -13,6 +13,10 @@ import java.lang.annotation.Target;
 @Target(ElementType.FIELD)
 public @interface Eps {
 
-    /** Initializer for the double twin. Must be a literal or constant expression. */
+    /**
+     * Initializer for the double twin. Must be a literal or constant expression.
+     *
+     * @return the double value
+     */
     double d();
 }

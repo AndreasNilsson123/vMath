@@ -9,15 +9,13 @@ java {
     toolchain { languageVersion.set(JavaLanguageVersion.of(if (valhalla) 28 else 25)) }
 }
 
-val jmhVersion = "1.37"
-
 dependencies {
     implementation(project(":"))
     compileOnly(project(":vmath-annotations")) // class-retention marker on some core types; not needed at run time
     // Optional SIMD kernels, found through FrustumKernels.best() when present and the incubator module is enabled.
     implementation(project(":vmath-simd"))
-    implementation("org.openjdk.jmh:jmh-core:$jmhVersion")
-    annotationProcessor("org.openjdk.jmh:jmh-generator-annprocess:$jmhVersion")
+    implementation(libs.jmh.core)
+    annotationProcessor(libs.jmh.generator.annprocess)
 }
 
 tasks.withType<JavaCompile>().configureEach {
@@ -53,4 +51,9 @@ tasks.register<JavaExec>("sample") {
     mainClass.set("vmath.bench.sample.CullAndDrawSample")
     javaLauncher.set(javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(if (valhalla) 28 else 25)) })
     jvmArgs((if (valhalla) "--add-modules=jdk.incubator.vector --enable-preview" else "--add-modules=jdk.incubator.vector").split(" "))
+}
+
+// benchmarks are not API; its javadoc is not generated (the published modules keep a warning-free javadoc build, docs/technical-debt.md TD-23)
+tasks.javadoc {
+    enabled = false
 }

@@ -11,8 +11,10 @@ plugins {
     jacoco
 }
 
-group = "vmath"
-version = "0.1.0-SNAPSHOT"
+// Maven coordinates: the group is the Central-verifiable GitHub namespace (docs/PUBLISHING.md); the JPMS module name stays `vmath`.
+// The next release is 0.2.0 because v0.1.0 is already tagged (docs/VERSIONING.md).
+group = "io.github.andreasnilsson123"
+version = "0.2.0-SNAPSHOT"
 
 val valhalla = providers.gradleProperty("valhalla").isPresent
 val baselineJdk = 25
@@ -44,10 +46,10 @@ dependencies {
     testCompileOnly(project(":vmath-annotations"))
 
     // JOML is only the test oracle; nothing in main depends on it.
-    testImplementation("org.joml:joml:1.10.8")
-    testImplementation(platform("org.junit:junit-bom:5.13.4"))
-    testImplementation("org.junit.jupiter:junit-jupiter")
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+    testImplementation(libs.joml)
+    testImplementation(platform(libs.junit.bom))
+    testImplementation(libs.junit.jupiter)
+    testRuntimeOnly(libs.junit.launcher)
 }
 
 java {
@@ -60,7 +62,13 @@ java {
 tasks.withType<JavaCompile>().configureEach {
     options.encoding = "UTF-8"
     // -exports: vmath.annotations.Experimental has class retention on purpose (japicmp reads it), but the annotations module is "requires static", so javac would warn on every use
-    options.compilerArgs.addAll(listOf("-Xlint:all", "-Xlint:-preview", "-Xlint:-exports"))
+    // -Werror: the library and its tests compile without a single warning, and it should stay that way
+    options.compilerArgs.addAll(listOf("-Xlint:all", "-Xlint:-preview", "-Xlint:-exports", "-Werror"))
+}
+
+// JOML's jar (the test oracle) is built for class-file version 46 and uses type annotations that javac reports with a [classfile] warning for every JOML class a test touches
+tasks.compileTestJava {
+    options.compilerArgs.add("-Xlint:-classfile")
 }
 
 // Javadoc is linted as part of `check`: broken references, bad HTML and malformed tags fail the build. Missing comments and missing @param tags on
@@ -102,7 +110,7 @@ tasks.test {
 // Not applied to the -Pvalhalla build: the JaCoCo release in use does not read JDK 28 class files.
 
 jacoco {
-    toolVersion = "0.8.14"
+    toolVersion = libs.versions.jacoco.get()
 }
 
 tasks.jacocoTestReport {
@@ -199,8 +207,8 @@ val pitest = configurations.create("pitest") {
 }
 
 dependencies {
-    pitest("org.pitest:pitest-command-line:1.30.0")
-    pitest("org.pitest:pitest-junit5-plugin:1.2.3")
+    pitest(libs.pitest.command.line)
+    pitest(libs.pitest.junit5.plugin)
 }
 
 tasks.register<JavaExec>("mutationTest") {
@@ -327,7 +335,7 @@ val japicmpCli = configurations.create("japicmpCli") {
 }
 
 dependencies {
-    japicmpCli("com.github.siom79.japicmp:japicmp:0.23.1:jar-with-dependencies")
+    japicmpCli("${libs.japicmp.get().module}:${libs.versions.japicmp.get()}:jar-with-dependencies")
 }
 
 val japicmpTag = providers.gradleProperty("japicmp.baselineTag").orElse("v0.1.0")
@@ -357,6 +365,19 @@ val exportBaselineSource = tasks.register<Exec>("exportBaselineSource") {
     val tar = baselineDir.map { it.file("src.tar") }
     outputs.file(tar)
     doFirst { baselineDir.get().asFile.mkdirs() }
+    // The baseline is pinned: gradle/baseline-commits.txt records "<tag> <commit>", and a tag that has been moved to another commit stops the build instead of silently changing what the API is compared with.
+    doFirst {
+        val pin = layout.projectDirectory.file("gradle/baseline-commits.txt").asFile
+        val expected = if (pin.exists()) pin.readLines().map { it.trim().split(Regex("\\s+")) }.firstOrNull { it.size == 2 && it[0] == japicmpTag.get() }?.get(1) else null
+        if (expected != null) {
+            val actual = providers.exec {
+                commandLine("git", "rev-parse", "--verify", "${japicmpTag.get()}^{commit}")
+            }.standardOutput.asText.get().trim()
+            check(actual == expected) {
+                "The baseline tag ${japicmpTag.get()} points at $actual but gradle/baseline-commits.txt pins $expected. If the tag was moved on purpose, update the file and say why in the commit."
+            }
+        }
+    }
     commandLine("git", "archive", "--format=tar", "--output=${tar.get().asFile.absolutePath}", japicmpTag.get())
 }
 

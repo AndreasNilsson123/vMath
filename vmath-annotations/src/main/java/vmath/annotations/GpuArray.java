@@ -10,6 +10,10 @@ import java.lang.annotation.Target;
 @Target({ElementType.RECORD_COMPONENT, ElementType.FIELD, ElementType.PARAMETER})
 public @interface GpuArray {
 
-    /** Number of elements (at least 1). The generated writer requires the array to have exactly this length. */
+    /**
+     * Number of elements (at least 1). The generated writer requires the array to have exactly this length.
+     *
+     * @return the array length
+     */
     int value();
 }

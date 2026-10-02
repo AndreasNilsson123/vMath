@@ -144,18 +144,4 @@ final class TransformMath {
         out[oo + 2] = z;
         out[oo + 3] = w;
     }
-
-    /** {@code out = a * b} for quaternions (Hamilton product; the same composition order as {@code Quatf.mul}). */
-    static void multiplyQuat(float[] a, int ao, float[] b, int bo, float[] out, int oo) {
-        float ax = a[ao], ay = a[ao + 1], az = a[ao + 2], aw = a[ao + 3];
-        float bx = b[bo], by = b[bo + 1], bz = b[bo + 2], bw = b[bo + 3];
-        float x = aw * bx + ax * bw + ay * bz - az * by;
-        float y = aw * by - ax * bz + ay * bw + az * bx;
-        float z = aw * bz + ax * by - ay * bx + az * bw;
-        float w = aw * bw - ax * bx - ay * by - az * bz;
-        out[oo] = x;
-        out[oo + 1] = y;
-        out[oo + 2] = z;
-        out[oo + 3] = w;
-    }
 }

@@ -19,11 +19,20 @@ import java.lang.annotation.Target;
 @Target(ElementType.TYPE)
 public @interface GpuStruct {
 
-    /** The memory layout rules; must match the GLSL block's {@code layout(...)} qualifier. */
+    /**
+     * The memory layout rules; must match the GLSL block's {@code layout(...)} qualifier.
+     *
+     * @return the layout
+     */
     Layout layout() default Layout.STD140;
 
     /** Mirrors {@code vmath.gl.GpuLayout} (this module cannot depend on it). */
     enum Layout {
-        STD140, STD430, SCALAR
+        /** Uniform blocks: arrays and structs rounded up to 16 bytes. */
+        STD140,
+        /** Storage blocks: like std140 without the rounding of arrays and structs. */
+        STD430,
+        /** Scalar block layout: everything aligned to its 4-byte component. */
+        SCALAR
     }
 }

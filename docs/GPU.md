@@ -111,7 +111,7 @@ driver or compiler; that is the opt-in test the roadmap item describes, and it n
 ## Not covered yet
 
 Running the validator against a real compiler (it takes reflection data as input), compiling the generated headers, and Slang-specific buffer declarations. The older
-`Std140` class (`vec3`/`mat3`/`mat4` into a `FloatBuffer`) still works, but the layout engine and writers above supersede it.
+`Std140` class (`vec3`/`mat3`/`mat4` into a `FloatBuffer`) still works but is deprecated for removal: the layout engine and writers above supersede it.
 
 ## End-to-end sample
 

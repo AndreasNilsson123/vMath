@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import vmath.core.Mat3f;
 import vmath.core.Vec3f;
 
+@SuppressWarnings("removal") // the deprecated class stays tested until it is removed
 class Std140Test {
 
     @Test

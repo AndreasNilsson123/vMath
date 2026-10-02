@@ -26,6 +26,10 @@ public final class ClusterCullReference {
 
     /** What a pass did. */
     public static final class Counters {
+        /** Counters that start at zero. */
+        public Counters() {
+        }
+
         public int clusters;
         /** Clusters whose level of detail is the right one for the view. */
         public int lodSelected;

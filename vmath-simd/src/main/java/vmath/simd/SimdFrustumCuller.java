@@ -27,6 +27,7 @@ public final class SimdFrustumCuller implements FrustumKernel {
 
     private final float[] planes = new float[24];
 
+    /** A kernel with its own scratch memory. */
     public SimdFrustumCuller() {
     }
 

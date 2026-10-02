@@ -41,6 +41,10 @@ public final class GpuCullReference {
 
     /** What a pass did. */
     public static final class Counters {
+        /** Counters that start at zero. */
+        public Counters() {
+        }
+
         /** Objects looked at. */
         public int objects;
         /** Objects that passed the frustum test. */
