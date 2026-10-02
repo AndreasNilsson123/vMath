@@ -1,5 +1,7 @@
 package vmath.mesh;
 
+import java.util.SplittableRandom;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -115,9 +117,10 @@ class RectPackerTest {
         int n = 200;
         int[] w = new int[n], h = new int[n];
         long area = 0;
+        SplittableRandom atlasRnd = new SplittableRandom(0x5EEDL);
         for (int i = 0; i < n; i++) {
-            w[i] = 8 + (int) rnd.range(0, 56);
-            h[i] = 8 + (int) rnd.range(0, 56);
+            w[i] = 8 + (int) (56 * atlasRnd.nextDouble());
+            h[i] = 8 + (int) (56 * atlasRnd.nextDouble());
             area += (long) w[i] * h[i];
         }
         RectPacker.Result r = RectPacker.packSmallestPowerOfTwo(w, h, 4096, true);
