@@ -145,8 +145,10 @@ Tasks:
       *Done for the 14 core types: `DegenerateInputSweepTest` (257 200 reflective calls, fails on unexpected exceptions or hidden NaN), `DegenerateContractfTest` (explicit cases, both precisions), `docs/ROBUSTNESS.md`. Found and fixed `normalize` of huge and tiny vectors. Shapes, meshes and bulk arrays are not covered.*
 - [ ] **INF-8 (P2, M)** Oracle strategy for features JOML lacks (BVH, culling): brute-force reference implementations
       in tests, analytic cases, cross-precision (f vs d) comparison.
-- [ ] **INF-9 (P2, S)** Code coverage (JaCoCo) and mutation testing (PIT) on `core`.
-- [ ] **INF-10 (P3, S)** Publish to Maven Central/GitHub Packages with sources and javadoc jars.
+- [x] **INF-9 (P2, S)** Code coverage (JaCoCo) and mutation testing (PIT) on `core`.
+      *Done: JaCoCo in the build (`jacocoTestReport`, `coverageSummary`, per-package floors in `check`; 96.6% of lines and 90.5% of branches measured), and PIT as `mutationTest` on any classes. PIT on `vmath.core` killed 95.3% of 4,758 production mutants on the first run and 98.4% of 4,845 after the tests it pointed to were added. See `docs/COVERAGE.md`.*
+- [x] **INF-10 (P3, S)** Publish to Maven Central/GitHub Packages with sources and javadoc jars.
+      *Done as build setup, nothing published: `vmath`, `vmath-simd` and `vmath-annotations` publish jar, sources jar, javadoc jar, POM (licence, developer, SCM) and module metadata to a staging repository that `verifyPublication` checks, and to GitHub Packages with credentials from the environment; signing activates when `SIGNING_KEY` is set. The group id, the credentials and the Maven Central namespace and upload are yours to settle. See `docs/PUBLISHING.md`.*
 
 ### Phase C. Core math completeness (P1)
 
@@ -174,8 +176,8 @@ Consistency first, then features. All new features are written once in float and
       with tests against `Math`. Opt-in `FastMath` class, never silently substituted.
 - [ ] **CORE-10 (P2, M)** Robustness: `Predicates` (orient2d/3d, incircle/insphere, adaptive-precision), `DoubleDouble` type,
       stable `normalize` / angle-between / cross-based formulas.
-- [ ] **CORE-11 (P2, S)** Consistent `hashCode`/`equals` semantics doc (`-0.0`, NaN) and epsilon-hash helpers for spatial hashing.  
-      *Partial: semantics documented and tested (`docs/ROBUSTNESS.md`); epsilon-hash helpers are open.*
+- [x] **CORE-11 (P2, S)** Consistent `hashCode`/`equals` semantics doc (`-0.0`, NaN) and epsilon-hash helpers for spatial hashing.  
+      *Done: `docs/EQUALITY.md` and `EqualityContractTest` (record `equals`/`hashCode` on every type and component, both precisions: -0.0 differs from 0.0, every NaN equals every NaN), and `SpatialHash` (cell indices, hashes, exact packed keys, epsilon-neighbourhood lookup with a tested guarantee, canonical float keys).*
 - [ ] **CORE-12 (P3, M)** Optional `ToString`/`fromString` formats, `Vec.parse`, debug formatter for matrices.
 - [ ] **CORE-13 (P2, M)** Transform-space utilities: frame-tagged transforms, `Geodetic/Ecef/WGS-84` (from the existing "next steps"),
       camera-relative rendering helpers beyond `relativeTo` (rebasing a whole scene, double→float model matrices).
@@ -370,7 +372,8 @@ can be chained and composed, and they run on SoA bounds.
 
 - [x] **DOC-1 (P1, M)** `docs/PERFORMANCE.md` (contract from §2), `docs/CODEGEN.md`, `docs/API.md` parity table.  
       *Done: all three exist; the API table is backed by `ApiParityTest`.*
-- [ ] **DOC-2 (P2, M)** Cookbook: "camera-relative rendering", "culling 1M instances", "GPU-driven pipeline", "migrating from JOML".
+- [x] **DOC-2 (P2, M)** Cookbook: "camera-relative rendering", "culling 1M instances", "GPU-driven pipeline", "migrating from JOML".
+      *Done: `docs/COOKBOOK.md` with four recipes (camera-relative rendering, culling a million instances, a GPU-driven frame, migrating from JOML), generated from `CookbookTest` by `CookbookDocTest`, so every snippet compiles and runs and the file cannot drift.*
 - [x] **DOC-3 (P2, S)** ~~JOML adapter module~~ *Dropped on purpose: it would be double bookkeeping; the README migration table is the bridge.*
 - [x] **DOC-4 (P2, S)** Changelog + semver policy; mark experimental APIs (`@Experimental` annotation, also in the framework).  
       *Done: `CHANGELOG.md`, `docs/VERSIONING.md`, `vmath.annotations.Experimental` (class retention, excluded from japicmp). The framework side does not exist yet.*

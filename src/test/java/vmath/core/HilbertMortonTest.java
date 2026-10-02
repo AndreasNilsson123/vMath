@@ -112,6 +112,16 @@ class HilbertMortonTest {
         assertThrows(IllegalArgumentException.class, () -> Hilbert.encode3(0, 0, 0, 22));
         assertThrows(IllegalArgumentException.class, () -> Hilbert.decode3(512, 3));
         assertThrows(IllegalArgumentException.class, () -> Hilbert.decode2(16, 2));
+        // every argument is checked on its own
+        assertThrows(IllegalArgumentException.class, () -> Hilbert.encode2(0, 4, 2), "y");
+        assertThrows(IllegalArgumentException.class, () -> Hilbert.encode3(8, 0, 0, 3), "x");
+        assertThrows(IllegalArgumentException.class, () -> Hilbert.encode3(0, 8, 0, 3), "y");
+        assertThrows(IllegalArgumentException.class, () -> Hilbert.decode2(0, 0));
+        assertThrows(IllegalArgumentException.class, () -> Hilbert.decode2(0, 33));
+        assertThrows(IllegalArgumentException.class, () -> Hilbert.decode3(0, 0));
+        assertThrows(IllegalArgumentException.class, () -> Hilbert.decode3(0, 22));
+        assertEquals(new Vec2i(0, 0), Hilbert.decode2(0, 1), "one bit");
+        assertEquals(1, l1(new Vec2i(0, 0), Hilbert.decode2(1, 1)), "the second cell of the one-bit curve is a neighbour of the first");
         // the full 32-bit range works, and the code is unsigned
         long code = Hilbert.encode2(-1, -1, 32);
         assertEquals(new Vec2i(-1, -1), Hilbert.decode2(code, 32));

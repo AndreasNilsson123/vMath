@@ -8,6 +8,7 @@
 
 plugins {
     `java-library`
+    jacoco
 }
 
 group = "vmath"
@@ -18,6 +19,8 @@ val baselineJdk = 25
 val valhallaJdk = 28
 
 allprojects {
+    group = rootProject.group
+    version = rootProject.version
     repositories {
         mavenCentral()
     }
@@ -86,9 +89,154 @@ tasks.test {
     dependsOn(tasks.jar)
     systemProperty("vmath.jar", tasks.jar.get().archiveFile.get().asFile.absolutePath)
     // Forward -Dvmath.seed / -Dvmath.trials from the command line, e.g. a nightly job with a fresh seed.
-    listOf("vmath.seed", "vmath.trials", "vmath.writeAssets").forEach { key ->
+    listOf("vmath.seed", "vmath.trials", "vmath.writeAssets", "vmath.writeDocs").forEach { key ->
         System.getProperty(key)?.let { systemProperty(key, it) }
     }
+}
+
+// ---------------------------------------------------------------- coverage (JaCoCo)
+//
+//   ./gradlew test jacocoTestReport     build/reports/jacoco/test/html/index.html and jacocoTestReport.xml
+//   ./gradlew coverageSummary           the line and branch coverage per package, printed (needs the XML report)
+//   ./gradlew jacocoTestCoverageVerification   fails if a package falls below its floor (docs/COVERAGE.md says how the floors were set)
+// Not applied to the -Pvalhalla build: the JaCoCo release in use does not read JDK 28 class files.
+
+jacoco {
+    toolVersion = "0.8.14"
+}
+
+tasks.jacocoTestReport {
+    dependsOn(tasks.test)
+    onlyIf { !valhalla }
+    reports {
+        xml.required.set(true)
+        html.required.set(true)
+        csv.required.set(false)
+    }
+}
+
+tasks.test {
+    extensions.configure<JacocoTaskExtension> { isEnabled = !valhalla }
+    finalizedBy(tasks.jacocoTestReport)
+}
+
+// Floors per package, set 2 to 3 points under what was measured (see docs/COVERAGE.md) so that untested new code is noticed without the build failing on noise.
+// Line coverage first, then branch coverage.
+val coverageFloors = mapOf(
+    "vmath/anim" to (0.94 to 0.90), "vmath/bulk" to (0.90 to 0.80), "vmath/camera" to (0.97 to 0.89), "vmath/color" to (0.94 to 0.85),
+    "vmath/core" to (0.96 to 0.93), "vmath/geo" to (0.95 to 0.90), "vmath/gl" to (0.90 to 0.85), "vmath/gltf" to (0.94 to 0.88),
+    "vmath/gpucull" to (0.93 to 0.89), "vmath/mem" to (0.84 to 0.80), "vmath/mesh" to (0.95 to 0.90), "vmath/occlusion" to (0.95 to 0.85),
+    "vmath/pack" to (0.93 to 0.90), "vmath/spatial" to (0.92 to 0.82), "vmath/tex" to (0.95 to 0.85)
+)
+
+tasks.jacocoTestCoverageVerification {
+    dependsOn(tasks.test)
+    onlyIf { !valhalla }
+    violationRules {
+        rule {
+            element = "BUNDLE"
+            limit { counter = "LINE"; minimum = "0.94".toBigDecimal() }
+            limit { counter = "BRANCH"; minimum = "0.87".toBigDecimal() }
+        }
+        coverageFloors.forEach { (pkg, floors) ->
+            rule {
+                element = "PACKAGE"
+                includes = listOf(pkg.replace('/', '.'))
+                limit { counter = "LINE"; minimum = floors.first.toBigDecimal() }
+                limit { counter = "BRANCH"; minimum = floors.second.toBigDecimal() }
+            }
+        }
+    }
+}
+
+tasks.register("coverageSummary") {
+    group = "verification"
+    description = "Prints line and branch coverage per package from the JaCoCo XML report (run test jacocoTestReport first)."
+    dependsOn(tasks.jacocoTestReport)
+    val xml = layout.buildDirectory.file("reports/jacoco/test/jacocoTestReport.xml")
+    doLast {
+        val file = xml.get().asFile
+        if (!file.exists()) {
+            logger.lifecycle("no coverage report (the Valhalla profile does not produce one)")
+            return@doLast
+        }
+        val factory = javax.xml.parsers.DocumentBuilderFactory.newInstance()
+        factory.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false)
+        val doc = factory.newDocumentBuilder().parse(file)
+        fun pct(el: org.w3c.dom.Element, type: String): String {
+            val counters = el.childNodes
+            for (i in 0 until counters.length) {
+                val c = counters.item(i)
+                if (c is org.w3c.dom.Element && c.tagName == "counter" && c.getAttribute("type") == type) {
+                    val missed = c.getAttribute("missed").toDouble()
+                    val covered = c.getAttribute("covered").toDouble()
+                    return "%5.1f%% (%d/%d)".format(100 * covered / (missed + covered), covered.toInt(), (missed + covered).toInt())
+                }
+            }
+            return "    n/a"
+        }
+        val packages = doc.getElementsByTagName("package")
+        for (i in 0 until packages.length) {
+            val p = packages.item(i) as org.w3c.dom.Element
+            logger.lifecycle("%-18s line %s   branch %s".format(p.getAttribute("name"), pct(p, "LINE"), pct(p, "BRANCH")))
+        }
+        val bundle = doc.documentElement
+        logger.lifecycle("%-18s line %s   branch %s".format("TOTAL", pct(bundle, "LINE"), pct(bundle, "BRANCH")))
+    }
+}
+
+// ---------------------------------------------------------------- mutation testing (PIT)
+//
+//   ./gradlew mutationTest -Pmutation.classes=vmath.core.Morton -Pmutation.tests='vmath.core.*'
+//
+// PIT changes the compiled code (flips a comparison, drops an addition, ...) and re-runs the tests; a mutant that no test notices is a hole in the tests.
+// It is slow, so it is a task you run on the classes you changed or want to audit (docs/COVERAGE.md has the results so far), not part of `check`.
+// -Pmutation.classes and -Pmutation.tests take PIT patterns (comma separated, * wildcards); the report is build/reports/pitest/index.html.
+// Not available on the -Pvalhalla build.
+
+val pitest = configurations.create("pitest") {
+    isCanBeConsumed = false
+}
+
+dependencies {
+    pitest("org.pitest:pitest-command-line:1.30.0")
+    pitest("org.pitest:pitest-junit5-plugin:1.2.3")
+}
+
+tasks.register<JavaExec>("mutationTest") {
+    group = "verification"
+    description = "Runs PIT mutation testing on the classes given by -Pmutation.classes with the tests given by -Pmutation.tests."
+    dependsOn(tasks.testClasses, tasks.jar)
+    onlyIf { !valhalla }
+    javaLauncher.set(javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(baselineJdk)) })
+    classpath = pitest
+    mainClass.set("org.pitest.mutationtest.commandline.MutationCoverageReport")
+    val classes = providers.gradleProperty("mutation.classes")
+    val tests = providers.gradleProperty("mutation.tests").orElse("vmath.*")
+    val threads = providers.gradleProperty("mutation.threads").orElse("4")
+    val report = layout.buildDirectory.dir("reports/pitest")
+    val testClasspath = sourceSets.test.get().runtimeClasspath
+    val mainClasses = sourceSets.main.get().output.classesDirs
+    doFirst {
+        if (!classes.isPresent) {
+            throw GradleException("pass the classes to mutate, for example -Pmutation.classes=vmath.core.Morton")
+        }
+        report.get().asFile.mkdirs()
+    }
+    argumentProviders.add(CommandLineArgumentProvider {
+        listOf(
+            "--reportDir", report.get().asFile.path,
+            "--targetClasses", classes.get(),
+            "--mutableCodePaths", mainClasses.files.filter { it.exists() }.joinToString(",") { it.absolutePath },   // only production classes: tests in the same package are not mutated
+            "--targetTests", tests.get(),
+            "--classPath", testClasspath.files.filter { it.exists() }.joinToString(",") { it.absolutePath },
+            "--sourceDirs", listOf("src/main/java", "src/test/java", generatedMain.get().asFile.path, generatedTest.get().asFile.path).joinToString(",") { file(it).absolutePath },
+            "--threads", threads.get(),
+            "--outputFormats", "HTML,XML",
+            "--timestampedReports", "false",
+            "--jvmArgs", "-Djoml.nounsafe=true,-Dvmath.jar=" + tasks.jar.get().archiveFile.get().asFile.absolutePath
+        )
+    })
 }
 
 // ---------------------------------------------------------------- code generation
@@ -286,4 +434,10 @@ val japicmp = tasks.register<JavaExec>("japicmp") {
 tasks.check {
     dependsOn(japicmp)
     dependsOn(tasks.javadoc)
+    dependsOn(tasks.jacocoTestCoverageVerification)
 }
+
+// ---------------------------------------------------------------- publishing (docs/PUBLISHING.md)
+
+extra["publishDescription"] = "Immutable, Valhalla-ready 3D math and graphics foundation for Java: vectors, matrices, geometry, culling, cameras, meshes, animation and GPU data layouts."
+apply(from = "gradle/publishing.gradle.kts")

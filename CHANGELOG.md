@@ -6,6 +6,11 @@ Nothing has been released yet; the baseline for the compatibility check is the t
 ## Unreleased
 
 ### Added
+- Quality tooling: JaCoCo coverage with per-package floors in `check`, PIT mutation testing (`mutationTest`), `docs/COVERAGE.md`.
+- Publishing setup for `vmath`, `vmath-simd` and `vmath-annotations` (sources and javadoc jars, POM metadata, staging repository check, GitHub Packages), `docs/PUBLISHING.md`.
+- `SpatialHash` (cell indices, hashes, packed keys, epsilon-neighbourhood lookup, canonical float keys), `docs/EQUALITY.md`.
+- `docs/COOKBOOK.md`: four recipes generated from tests.
+- Tests found by mutation testing: `CoverageGapsfTest`/`CoverageGapsdTest`, `ConversionAndIntVecGapsTest`, more Hilbert argument checks.
 - Quantization (experimental): `Quantize` (N-bit unorm/snorm, mantissa rounding), `GridQuantizer`, `UvQuantizer`; `VertexLayout` formats `positionUnorm16` and `uvUnorm16` for `MeshExport`.
 - New package `vmath.color` (experimental): `Srgb`, `ColorSpaces` (HSV, HSL, Oklab, Oklch), `ToneMap`, `PremultipliedAlpha`.
 - Bulk and memory (experimental): `Vec4fArray`, `SegmentFloatArray` (off-heap), `removeSwap`/`compact` on every container, `Mat4fArray.multiply`/`premultiply`, `QuatArray.nlerp`, `MatrixKernel` SPI with a Vector API kernel in `vmath-simd`, `DirtyRanges`, `FrameDirtyRanges`, `HandleRegistry`.

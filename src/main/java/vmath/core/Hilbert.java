@@ -39,8 +39,7 @@ public final class Hilbert {
         x ^= x >>> 4;
         x ^= x >>> 8;
         x ^= x >>> 16;
-        x ^= x >>> 32;
-        return x;
+        return x; // the coordinates have at most 32 bits, so x has at most 31 and these five steps cover them
     }
 
     /** The Hilbert index of cell {@code (x, y)} of a {@code 2^bits} by {@code 2^bits} grid ({@code 1 <= bits <= 32}); unsigned if {@code bits == 32}. */

@@ -43,3 +43,17 @@ tasks.test {
     dependsOn(tasks.jar)
     systemProperty("vmath.simd.jar", tasks.jar.get().archiveFile.get().asFile.absolutePath)
 }
+
+extra["publishDescription"] = "Optional Vector API (SIMD) kernels for vmath: frustum culling and batch matrix products. Needs --add-modules jdk.incubator.vector."
+apply(from = rootProject.file("gradle/publishing.gradle.kts"))
+
+tasks.javadoc {
+    (options as StandardJavadocDocletOptions).apply {
+        encoding = "UTF-8"
+        addStringOption("-add-modules", "jdk.incubator.vector")
+        if (valhalla) {
+            addBooleanOption("-enable-preview", true)
+            addStringOption("source", "28")
+        }
+    }
+}
