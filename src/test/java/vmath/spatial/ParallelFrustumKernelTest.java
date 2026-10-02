@@ -2,6 +2,7 @@ package vmath.spatial;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -168,6 +169,61 @@ class ParallelFrustumKernelTest {
         VisibilitySet actual = new VisibilitySet(n);
         actual.setAll(n);
         k.cull(f, b, actual);
+        assertArrayEquals(expected.words(), actual.words());
+    }
+
+    @Test
+    void anExecutorThatRejectsATaskFailsTheCallAfterTheHandedOutChunksFinishAndTheKernelRecovers() {
+        int n = 4 * ParallelFrustumKernel.MIN_CHUNK;
+        BoundsArray b = scene(n);
+        java.util.concurrent.atomic.AtomicInteger accepted = new java.util.concurrent.atomic.AtomicInteger();
+        java.util.concurrent.atomic.AtomicBoolean reject = new java.util.concurrent.atomic.AtomicBoolean(true);
+        java.util.concurrent.Executor flaky = task -> {
+            if (reject.get() && accepted.incrementAndGet() == 2) {
+                throw new java.util.concurrent.RejectedExecutionException("full");
+            }
+            pool.execute(task);
+        };
+        ParallelFrustumKernel k = new ParallelFrustumKernel(flaky, 4);
+        Frustumf f = randomFrustum();
+        VisibilitySet vis = new VisibilitySet(n);
+        vis.setAll(n);
+        assertThrows(java.util.concurrent.RejectedExecutionException.class, () -> k.cull(f, b, vis));
+        reject.set(false);
+        VisibilitySet expected = new VisibilitySet(n);
+        expected.setAll(n);
+        new FrustumCuller().cull(f, b, expected);
+        VisibilitySet actual = new VisibilitySet(n);
+        actual.setAll(n);
+        k.cull(f, b, actual);
+        assertArrayEquals(expected.words(), actual.words(), "the kernel works again after a rejected hand-out");
+    }
+
+    @Test
+    void anExecutorThatDefersWorkMakesTheCallWaitUntilTheWorkRunsAndNeverReturnsEarly() throws Exception {
+        int n = 3 * ParallelFrustumKernel.MIN_CHUNK;
+        BoundsArray b = scene(n);
+        java.util.concurrent.ConcurrentLinkedQueue<Runnable> held = new java.util.concurrent.ConcurrentLinkedQueue<>();
+        ParallelFrustumKernel k = new ParallelFrustumKernel(held::add, 3); // accepts the tasks and keeps them: the documented way to block the caller
+        Frustumf f = randomFrustum();
+        VisibilitySet actual = new VisibilitySet(n);
+        actual.setAll(n);
+        java.util.concurrent.CompletableFuture<Void> call = java.util.concurrent.CompletableFuture.runAsync(() -> k.cull(f, b, actual));
+        long deadline = System.nanoTime() + 5_000_000_000L;
+        while (held.size() < 2 && System.nanoTime() < deadline) {
+            Thread.sleep(5);
+        }
+        assertEquals(2, held.size(), "chunks 1 and 2 were handed out");
+        Thread.sleep(300);
+        assertFalse(call.isDone(), "the call must not return while handed-out chunks have not run");
+        Runnable r;
+        while ((r = held.poll()) != null) {
+            r.run();
+        }
+        call.get(10, java.util.concurrent.TimeUnit.SECONDS);
+        VisibilitySet expected = new VisibilitySet(n);
+        expected.setAll(n);
+        new FrustumCuller().cull(f, b, expected);
         assertArrayEquals(expected.words(), actual.words());
     }
 

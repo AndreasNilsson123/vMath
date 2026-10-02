@@ -10,6 +10,9 @@ import vmath.core.Mat4f;
  * Many 4x4 matrices in one {@code float[]}, 16 floats each in column-major (GPU) order, so a whole array can be
  * uploaded as it is. One matrix is a single 64-byte contiguous read, which suits per-object kernels; there is no
  * {@code Mat4f} object per element.
+ *
+ * <p><b>Thread safety.</b> Not thread-safe: it is mutable, so use one instance per thread or synchronise externally. Concurrent reads are safe only
+ * while no thread is writing.
  */
 public final class Mat4fArray {
 

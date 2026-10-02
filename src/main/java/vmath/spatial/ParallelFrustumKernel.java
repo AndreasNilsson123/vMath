@@ -20,6 +20,11 @@ import vmath.geo.Frustumf;
  * <p>Measured at 1M objects on 12 logical cores ({@code ParallelCullBench}): 2.25 ms serial, 1.56 ms with 2 chunks, 0.99 ms
  * with 4, 0.76 ms with 8. The kernel is memory-bound, so the gain flattens well before the core count.
  *
+ * <p><b>Executor contract.</b> The executor must eventually run every task it accepts. {@code cull} returns only when all chunks have finished, with no timeout
+ * (a chunk that is still running after a timeout would write into the result set after the call returned, which is worse than waiting), so an executor that accepts a
+ * task and then discards it, for example a pool shut down with {@code shutdownNow()} while the task was still queued, blocks the calling thread forever. An executor that
+ * <em>rejects</em> a task (throws from {@code execute}) is handled: the chunks already handed out are awaited and the exception is rethrown.
+ *
  * <p>Ranges too small to pay for the hand-off ({@code < 2 * MIN_CHUNK} objects) run serially on the calling thread.
  *
  * <p>An instance is not thread-safe: one call at a time.

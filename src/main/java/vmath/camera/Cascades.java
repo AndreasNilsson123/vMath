@@ -16,6 +16,9 @@ import vmath.geo.Frustumf;
  * snapped to whole shadow-map texels. The sphere does not change when the camera turns and the snapping removes
  * sub-texel sliding when it moves, so shadow edges do not shimmer. The price is a slightly larger volume than a tight fit
  * ({@code stabilize = false}), which fits the slice's corners exactly.
+ *
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time. The arrays and buffers you pass in are
+ * not synchronised, so two threads must not write the same one.
  */
 public final class Cascades {
 

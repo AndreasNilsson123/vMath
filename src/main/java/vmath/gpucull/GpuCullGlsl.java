@@ -13,6 +13,9 @@ import vmath.gl.DrawElementsIndirectGpu;
  *
  * <p>The Hi-Z pyramid is an {@code R32F} {@code sampler2D} with all its mip levels at texture unit 0, each texel the farthest depth of the four below it ({@code max} for conventional
  * depth, {@code min} for reversed-Z); the shader converts every texel to "farness" (larger is farther) before comparing, which is the same test in every convention.
+ *
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time. The arrays and buffers you pass in are
+ * not synchronised, so two threads must not write the same one.
  */
 @Experimental("the shader text may change with the layouts")
 public final class GpuCullGlsl {

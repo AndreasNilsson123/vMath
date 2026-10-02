@@ -11,6 +11,9 @@ import vmath.core.Morton;
  *
  * <p>{@link Curve#HILBERT} has no long jumps and so the better locality; {@link Curve#MORTON} costs less to compute. {@code docs/BULK.md} has the measured
  * difference in path length and in time.
+ *
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time. The arrays and buffers you pass in are
+ * not synchronised, so two threads must not write the same one.
  */
 @Experimental("the set of helpers may grow")
 public final class LocalityOrder {

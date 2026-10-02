@@ -18,6 +18,9 @@ import vmath.core.Vec4f;
  * <p>The vector packers use the GLSL layouts ({@code packUnorm4x8} and friends): the first component is in the lowest bits. The
  * 2-10-10-10 packers match {@code GL_UNSIGNED_INT_2_10_10_10_REV} / Vulkan {@code A2B10G10R10}: red in bits 0 to 9, then green, blue,
  * and alpha in bits 30 and 31.
+ *
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time. The arrays and buffers you pass in are
+ * not synchronised, so two threads must not write the same one.
  */
 public final class Norm {
 

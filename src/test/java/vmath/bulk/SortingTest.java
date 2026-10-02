@@ -1,5 +1,6 @@
 package vmath.bulk;
 
+import vmath.Report;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -296,6 +297,43 @@ class SortingTest {
         assertArrayEquals(new int[] {0, 3, 4, 8, 9, 14, 23, 25}, a);
     }
 
+    @Test
+    void parallelScanOnAnExecutorEqualsTheSequentialOneAndReportsFailures() throws Exception {
+        SplittableRandom r = new SplittableRandom(SEED + 9);
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(3);
+        try {
+            for (int n : new int[] {0, 1, 7, 100, 12_345, 400_003}) {
+                for (int chunks : new int[] {1, 2, 3, 8, 64}) {
+                    int[] a = new int[n];
+                    for (int i = 0; i < n; i++) {
+                        a[i] = r.nextInt(100);
+                    }
+                    int[] b = a.clone();
+                    assertEquals(PrefixSum.exclusive(a, n), PrefixSum.exclusiveParallel(b, n, chunks, pool), "n=" + n + " chunks=" + chunks);
+                    assertArrayEquals(a, b, "n=" + n + " chunks=" + chunks);
+                }
+            }
+            // a same-thread executor works, and so does one that refuses a task: the call fails after the accepted chunks have finished
+            int[] c = new int[1000];
+            java.util.Arrays.fill(c, 1);
+            assertEquals(1000, PrefixSum.exclusiveParallel(c, 1000, 4, Runnable::run));
+            assertEquals(999, c[999]);
+            int[] refused = new int[1000];
+            java.util.Arrays.fill(refused, 1);
+            java.util.concurrent.atomic.AtomicInteger calls = new java.util.concurrent.atomic.AtomicInteger();
+            assertThrows(java.util.concurrent.RejectedExecutionException.class, () -> PrefixSum.exclusiveParallel(refused, 1000, 4, task -> {
+                if (calls.incrementAndGet() == 2) {
+                    throw new java.util.concurrent.RejectedExecutionException("full");
+                }
+                pool.execute(task);
+            }));
+            assertThrows(NullPointerException.class, () -> PrefixSum.exclusiveParallel(new int[10], 10, 2, null));
+            assertThrows(IllegalArgumentException.class, () -> PrefixSum.exclusiveParallel(new int[10], 10, 0, pool));
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
     // ---------------------------------------------------------------- locality order
 
     private static float[] cloud(SplittableRandom r, int n) {
@@ -331,7 +369,7 @@ class SortingTest {
             assertArrayEquals(identity, sorted);
         }
         double random = pathLength(p, identity), m = pathLength(p, morton), h = pathLength(p, hilbert);
-        System.out.printf("locality order, %d random points in the unit cube: path length input %.0f, Morton %.0f, Hilbert %.0f%n", n, random, m, h);
+        Report.printf("locality order, %d random points in the unit cube: path length input %.0f, Morton %.0f, Hilbert %.0f%n", n, random, m, h);
         assertTrue(h < m && m < random / 10, "input " + random + " morton " + m + " hilbert " + h);
     }
 

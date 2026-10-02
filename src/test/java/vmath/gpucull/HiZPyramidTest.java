@@ -1,5 +1,6 @@
 package vmath.gpucull;
 
+import vmath.Report;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -132,7 +133,7 @@ class HiZPyramidTest {
                 }
             }
         }
-        System.out.printf("HIZ rectangles hidden exactly %d, found by the pyramid %d (%.1f%%), pyramid answers that were wrong %d%n", hiddenExactly, hiddenByPyramid,
+        Report.printf("HIZ rectangles hidden exactly %d, found by the pyramid %d (%.1f%%), pyramid answers that were wrong %d%n", hiddenExactly, hiddenByPyramid,
                 100.0 * hiddenByPyramid / hiddenExactly, wrong);
         assertEquals(0, wrong, "the pyramid must never hide an object that has a pixel showing something as far or farther");
         assertTrue(hiddenExactly > 20000, "enough hidden cases in the sample: " + hiddenExactly);

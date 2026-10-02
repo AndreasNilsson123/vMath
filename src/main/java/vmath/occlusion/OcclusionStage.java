@@ -13,6 +13,8 @@ import vmath.spatial.CullStage;
  * decision per object is the buffer's {@link DepthBuffer#isHidden}: conservative, so an object that could be seen is kept.
  *
  * <p>The buffer's camera must be the one the rest of the pipeline uses; the {@link CullContext} is not consulted.
+ *
+ * <p><b>Thread safety.</b> Not thread-safe: the stage owns scratch memory (its depth buffer), so use one instance per thread.
  */
 public final class OcclusionStage implements CullStage {
 

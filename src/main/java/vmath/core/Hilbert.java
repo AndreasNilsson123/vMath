@@ -8,6 +8,9 @@ package vmath.core;
  * bits of a code depend only on the top {@code k} bits of the coordinates, so a code prefix names a square or cube of cells. Coordinates are treated as unsigned
  * and must fit in {@code bits} bits (an {@link IllegalArgumentException} otherwise). The implementation is Skilling's transpose algorithm
  * (J. Skilling, "Programming the Hilbert curve", 2004).
+ *
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time. The arrays and buffers you pass in are
+ * not synchronised, so two threads must not write the same one.
  */
 public final class Hilbert {
 

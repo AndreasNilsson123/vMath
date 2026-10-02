@@ -796,4 +796,38 @@ class AllocationContractTest {
             vmath.pack.Quantize.mantissa(work, 0, n, 9);
         });
     }
+
+    // ------------------------------------------------------------ conversions that were not under the contract (docs/technical-debt.md TD-17)
+
+    @Test
+    void offHeapContainerAccessorsAndMeshExport() {
+        try (vmath.bulk.SegmentFloatArray a = vmath.bulk.SegmentFloatArray.ofMat4(4096)) {
+            float[] m = new float[16];
+            vmath.core.Mat4f mat = vmath.core.Mat4f.translation(1f, 2f, 3f);
+            assertNoAllocation("SegmentFloatArray.add(float[])/set/get", 20_000, 5000, () -> {
+                a.clear();
+                for (int i = 0; i < 64; i++) {
+                    a.add(m, 0);
+                }
+                a.set(3, m, 0);
+                a.get(5, m, 0);
+            });
+            assertNoAllocation("SegmentFloatArray.addMat4", 20_000, 5000, () -> {
+                a.clear();
+                for (int i = 0; i < 64; i++) {
+                    a.addMat4(mat);
+                }
+            });
+        }
+        // MeshExport.writeVertices builds its quantizers once per call, so the allocation per call is a few objects, and it must not grow with the vertex count
+        vmath.mesh.VertexLayout layout = vmath.mesh.VertexLayout.builder().positionUnorm16().normalOct16().tangent().uvUnorm16(0).build();
+        vmath.mesh.Mesh small = vmath.mesh.Primitives.uvSphere(1f, 12, 6), large = vmath.mesh.Primitives.uvSphere(1f, 96, 48);
+        java.lang.foreign.MemorySegment ds = java.lang.foreign.MemorySegment.ofArray(new byte[(int) vmath.mesh.MeshExport.vertexBytes(small, layout)]);
+        java.lang.foreign.MemorySegment dl = java.lang.foreign.MemorySegment.ofArray(new byte[(int) vmath.mesh.MeshExport.vertexBytes(large, layout)]);
+        double perCallSmall = Alloc.bytesPerCall(() -> vmath.mesh.MeshExport.writeVertices(small, layout, ds, 0), 300, 2000);
+        double perCallLarge = Alloc.bytesPerCall(() -> vmath.mesh.MeshExport.writeVertices(large, layout, dl, 0), 400, 400);
+        Report.printf("MeshExport.writeVertices: %.0f B per call for %d vertices, %.0f B per call for %d vertices%n", perCallSmall, small.vertexCount(), perCallLarge, large.vertexCount());
+        org.junit.jupiter.api.Assertions.assertTrue(perCallLarge <= perCallSmall + 64.0,
+                "writeVertices allocates per vertex: " + perCallSmall + " B per call for " + small.vertexCount() + " vertices, " + perCallLarge + " B for " + large.vertexCount());
+    }
 }

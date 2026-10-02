@@ -129,6 +129,54 @@ class SegmentFloatArrayTest {
     }
 
     @Test
+    void anArrayThatIsDroppedWithoutClosingIsReleasedByTheCleaner() throws InterruptedException {
+        SegmentFloatArray a = SegmentFloatArray.ofVec3(1000);
+        a.addVec3(new Vec3f(1f, 2f, 3f));
+        MemorySegment.Scope scope = a.segment().scope();
+        assertTrue(scope.isAlive());
+        a = null;
+        long deadline = System.nanoTime() + 20_000_000_000L;
+        while (scope.isAlive() && System.nanoTime() < deadline) {
+            System.gc();
+            Thread.sleep(50);
+        }
+        assertFalse(scope.isAlive(), "the cleaner released the arena of the unreachable array");
+    }
+
+    @Test
+    void readersOnOtherThreadsSeeTheDataWhileNobodyMutates() throws Exception {
+        try (SegmentFloatArray a = SegmentFloatArray.ofVec3(1000)) {
+            for (int i = 0; i < 1000; i++) {
+                a.addVec3(new Vec3f(i, 2 * i, 3 * i));
+            }
+            MemorySegment seg = a.segment();
+            java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(4);
+            try {
+                java.util.List<java.util.concurrent.Future<Boolean>> results = new java.util.ArrayList<>();
+                for (int t = 0; t < 4; t++) {
+                    results.add(pool.submit(() -> {
+                        for (int i = 0; i < 1000; i++) {
+                            if (seg.get(ValueLayout.JAVA_FLOAT_UNALIGNED, i * 12L + 4) != 2f * i) {
+                                return false;
+                            }
+                        }
+                        return true;
+                    }));
+                }
+                for (java.util.concurrent.Future<Boolean> f : results) {
+                    assertTrue(f.get());
+                }
+            } finally {
+                pool.shutdownNow();
+            }
+            // growth frees the old segment: a reader that kept it fails loudly instead of reading freed memory
+            a.ensureCapacity(100_000);
+            assertThrows(IllegalStateException.class, () -> seg.get(ValueLayout.JAVA_FLOAT_UNALIGNED, 0));
+            assertEquals(2f, a.getFloat(1, 1), "the new segment holds the copied data");
+        }
+    }
+
+    @Test
     void closeReleasesTheMemoryAndIsIdempotent() {
         SegmentFloatArray a = SegmentFloatArray.ofVec3(4);
         a.addVec3(new Vec3f(1f, 2f, 3f));

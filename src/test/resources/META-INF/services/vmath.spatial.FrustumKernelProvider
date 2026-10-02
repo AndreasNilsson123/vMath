@@ -1,0 +1,6 @@
+vmath.spatial.TestKernelProviders$Low
+vmath.spatial.TestKernelProviders$Zero
+vmath.spatial.TestKernelProviders$Unsupported
+vmath.spatial.TestKernelProviders$ThrowsWhenAsked
+vmath.spatial.TestKernelProviders$FailingCreate
+vmath.spatial.TestKernelProviders$BrokenConstructor

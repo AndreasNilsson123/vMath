@@ -8,6 +8,9 @@ import vmath.core.Mat4f;
  * Projections and views for stereo and head-mounted displays: one view per eye, and the asymmetric frustum each eye needs.
  *
  * <p>Head space is the usual view space: +X right, +Y up, the head looks along -Z. The left eye sits at {@code x = -ipd / 2} and the right eye at {@code +ipd / 2}.
+ *
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time. The arrays and buffers you pass in are
+ * not synchronised, so two threads must not write the same one.
  */
 @Experimental("the set of helpers may grow; the signatures are expected to stay")
 public final class Stereo {

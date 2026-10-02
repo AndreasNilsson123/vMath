@@ -46,6 +46,9 @@ import vmath.mesh.Mesh;
  *
  * <p><b>Not supported:</b> compressed geometry ({@code KHR_draco_mesh_compression}, {@code EXT_meshopt_compression}; a file that requires them is rejected),
  * morph targets, cameras, lights and extensions beyond {@code KHR_mesh_quantization}. Tested with hand-built files, not with the Khronos sample assets.
+ *
+ * <p><b>Thread safety.</b> Not thread-safe: the parsed data is read-only, but {@link #skin} builds and caches its result on first use, so use one instance per
+ * thread, or call every accessor you need once before sharing it (and never modify the arrays it hands out).
  */
 @Experimental("the data model records and the animation conversion may change")
 public final class Gltf {
@@ -126,9 +129,20 @@ public final class Gltf {
 
     // ---------------------------------------------------------------- loading
 
-    /** Loads a {@code .gltf} or {@code .glb} file; relative buffer URIs are resolved next to it and may not leave its directory. */
+    /** The size above which {@link #load(Path)} refuses a file (the main file and each buffer file separately): 1 GiB. */
+    public static final long DEFAULT_MAX_FILE_BYTES = 1L << 30;
+
+    /**
+     * Loads a {@code .gltf} or {@code .glb} file; relative buffer URIs are resolved next to it and may not leave its directory. Every file is read completely into memory,
+     * so a file larger than {@link #DEFAULT_MAX_FILE_BYTES} is refused with a {@link GltfException} (use {@link #load(Path, long)} to choose the limit).
+     */
     public static Gltf load(Path file) throws IOException {
-        byte[] data = Files.readAllBytes(file);
+        return load(file, DEFAULT_MAX_FILE_BYTES);
+    }
+
+    /** As {@link #load(Path)} with an explicit size limit, in bytes, for the main file and for every buffer file. */
+    public static Gltf load(Path file, long maxFileBytes) throws IOException {
+        byte[] data = readLimited(file, maxFileBytes);
         Path base = file.toAbsolutePath().normalize().getParent();
         return parse(data, uri -> {
             String decoded = URLDecoder.decode(uri.replace("+", "%2B"), StandardCharsets.UTF_8);
@@ -136,8 +150,16 @@ public final class Gltf {
             if (!p.startsWith(base)) {
                 throw new IOException("the URI leaves the directory of the glTF file: " + uri);
             }
-            return Files.readAllBytes(p);
+            return readLimited(p, maxFileBytes);
         });
+    }
+
+    private static byte[] readLimited(Path file, long maxFileBytes) throws IOException {
+        long size = Files.size(file);
+        if (size > maxFileBytes || size > Integer.MAX_VALUE - 8) {
+            throw new GltfException(file.getFileName() + " is " + size + " bytes, more than the limit of " + Math.min(maxFileBytes, Integer.MAX_VALUE - 8L) + " bytes");
+        }
+        return Files.readAllBytes(file);
     }
 
     /** Parses glTF from memory: a GLB container (recognised by its magic) or UTF-8 JSON. {@code resolver} loads non-data URIs; it may be null when there are none. */

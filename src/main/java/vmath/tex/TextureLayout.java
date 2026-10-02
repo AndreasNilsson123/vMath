@@ -36,6 +36,21 @@ public record TextureLayout(TextureFormat format, int width, int height, int dep
         if (levels < 1 || levels > maxLevels(width, height, depth)) {
             throw new IllegalArgumentException("levels must be in 1.." + maxLevels(width, height, depth) + ": " + levels);
         }
+        checkAddressable(format, width, height, depth, levels, layers, faces);
+    }
+
+    /** Refuses a texture whose total size does not fit a {@code long}: every size and offset the methods below return would be wrong (negative) for it. */
+    private static void checkAddressable(TextureFormat format, int width, int height, int depth, int levels, int layers, int faces) {
+        try {
+            long total = 0;
+            for (int l = 0; l < levels; l++) {
+                long slice = Math.multiplyExact(Math.multiplyExact((long) format.blocksWide(levelSize(width, l)), (long) format.blocksHigh(levelSize(height, l))), (long) format.bytesPerBlock());
+                long image = Math.multiplyExact(slice, (long) levelSize(depth, l));
+                total = Math.addExact(total, Math.multiplyExact(Math.multiplyExact(image, (long) layers), (long) faces));
+            }
+        } catch (ArithmeticException e) {
+            throw new IllegalArgumentException("a texture of " + width + " x " + height + " x " + depth + " texels with " + layers + " layers and " + faces + " faces is larger than 2^63 bytes");
+        }
     }
 
     /** A 2D texture with the full mip chain. */

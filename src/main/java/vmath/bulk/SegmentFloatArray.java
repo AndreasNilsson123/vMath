@@ -3,6 +3,8 @@ package vmath.bulk;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
+import java.lang.ref.Cleaner;
+import java.lang.ref.Reference;
 import vmath.annotations.Experimental;
 import vmath.core.Mat4f;
 import vmath.core.Quatf;
@@ -15,20 +17,49 @@ import vmath.core.Vec4f;
  * clear, removeSwap, compact), with {@code float[]} scratch arguments instead of one class per element type, plus typed convenience methods for the common
  * element sizes. Use it where the data is read by native code or the GPU (memory-mapped buffers, shared upload staging), or where the heap must stay small.
  *
- * <p>The memory belongs to a shared {@link Arena}, so other threads can read it; {@link #close()} releases it and every method then fails. When the array grows,
- * the segment is replaced and the old one is freed, so fetch {@link #segment()} again after adding (as with {@code data()} on the heap containers). The memory is
- * not zeroed beyond what the arena guarantees (zeroed), and elements beyond {@code size} are unspecified after removals.
+ * <p><b>Ownership.</b> The array owns its memory, in a shared {@link Arena}: {@link #close()} releases it (deterministically) and every method then fails. A {@link Cleaner}
+ * releases it as a safety net if the array is garbage collected without having been closed, so a forgotten {@code close()} is not a permanent leak, but that is not a
+ * substitute for closing: native memory is not counted against the heap, so the collector may not run for a long time. Because of the cleaner, <b>keep the array reachable
+ * for as long as a {@link MemorySegment} fetched from {@link #segment()} is in use</b>; a segment outliving its array may be released under you.
+ *
+ * <p><b>Growth and other threads.</b> When the array grows, the segment is replaced and the old one is freed, so fetch {@link #segment()} again after adding (as with
+ * {@code data()} on the heap containers). A thread that still holds the old segment gets an {@link IllegalStateException} on its next access. The shared arena lets other
+ * threads read the memory, but only while no thread grows, clears or closes the array: size it in advance with {@link #ensureCapacity} before handing the segment to readers.
+ * The memory is not zeroed beyond what the arena guarantees (zeroed), and elements beyond {@code size} are unspecified after removals.
  *
  * <p>Compared with the heap containers an access costs a bounds check on the segment but no copy; bulk transfers with {@link #copyFrom} and {@link #copyTo} move whole
  * runs. The batch kernels of the heap containers write straight into a segment with the {@code MemorySegment} overloads (for example
  * {@link TransformArray#toMatrices(MemorySegment, long, long)}).
+ *
+ * <p><b>Thread safety.</b> Not thread-safe for mutation: one thread adds, sets, removes, grows and closes. Reads from other threads are safe only while no thread mutates
+ * (see above for growth).
  */
 @Experimental("the typed accessors may grow")
 public final class SegmentFloatArray implements AutoCloseable {
 
     private static final ValueLayout.OfFloat F = ValueLayout.JAVA_FLOAT_UNALIGNED;
 
+    private static final Cleaner CLEANER = Cleaner.create();
+
+    /** What the cleaner releases: the current arena (replaced on growth). It must not reference the array itself. */
+    private static final class Owner implements Runnable {
+        private Arena arena;
+
+        Owner(Arena arena) {
+            this.arena = arena;
+        }
+
+        @Override
+        public void run() {
+            if (arena.scope().isAlive()) {
+                arena.close();
+            }
+        }
+    }
+
     private final int stride;
+    private final Owner owner;
+    private final Cleaner.Cleanable cleanable;
     private Arena arena;
     private MemorySegment segment;
     private int capacity;
@@ -42,6 +73,8 @@ public final class SegmentFloatArray implements AutoCloseable {
         this.capacity = Math.max(capacity, 1);
         this.arena = Arena.ofShared();
         this.segment = arena.allocate((long) this.capacity * stride * Float.BYTES, Float.BYTES);
+        this.owner = new Owner(arena);
+        this.cleanable = CLEANER.register(this, owner);
     }
 
     /** Elements of 3 floats ({@link Vec3fArray}). */
@@ -111,6 +144,7 @@ public final class SegmentFloatArray implements AutoCloseable {
         MemorySegment.copy(segment, 0, grown, 0, (long) size * stride * Float.BYTES);
         arena.close();
         arena = fresh;
+        owner.arena = fresh;
         segment = grown;
         capacity = next;
     }
@@ -221,18 +255,35 @@ public final class SegmentFloatArray implements AutoCloseable {
         requireStride(16, "a Mat4f");
         ensureCapacity(size + 1);
         long o = (long) size * 64;
-        float[] tmp = new float[16];
-        m.writeTo(tmp, 0);
-        MemorySegment.copy(tmp, 0, segment, F, o, 16);
+        segment.set(F, o, m.m00());
+        segment.set(F, o + 4, m.m01());
+        segment.set(F, o + 8, m.m02());
+        segment.set(F, o + 12, m.m03());
+        segment.set(F, o + 16, m.m10());
+        segment.set(F, o + 20, m.m11());
+        segment.set(F, o + 24, m.m12());
+        segment.set(F, o + 28, m.m13());
+        segment.set(F, o + 32, m.m20());
+        segment.set(F, o + 36, m.m21());
+        segment.set(F, o + 40, m.m22());
+        segment.set(F, o + 44, m.m23());
+        segment.set(F, o + 48, m.m30());
+        segment.set(F, o + 52, m.m31());
+        segment.set(F, o + 56, m.m32());
+        segment.set(F, o + 60, m.m33());
         return size++;
     }
 
+    /** The matrix at index {@code i}; allocates the returned value only (use {@link #get(int, float[], int)} to avoid even that). */
     public Mat4f getMat4(int i) {
         requireStride(16, "a Mat4f");
         checkIndex(i);
-        float[] tmp = new float[16];
-        MemorySegment.copy(segment, F, (long) i * 64, tmp, 0, 16);
-        return Mat4f.fromArray(tmp, 0);
+        long o = (long) i * 64;
+        return new Mat4f(
+                segment.get(F, o), segment.get(F, o + 4), segment.get(F, o + 8), segment.get(F, o + 12),
+                segment.get(F, o + 16), segment.get(F, o + 20), segment.get(F, o + 24), segment.get(F, o + 28),
+                segment.get(F, o + 32), segment.get(F, o + 36), segment.get(F, o + 40), segment.get(F, o + 44),
+                segment.get(F, o + 48), segment.get(F, o + 52), segment.get(F, o + 56), segment.get(F, o + 60));
     }
 
     // ---------------------------------------------------------------- compaction
@@ -290,8 +341,7 @@ public final class SegmentFloatArray implements AutoCloseable {
     /** Releases the memory. Further use of this array, or of a segment fetched earlier, throws. Closing twice is harmless. */
     @Override
     public void close() {
-        if (arena.scope().isAlive()) {
-            arena.close();
-        }
+        cleanable.clean();
+        Reference.reachabilityFence(this);
     }
 }

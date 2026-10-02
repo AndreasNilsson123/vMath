@@ -19,6 +19,9 @@ import vmath.annotations.Experimental;
  *
  * <p>Triangles with no area are attached to a neighbouring chart when they have one. A chart that folds over itself when projected (a helical ramp whose
  * normals all stay within the limit) is not detected.
+ *
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time. The arrays and buffers you pass in are
+ * not synchronised, so two threads must not write the same one.
  */
 @Experimental("a planar chart unwrap only; the chart-growing rule and the result record may change")
 public final class UvAtlas {

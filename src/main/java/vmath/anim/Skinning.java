@@ -16,6 +16,9 @@ import vmath.bulk.Mat4fArray;
  * <p><b>The reference.</b> {@link #skinPositions} and {@link #skinNormals} compute linear blend skinning on the CPU, the definition the
  * GPU shader has to match; use them as the oracle when checking one. Normals use the joint matrices' rotation part, which is exact for
  * rotation and uniform scale and approximate for non-uniform scale (the exact method needs the inverse transpose).
+ *
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time. The arrays and buffers you pass in are
+ * not synchronised, so two threads must not write the same one.
  */
 public final class Skinning {
 

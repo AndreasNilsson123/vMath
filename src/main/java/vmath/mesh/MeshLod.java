@@ -15,6 +15,9 @@ import vmath.annotations.Experimental;
  * <p><b>Pixel error.</b> A world-space error {@code e} at distance {@code d} covers {@code e * viewportHeight / (2 * d * tan(fovY / 2))} pixels. With a bounding
  * sphere of radius {@code r} that is {@code e * size / (2 r)} where {@code size} is the on-screen diameter of the sphere in pixels (what {@code LodSelector}
  * measures), so level {@code i} is acceptable for {@code size <= 2 r T / e_i} with pixel budget {@code T}; {@link Chain#selectorThresholds} returns those.
+ *
+ * <p><b>Thread safety.</b> Immutable after construction, so it can be shared between threads freely. The arrays it hands out are its own storage: do
+ * not modify them.
  */
 @Experimental("the error model and the chain builder may change")
 public final class MeshLod {

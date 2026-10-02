@@ -24,6 +24,9 @@ import vmath.spatial.ConeCull;
  * <p><b>Limits.</b> The error is the running sum of {@link MeshSimplifier}'s estimate up the hierarchy (conservative, not a Hausdorff distance). Borders between
  * groups are locked, so a level cannot simplify past what its borders allow; when a level removes fewer than 10% of the triangles the hierarchy stops there
  * and those clusters become roots. Attribute seams of the input are locked by the simplifier and so never simplify. Built at load time, not for runtime use.
+ *
+ * <p><b>Thread safety.</b> Immutable after construction, so it can be shared between threads freely. The arrays it hands out are its own storage: do
+ * not modify them.
  */
 @Experimental("the build heuristics, the error model and the accessor set may change")
 public final class ClusterHierarchy {

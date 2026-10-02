@@ -1,5 +1,6 @@
 package vmath.mesh;
 
+import vmath.Report;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -116,7 +117,7 @@ class ClusterHierarchyTest {
         for (int l = 1; l < trianglesPerLevel.length; l++) {
             assertTrue(trianglesPerLevel[l] < trianglesPerLevel[l - 1] * 0.75, "level " + l + " has " + trianglesPerLevel[l] + " after " + trianglesPerLevel[l - 1]);
         }
-        System.out.println("CLUSTER-LEVELS " + Arrays.toString(trianglesPerLevel) + " clusters=" + h.clusterCount());
+        Report.println("CLUSTER-LEVELS " + Arrays.toString(trianglesPerLevel) + " clusters=" + h.clusterCount());
     }
 
     @Test

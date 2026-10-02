@@ -16,6 +16,9 @@ import vmath.core.Vec3f;
  *       the shared exponent in 27 to 31. All three channels share the exponent of the largest, so small channels next to a large one
  *       lose precision. The largest value is 65408. Negative, NaN and out-of-range inputs clamp to {@code [0, 65408]}.</li>
  * </ul>
+ *
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time. The arrays and buffers you pass in are
+ * not synchronised, so two threads must not write the same one.
  */
 public final class SmallFloat {
 

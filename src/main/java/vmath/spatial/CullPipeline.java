@@ -8,6 +8,9 @@ import vmath.bulk.VisibilitySet;
  * An ordered chain of {@link CullStage}s. {@link #run} starts with every object visible and lets each stage clear
  * the bits it rejects, so cheap stages should come first (distance before frustum before small-feature is typical).
  * It allocates nothing per frame.
+ *
+ * <p><b>Thread safety.</b> Not thread-safe: the stages own scratch memory (kernels, depth buffers), so use one pipeline, with its own stages, per
+ * thread.
  */
 public final class CullPipeline {
 

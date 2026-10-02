@@ -1,7 +1,6 @@
 package vmath.mesh;
 
 import java.lang.foreign.MemorySegment;
-import vmath.core.Vec3f;
 import vmath.gl.GpuWriter;
 import vmath.pack.Half;
 import vmath.pack.Octahedral;
@@ -13,6 +12,9 @@ import vmath.pack.UvQuantizer;
  * Everything goes straight from the mesh's arrays into a {@link MemorySegment} (use {@link GpuWriter#of(java.nio.ByteBuffer)} to wrap a
  * {@code ByteBuffer}), in native byte order, with no per-vertex objects. A stream the layout asks for but the mesh lacks is an error,
  * not silently zero.
+ *
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time. The arrays and buffers you pass in are
+ * not synchronised, so two threads must not write the same one.
  */
 public final class MeshExport {
 
@@ -88,7 +90,7 @@ public final class MeshExport {
                 switch (a.format()) {
                     case POSITION_F32X3 -> put3(dst, o, pos, v * 3);
                     case POSITION_UNORM16X4 -> {
-                        positionQuantizer.pack(new Vec3f(pos[v * 3], pos[v * 3 + 1], pos[v * 3 + 2]), scratch, 0);
+                        positionQuantizer.pack(pos[v * 3], pos[v * 3 + 1], pos[v * 3 + 2], scratch, 0);
                         dst.set(java.lang.foreign.ValueLayout.JAVA_SHORT_UNALIGNED, o, scratch[0]);
                         dst.set(java.lang.foreign.ValueLayout.JAVA_SHORT_UNALIGNED, o + 2, scratch[1]);
                         dst.set(java.lang.foreign.ValueLayout.JAVA_SHORT_UNALIGNED, o + 4, scratch[2]);
@@ -97,7 +99,7 @@ public final class MeshExport {
                     case NORMAL_F32X3 -> put3(dst, o, mesh.normals(), v * 3);
                     case NORMAL_OCT16 -> {
                         float[] n = mesh.normals();
-                        GpuWriter.putInt(dst, o, Octahedral.pack16(new Vec3f(n[v * 3], n[v * 3 + 1], n[v * 3 + 2])));
+                        GpuWriter.putInt(dst, o, Octahedral.pack16(n[v * 3], n[v * 3 + 1], n[v * 3 + 2]));
                     }
                     case TANGENT_F32X4 -> {
                         float[] t = mesh.tangents();

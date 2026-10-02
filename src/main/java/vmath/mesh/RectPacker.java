@@ -10,6 +10,9 @@ import vmath.annotations.Experimental;
  * would fit.
  *
  * <p>Rectangles are given as parallel arrays of widths and heights in texels. Padding is the caller's business: add it to the sizes.
+ *
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time. The arrays and buffers you pass in are
+ * not synchronised, so two threads must not write the same one.
  */
 @Experimental("the heuristic and the result type may change")
 public final class RectPacker {

@@ -17,6 +17,9 @@ import vmath.annotations.Experimental;
  *   <li>{@link #exposure}: {@code 1 - exp(-x)}; a soft clip with a simple falloff.</li>
  * </ul>
  * Apply the exposure before the curve ({@code x * 2^EV}); see the physical camera model for how EV relates to scene luminance.
+ *
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time. The arrays and buffers you pass in are
+ * not synchronised, so two threads must not write the same one.
  */
 @Experimental("the set of curves may grow")
 public final class ToneMap {

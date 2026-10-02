@@ -1,5 +1,6 @@
 package vmath.camera;
 
+import vmath.Report;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.Random;
@@ -76,7 +77,7 @@ class ClusterExactOracleTest {
                                 if (!in) {
                                     missing++;
                                     if (missing < 5) {
-                                        System.out.println("MISSING light " + l + " cluster " + c + " (" + col + "," + row + "," + s + ") yDown " + yDown);
+                                        Report.println("MISSING light " + l + " cluster " + c + " (" + col + "," + row + "," + s + ") yDown " + yDown);
                                     }
                                 }
                             }
@@ -88,7 +89,7 @@ class ClusterExactOracleTest {
                 }
             }
         }
-        System.out.printf("CLEXACT point lights: %d pairs touch a cluster exactly, %d are listed (%.1f%% extra), %d missing%n", exact, listed, 100.0 * (listed - exact) / exact, missing);
+        Report.printf("CLEXACT point lights: %d pairs touch a cluster exactly, %d are listed (%.1f%% extra), %d missing%n", exact, listed, 100.0 * (listed - exact) / exact, missing);
         assertTrue(missing == 0, missing + " pairs that the exact test says touch are not listed");
         assertTrue(listed <= exact * 1.5, "the extras should be a minority: " + listed + " listed for " + exact + " exact");
     }

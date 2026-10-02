@@ -24,7 +24,7 @@ import vmath.annotations.Experimental;
  * @param <F> the fence type of the graphics API binding
  */
 @Experimental("the ring and the fence hooks may change")
-public final class PersistentBufferRing<F> {
+public final class PersistentBufferRing<F> implements AutoCloseable {
 
     /** The fence operations of the graphics API. */
     public interface FenceOps<F> {
@@ -48,7 +48,7 @@ public final class PersistentBufferRing<F> {
     private final FenceOps<F> ops;
     private final int frames;
     private final long regionSize;
-    private final Object[] fences;
+    private final java.util.List<F> fences; // one slot per region, null while the region has no fence
     private long frame = -1;
     private int region;
     private long used;
@@ -75,7 +75,7 @@ public final class PersistentBufferRing<F> {
         this.frames = framesInFlight;
         this.regionSize = region;
         this.ops = ops;
-        this.fences = new Object[framesInFlight];
+        this.fences = new java.util.ArrayList<>(java.util.Collections.nCopies(framesInFlight, (F) null));
     }
 
     public int framesInFlight() {
@@ -117,21 +117,20 @@ public final class PersistentBufferRing<F> {
      *
      * @return the byte offset of the frame's region
      */
-    @SuppressWarnings("unchecked")
     public long beginFrame() {
         if (inFrame) {
             throw new IllegalStateException("endFrame() has not been called for frame " + frame);
         }
         frame++;
         region = (int) (frame % frames);
-        F fence = (F) fences[region];
+        F fence = fences.get(region);
         if (fence != null) {
             if (!ops.isSignaled(fence)) {
                 stalls++;
                 ops.await(fence);
             }
             ops.release(fence);
-            fences[region] = null;
+            fences.set(region, null);
         }
         used = 0;
         inFrame = true;
@@ -166,19 +165,27 @@ public final class PersistentBufferRing<F> {
         if (!inFrame) {
             throw new IllegalStateException("beginFrame() has not been called");
         }
-        fences[region] = ops.insert();
+        fences.set(region, ops.insert());
         inFrame = false;
     }
 
+    /**
+     * Waits for every outstanding fence and releases it: call it (or use try-with-resources) before the mapped buffer is unmapped or recreated, because the GPU may
+     * still be reading a region. The ring owns the fences it created, not the mapped memory.
+     */
+    @Override
+    public void close() {
+        drain();
+    }
+
     /** Waits for every outstanding fence and releases it, for shutdown or before recreating the buffer. */
-    @SuppressWarnings("unchecked")
     public void drain() {
         for (int i = 0; i < frames; i++) {
-            F fence = (F) fences[i];
+            F fence = fences.get(i);
             if (fence != null) {
                 ops.await(fence);
                 ops.release(fence);
-                fences[i] = null;
+                fences.set(i, null);
             }
         }
     }

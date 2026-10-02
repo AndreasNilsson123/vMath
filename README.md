@@ -4,21 +4,27 @@ Immutable 3D math for a Java/LWJGL engine, built so every type can become a Valh
 `value record` by flipping a build flag.
 
 ```
-src/template/java         float templates (Vec2/3/4, Quat, Mat3/4): the single source of truth
-src/testTemplate/java     float test templates
-src/template/java/vmath/geo  Aabb, Sphere, Plane, Ray, Triangle, Obb, Frustum, ray/shape intersections
-src/main/java/vmath/bulk  SoA containers: BoundsArray, Mat4fArray, VisibilitySet, IntList
-src/template/java/vmath/camera  Camera (view/projection/pick/unproject), plus Jitter and Cascades in src/main
-src/main/java/vmath/spatial  culling framework: FrustumCuller, CullPipeline, StaticBvh, BvhQuery
-src/main/java/vmath/gl    GPU layouts (std140/std430/scalar), writers, @GpuStruct generated classes
-src/main/java/vmath/pack  compact formats: half, unorm/snorm, RGB10A2, R11G11B10F, RGB9E5, octahedral, quaternions
-src/main/java/vmath/occlusion  software Hi-Z occlusion culling (conservative depth buffer, pipeline stage, GPU Hi-Z sizing)
-src/main/java/vmath/mesh  indexed meshes, primitives, normals/tangents, weld/cache/fetch optimisation, GPU export
-src/test/java             JOML-oracle helpers + Valhalla readiness checks
-vmath-annotations         @GenerateDouble, @FloatOnly, @DoubleOnly, @Eps, @ValueType
-vmath-codegen             build-time generator (float template -> float + double types)
+src/template/java         float templates: Vec2/3/4, Quat, Mat3/4, Mat4x3, Transform, the geo shapes and intersections, Camera: the single source of truth for the f and d types
+src/testTemplate/java     float test templates (JOML-oracle property tests, generated for both precisions)
+src/main/java/vmath/
+  core        hand-written core types: integer vectors, Morton and Hilbert codes, SpatialHash, ClipSpace
+  bulk        SoA containers (Vec3/Vec4/Quat/Mat4/Transform/Bounds arrays, off-heap SegmentFloatArray), kernels, radix sort, prefix sums, DirtyRanges, HandleRegistry, VisibilitySet
+  spatial     culling framework: FrustumCuller, CullPipeline, StaticBvh, DynamicAabbTree, UniformGrid, LooseOctree, LOD, light and cascade culling
+  occlusion   software Hi-Z occlusion culling (conservative depth buffer, pipeline stage, GPU Hi-Z sizing)
+  camera      Jitter, Cascades, CubeFaces, PlanarViews, Stereo, DualParaboloid, clustered lighting (ClusterGrid, ClusterLights)
+  mesh        indexed meshes, primitives, normals/tangents, simplification, meshlets, cluster LOD, UV atlas, optimisation, GPU export
+  anim        skeletons, clips, poses, skinning, transform hierarchy
+  gltf        glTF 2.0 loader     tex   KTX2 and texture layouts
+  pack        compact formats: half, unorm/snorm, RGB10A2, R11G11B10F, RGB9E5, octahedral, quaternions, quantizers
+  gl          GPU layouts (std140/std430/scalar), @GpuStruct writers, indirect draws, vertex formats, shader headers, layout validation
+  gpucull     GPU-driven culling: layouts and CPU reference passes, Hi-Z model, compute shader text
+  mem         allocators: arena, slab, free list, ring, persistently mapped upload ring
+  color       sRGB, HSV/HSL/Oklab, tone mapping, premultiplied alpha
+src/test/java             oracle helpers, contract tests (allocation, API parity, equality, module), cookbook tests
+vmath-annotations         @GenerateDouble, @FloatOnly, @DoubleOnly, @Eps, @ValueType, @GpuStruct, @Experimental
+vmath-codegen             build-time generator (float template -> float + double types, @GpuStruct writers)
 vmath-simd                optional Vector API kernels (needs --add-modules jdk.incubator.vector)
-vmath-bench               JMH benchmarks
+vmath-bench               JMH benchmarks and a headless sample
 ```
 
 ## Conventions
@@ -101,14 +107,27 @@ expected to stay in preview through the JDK 29 LTS.
 
 ## Migrating from JOML
 
-| JOML | vmath |
-|---|---|
-| `m.mul(b)` (mutates `m`) | `m = m.mul(b)` |
-| `m.mul(b, dest)` | `dest = m.mul(b)` |
-| `new Matrix4f().perspective(...)` | `Mat4f.perspective(...)` |
-| `m.translate(t)` | `m = m.mul(Mat4f.translation(t))` |
-| `m.get(buf)` | `m.writeTo(buf, buf.position())` |
-| `q.transform(v)` (mutates `v`) | `v = q.transform(v)` |
+The types are immutable records, so `m.mul(b)` returns a new matrix instead of changing `m`, and builders such as `new Matrix4f().perspective(...)` are static factories (`Mat4f.perspective(...)`). `docs/COOKBOOK.md` has the full
+side-by-side table and a tested example of each operation.
+
+## Limitations
+
+What the library does not do (yet), in one place; each row names the document that has the details. Items without a reference are open roadmap items.
+
+| Area | Limitation | Details |
+|---|---|---|
+| GPU layer | The shader text, the layout validator and the upload ring are tested against Java references and simulations only; nothing has run on a graphics API | `docs/GPU.md`, `docs/MEMORY.md`, `docs/technical-debt.md` TD-01 |
+| GPU culling | Axis-aligned boxes only (no oriented boxes or spheres in the object pass); the Hi-Z test finds about half of the rectangles that are exactly hidden (it never hides a visible one) | `docs/GPU.md` |
+| Cluster LOD | `ClusterHierarchy` carries positions only, so skinned and multi-attribute meshes cannot be reduced into a cluster hierarchy (`MeshSimplifier` does support attributes) | `docs/MESH.md` |
+| Clustered lighting | Spot lights are assigned to up to 47% more clusters than they touch (conservative, never fewer) | `docs/CAMERA.md` |
+| Cameras | No physical camera model (exposure, focal length), no single culling frustum for both eyes of a stereo pair | `docs/CAMERA.md` |
+| Culling | No portal or sector culling, no temporal coherence for occlusion queries, no SIMD occlusion test | `docs/CULLING.md` |
+| Animation | No inverse kinematics, morph targets, animation compression or dual-quaternion skinning; `AnimationClip` interpolates linearly (the glTF loader converts STEP and CUBICSPLINE curves) | `docs/ANIMATION.md` |
+| Colour | No wide-gamut spaces (Display P3, Rec. 2020), no gamut mapping, no AgX or other image-formation transforms | `docs/COLOR.md` |
+| Formats | No entropy-coded vertex and index buffer compression (the quantization it needs is built) | `docs/FORMATS.md` |
+| Geometry and maths | No convex hulls or GJK, curves, polygon triangulation, robust predicates, fast-math approximations, `Mat2`, dual quaternions | `docs/ROADMAP.md` |
+| Utilities | No random-number or noise generators, springs and smoothing, debug-draw geometry | `docs/ROADMAP.md` |
+| Modularity | One JPMS module exports all packages; a consumer cannot depend on a subset | `docs/technical-debt.md` TD-11 |
 
 ## Build and benchmarks
 
@@ -124,16 +143,12 @@ Allocation findings and the performance contract are in [docs/PERFORMANCE.md](do
 
 ## Next steps
 
-Versioning and the `@Experimental` marker: [docs/VERSIONING.md](docs/VERSIONING.md); changes: [CHANGELOG.md](CHANGELOG.md).
-The full backlog is in [docs/ROADMAP.md](docs/ROADMAP.md); design notes are in `docs/` (CODEGEN, CULLING, GPU, CAMERA, FORMATS, TEXTURES, GLTF, ROBUSTNESS,
-PERFORMANCE, API-COMPAT, BULK, MEMORY, COLOR, COOKBOOK, EQUALITY, COVERAGE, PUBLISHING). Not built yet, roughly in order of value:
+Versioning and the `@Experimental` marker: [docs/VERSIONING.md](docs/VERSIONING.md); changes: [CHANGELOG.md](CHANGELOG.md). The backlog is [docs/ROADMAP.md](docs/ROADMAP.md) and the known weaknesses are in
+[docs/technical-debt.md](docs/technical-debt.md); design notes and measurements are in `docs/` (CODEGEN, CULLING, GPU, CAMERA, FORMATS, TEXTURES, GLTF, ROBUSTNESS, PERFORMANCE, API-COMPAT, BULK, MEMORY, COLOR, COOKBOOK, EQUALITY, COVERAGE,
+PUBLISHING; the first review of the code is kept in `docs/history.md`).
 
-- A SIMD occlusion test, temporal coherence for occlusion queries, and portal culling (the rest of culling is built: frustum
-  kernels, BVH, dynamic tree, grid, octree, k-NN, LOD, cone, shadow, light and occlusion culling; see `docs/CULLING.md`).
-- Mesh processing (tangents, vertex-cache optimization, meshlets, simplification) and a glTF loader.
-- Animation (skinning, blending, IK) and a scene-transform hierarchy in SoA form.
-- Indirect-draw and vertex-format structs, and a shared GLSL header generator.
-- Random and noise utilities, color spaces, curves.
+The largest open items: inverse kinematics and look-at constraints, random and noise utilities, curves, hulls and polygon geometry, robust predicates and fast math, portal culling and temporal occlusion, and running the GPU layer
+against a real graphics API (the shader text and the upload ring are only tested against Java references so far).
 
 ## License
 

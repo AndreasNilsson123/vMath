@@ -1,0 +1,13 @@
+# Proposes updates to the Gradle dependencies (gradle/libs.versions.toml and the plugins) and to the GitHub Actions used in the workflows.
+# Every proposal is a pull request that must pass the CI build, which includes the compatibility check and the coverage floors.
+version: 2
+updates:
+  - package-ecosystem: "gradle"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"

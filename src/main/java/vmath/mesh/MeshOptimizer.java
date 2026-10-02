@@ -11,6 +11,9 @@ import java.util.Map;
  * weld, cache, fetch.
  *
  * <p>They are load-time tools, not per-frame ones: they allocate working arrays sized to the mesh.
+ *
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time. The arrays and buffers you pass in are
+ * not synchronised, so two threads must not write the same one.
  */
 public final class MeshOptimizer {
 

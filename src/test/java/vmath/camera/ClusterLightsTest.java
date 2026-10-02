@@ -1,5 +1,6 @@
 package vmath.camera;
 
+import vmath.Report;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -154,7 +155,7 @@ class ClusterLightsTest {
                 }
             }
         }
-        System.out.println("CLUSTER-SPOT assigned pairs " + assigned + ", pairs seen by sampling " + needed + " (sampling finds only some of the real ones)");
+        Report.println("CLUSTER-SPOT assigned pairs " + assigned + ", pairs seen by sampling " + needed + " (sampling finds only some of the real ones)");
         assertTrue(assigned > 0 && needed > 0);
     }
 

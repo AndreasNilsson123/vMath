@@ -14,6 +14,9 @@ import vmath.geo.Aabbf;
  *
  * <p>The array is tightly packed ({@code x, y, z, x, y, z, ...}), the layout of a vertex position stream or a scalar-layout {@code vec3[]}; a std140 or
  * std430 {@code vec3[]} has a 16-byte stride and needs the padded writers in {@code vmath.gl}.
+ *
+ * <p><b>Thread safety.</b> Not thread-safe: it is mutable, so use one instance per thread or synchronise externally. Concurrent reads are safe only
+ * while no thread is writing.
  */
 public final class Vec3fArray {
 

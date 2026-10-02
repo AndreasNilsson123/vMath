@@ -25,6 +25,17 @@ it has not signalled (counted in `stalls()`); `allocate` bumps inside the region
 of frames behind: a 3-frame ring never waits when the GPU is at most 2 frames behind, waits in every frame when it is 3 behind, never reuses a region before its frame completed, and releases every fence.
 Pair it with `FrameDirtyRanges` (see `docs/BULK.md`) to upload only the elements that changed since that region was last written. `highWaterMark()` reports how much of a region is actually used.
 
+## Ownership
+
+Who releases what (the allocators do arithmetic on a range and never own the memory behind it):
+
+| Class | Owns | Released by |
+|---|---|---|
+| `ArenaAllocator`, `SlabAllocator`, `FreeListAllocator`, `RingAllocator` | nothing: a size, or a `MemorySegment` you passed in | nothing to release; the segment stays yours |
+| `PersistentBufferRing` | the fences it created through `FenceOps` | `close()` (or `drain()`), before the mapped buffer is unmapped or recreated; the mapped memory is yours |
+| `SegmentFloatArray` (`vmath.bulk`) | native memory in a shared `Arena` | `close()`; a `Cleaner` releases it if the array is garbage collected unclosed, so keep the array reachable while a segment fetched from it is in use |
+| `Gltf.load(Path)` | nothing after it returns; it reads each file completely into the heap while loading | files over `Gltf.DEFAULT_MAX_FILE_BYTES` (1 GiB) are refused, `load(Path, long)` takes another limit |
+
 ## Measured
 
 `MemBench`, JDK 25, one machine, 1 000 operations per call:
@@ -42,4 +53,4 @@ textures) and the wrong tool for hundreds of thousands (use `SlabAllocator`, or 
 
 ## Not covered
 
-Thread safety, defragmentation or moving allocations, sparse (virtual) buffers, and GPU-side allocation. The ring has not been run against a real OpenGL or Vulkan binding.
+Concurrent use of one allocator (they are not thread-safe by design: one per thread), defragmentation or moving allocations, sparse (virtual) buffers, and GPU-side allocation. The ring has not been run against a real OpenGL or Vulkan binding.

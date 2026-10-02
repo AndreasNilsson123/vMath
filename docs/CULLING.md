@@ -223,7 +223,7 @@ scene, where the buildings cover 99% of the screen, so read the cost figures rat
 
 The test costs about 70 ns per object (eight double-precision corner projections and a few reads), several times the frustum
 kernel's per-object cost, so run it after the frustum stage and only when there is real occlusion to exploit. A SIMD tile test
-behind an `OcclusionKernel` interface (like `FrustumKernel`) is not built; it is the obvious speed-up.
+behind a kernel interface of its own (like `FrustumKernel`) is not built; it is the obvious speed-up.
 
 **GPU side.** `HiZ` gives the pyramid sizing (`mipCount`, `mipSize`, `levelFor`) and documents the two-phase contract for
 GPU-driven occlusion culling (test against last frame's pyramid, draw, rebuild the pyramid, test what failed against the new
@@ -262,7 +262,7 @@ build and refit.
 
 ## Not built yet
 
-Occlusion culling (software Hi-Z, GPU two-phase), LOD selection, portals, shadow-cascade helpers and a SIMD BVH traversal.
+Portal and sector culling, temporal coherence for occlusion queries, a kernel interface for the occlusion test (a SIMD version) and a SIMD BVH traversal.
 They are in `docs/ROADMAP.md`.
 
 ## Segments, capsules and the remaining overlap tests

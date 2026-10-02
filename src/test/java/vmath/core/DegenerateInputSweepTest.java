@@ -1,5 +1,6 @@
 package vmath.core;
 
+import vmath.Report;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.lang.reflect.Constructor;
@@ -354,7 +355,7 @@ class DegenerateInputSweepTest {
             }
         }
         report.append("SWEEP calls=").append(totalCalls).append(" methodsThatThrow=").append(throwing).append(" methodsThatLaunderNaN=").append(laundering).append('\n');
-        System.out.print(report);
+        Report.print(report.toString());
         List<String> unexpected = new ArrayList<>();
         for (Map.Entry<String, Stat> e : stats.entrySet()) {
             Stat st = e.getValue();

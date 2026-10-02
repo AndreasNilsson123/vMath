@@ -14,6 +14,9 @@ import vmath.geo.Planef;
  * projection ({@link #obliqueNearPlane}), and draw with the triangle winding flipped (a reflection reverses it).
  *
  * <p>Planes are {@link Planef}s: the kept side is {@code n . p + d >= 0}. Move a world-space plane into view space with {@code plane.transform(view)}.
+ *
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time. The arrays and buffers you pass in are
+ * not synchronised, so two threads must not write the same one.
  */
 @Experimental("the portal frame conventions may change after first use")
 public final class PlanarViews {

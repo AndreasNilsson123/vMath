@@ -18,6 +18,9 @@ import vmath.bulk.VisibilitySet;
  *
  * <p>A cluster whose normals spread too widely (some triangle facing more than about 84 degrees from the average) gets
  * {@code cutoff = 1}, which never culls: no cone exists.
+ *
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time. The arrays and buffers you pass in are
+ * not synchronised, so two threads must not write the same one.
  */
 public final class ConeCull {
 

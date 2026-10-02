@@ -13,6 +13,9 @@ import vmath.geo.Planef;
  * <p>The mapping is not projective: straight edges become curves, so geometry must be tessellated finely enough (or the vertex shader will cut corners), and the
  * seam between the hemispheres needs a little overlap. Compared with a cube map it costs two renders instead of six and wastes the corners of the images less,
  * and it loses on quality near the seam and on the tessellation requirement.
+ *
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time. The arrays and buffers you pass in are
+ * not synchronised, so two threads must not write the same one.
  */
 @Experimental("the helper set may change")
 public final class DualParaboloid {

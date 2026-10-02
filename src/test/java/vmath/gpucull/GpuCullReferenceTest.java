@@ -1,5 +1,6 @@
 package vmath.gpucull;
 
+import vmath.Report;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -328,7 +329,7 @@ class GpuCullReferenceTest {
                 }
             }
         }
-        System.out.printf("GPUCULL hidden by the reference %d, hidden exactly (rectangle test, per pixel) %d, kept although hidden %d, wrong %d%n", hidden, exact, kept, wrong);
+        Report.printf("GPUCULL hidden by the reference %d, hidden exactly (rectangle test, per pixel) %d, kept although hidden %d, wrong %d%n", hidden, exact, kept, wrong);
         assertEquals(0, wrong, "the reference must never hide an object that is not hidden");
         assertTrue(hidden > 1000, "enough occlusion in the sample: " + hidden);
     }

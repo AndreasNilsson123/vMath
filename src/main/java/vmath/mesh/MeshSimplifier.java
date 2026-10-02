@@ -33,6 +33,9 @@ import vmath.annotations.Experimental;
  * <p><b>Error.</b> The reported error is the square root of the largest quadric cost of any performed collapse: an estimate in world units of how far the
  * surface moved (summed over the faces around the collapsed vertices), not a guaranteed Hausdorff distance. {@code docs/MESH.md} gives the measured true
  * distance next to the estimate.
+ *
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time. The arrays and buffers you pass in are
+ * not synchronised, so two threads must not write the same one.
  */
 @Experimental("the error estimate, the options and the result record may change")
 public final class MeshSimplifier {

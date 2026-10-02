@@ -53,6 +53,29 @@ same name, parameter count and staticness, and the double type converts back wit
 | `toFloat` | narrowing conversion |
 | `relativeTo(origin)` (`Vec3d`, `Aabbd`, `Sphered`) | camera-relative rendering: subtract in double, then narrow to float |
 
+## Conventions that apply everywhere
+
+**Errors.** One rule decides which signal a method uses:
+
+| Situation | Signal | Examples |
+|---|---|---|
+| a value argument is wrong on its own (negative size, bad alignment, empty box, wrong array length, a plane that clips the whole frustum) | `IllegalArgumentException` | `GridQuantizer.of(box, 17)`, `ArenaAllocator.allocate(1, 3)`, `PlanarViews.obliqueNearPlane` |
+| the call is impossible in the current state of an object involved, including an argument object that lacks something the call needs | `IllegalStateException` | `MeshExport.writeVertices` with a layout that wants normals and a mesh without, `SegmentFloatArray.getMat4` on an array of vec3, a closed array, `endFrame()` twice |
+| an index is outside a container | `IndexOutOfBoundsException` | `Vec3fArray.get(i)`, `HandleRegistry.handleAt(i)` |
+| failure is an ordinary outcome of the operation | a documented sentinel (`-1`, `NONE`) | the allocators when full, `HandleRegistry.destroy` of a stale handle, `Skeleton.indexOf` |
+| the input file is malformed | the loader's own exception (`GltfException`) | `Gltf.parse`, `Gltf.load` |
+| the numerical input is degenerate | no exception: NaN or infinity, or a documented neutral result | `Vec3f.normalize()` of zero, see `docs/ROBUSTNESS.md` |
+
+Nothing in the library throws a checked exception except `IOException` from reading files (`Gltf.load`).
+
+**Threads.** The records are immutable and safe to share. Every other public class says in its Javadoc which of three kinds it is: *stateless* (static methods, any thread), *immutable after construction* (share freely), or
+*mutable* (one thread at a time, or synchronise yourself). Kernels and sorters own scratch memory, so create one per thread. `docs/technical-debt.md` TD-04 lists the two executor-related contracts.
+
+**Ownership of memory.** Allocators and rings never own the memory they hand out offsets into; `SegmentFloatArray` owns its off-heap memory and must be closed (a cleaner is only the safety net); see the table in `docs/MEMORY.md`.
+
+**The live arrays.** `data()` of the containers, `Mesh.positions()` and friends, `VisibilitySet.words()` and `IntList.array()` return the object's own storage, not a copy, so kernels and `System.arraycopy` can use it. The array is replaced when the object grows (fetch it again after adding), only the first `size()` elements
+mean anything, and writing outside what you own corrupts the object silently. `Mesh.validate()` checks a mesh's invariants (stream lengths, index range) after direct writes; the containers have no such check.
+
 ## Adding an operation
 
 1. Write it in the float template (`src/template/java/...`); mark float-only or double-only members with `@FloatOnly` / `@DoubleOnly`.

@@ -38,7 +38,14 @@ Nothing has been released yet; the baseline for the compatibility check is the t
 - Benchmarks: `BulkBench`, `FrameBench`, `InstanceWriteBench`; `CullAndDrawSample` (`./gradlew :vmath-bench:sample`).
 
 ### Changed
+- Maven coordinates are `io.github.andreasnilsson123:vmath` (was `vmath:vmath`) and the version is `0.2.0-SNAPSHOT`; the JPMS module name is unchanged. The japicmp baseline tag is pinned in `gradle/baseline-commits.txt`.
+- Build: JUnit 6.1.3, japicmp 0.26.2, JOML 1.10.9 (test oracle), JaCoCo 0.8.15, Gradle 9.8.0; versions live in `gradle/libs.versions.toml`; Dependabot proposes updates; the library and its tests compile with `-Werror`.
+- `GpuCullReference.Counters` and `ClusterCullReference.Counters` have explicit public constructors.
 - `ClusterHierarchy.build` is about 3.6 times faster on large meshes (14.3 s to 4.0 s for 328k triangles): no more quadratic array copying, primitive hash maps (`FastMaps`, internal).
 - `normalize()` of Vec2/3/4 and Quat, and `normalizeOrZero()` of the vectors, now keep the direction of huge and subnormal vectors (before: zeros or infinities).
 - `Gltf.SkinData` has `rootTransform`; `MeshSimplifier.Result` has `remap` and `attributes` (experimental APIs).
 - `TransformMath.slerp` delegates to `QuatArray.slerp` (same result).
+- `Ktx2.parse` refuses a header whose dimensions describe a texture that cannot be addressed (`FormatException`), `TextureLayout` refuses one whose total size exceeds a `long` (`IllegalArgumentException`), and `TextureFormat.blocksWide/blocksHigh` no longer overflow near `Integer.MAX_VALUE` (found by the new loader fuzz tests; before: negative sizes).
+
+### Deprecated
+- `vmath.gl.Std140`, for removal: use `GlslType`, `StructLayout`, `GpuWriter` or a generated `@GpuStruct` writer.

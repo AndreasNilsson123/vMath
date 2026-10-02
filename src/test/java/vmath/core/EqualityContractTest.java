@@ -1,5 +1,6 @@
 package vmath.core;
 
+import vmath.Report;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -197,7 +198,7 @@ class EqualityContractTest {
             min = Math.min(min, b);
         }
         int cells = n * n * n;
-        System.out.printf("SpatialHash: %d cells in 1024 buckets, mean %d, fullest %d, emptiest %d, %d distinct hashes%n", cells, cells / 1024, max, min, distinct.size());
+        Report.printf("SpatialHash: %d cells in 1024 buckets, mean %d, fullest %d, emptiest %d, %d distinct hashes%n", cells, cells / 1024, max, min, distinct.size());
         assertTrue(max < 1.35 * cells / 1024 && min > 0.65 * cells / 1024, "buckets from " + min + " to " + max);
         assertTrue(cells - distinct.size() < 40, "hash collisions among " + cells + " cells: " + (cells - distinct.size()));
     }
@@ -282,7 +283,7 @@ class EqualityContractTest {
             }
             assertTrue(found, "point (" + qx + ", " + qy + ", " + qz + ") within " + eps + " of (" + x + ", " + y + ", " + z + ") for cells of " + cellSize + " was not found");
         }
-        System.out.println("cells visited per query (1 to 8): " + java.util.Arrays.toString(counts));
+        Report.println("cells visited per query (1 to 8): " + java.util.Arrays.toString(counts));
         assertTrue(counts[1] > 0 && counts[8] > 0, "both the single-cell and the corner cases occurred");
         // epsilon zero visits exactly one cell, and the argument checks
         assertEquals(1, SpatialHash.cellsOverlapping(0.3f, 0.3f, 0.3f, 0f, 1f, out));

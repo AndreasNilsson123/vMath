@@ -12,6 +12,9 @@ import vmath.annotations.Experimental;
  * a fraction of an 8-bit step does not matter.
  *
  * <p>Only the colour channels are encoded; alpha is always linear, which is why the array methods take the number of components per pixel and leave the fourth one alone.
+ *
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time. The arrays and buffers you pass in are
+ * not synchronised, so two threads must not write the same one.
  */
 @Experimental("the set of helpers may grow")
 public final class Srgb {

@@ -30,4 +30,4 @@ Measured (`AnimationBench`, JDK 25, ~0 B/op): for 64 / 128 joints with 30-key tr
 1.2 / 2.2 us, joint matrices 2.1 / 4.3 us, a full character (two samples, a blend, joint matrices) 21.9 / 42.4 us. CPU skinning of 10 000 vertices
 takes about 150 us. Sampling dominates; a faster sampler is the obvious next step.
 
-Not built: IK, morph targets, animation compression, dual-quaternion skinning, step/cubic interpolation.
+Not built: IK, morph targets, animation compression, dual-quaternion skinning, step/cubic interpolation inside `AnimationClip` (the glTF loader converts STEP and CUBICSPLINE curves to linear keys).

@@ -21,6 +21,9 @@ import vmath.core.Mat4x3f;
  * {@code vec3(dot(row0, p), dot(row1, p), dot(row2, p))} with {@code p = vec4(position, 1)}. That is 48 bytes for the transform instead of 64.
  *
  * <p>Nothing here allocates. The padding is never written.
+ *
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time. The arrays and buffers you pass in are
+ * not synchronised, so two threads must not write the same one.
  */
 public final class InstanceWriter {
 

@@ -9,6 +9,9 @@ import vmath.annotations.Experimental;
  * {@link DirtyRanges#uploadFloats} do it); the other copies keep their marks until their turn.
  *
  * <p>With one slot this is a plain {@link DirtyRanges}.
+ *
+ * <p><b>Thread safety.</b> Not thread-safe: it is mutable, so use one instance per thread or synchronise externally. Concurrent reads are safe only
+ * while no thread is writing.
  */
 @Experimental("the upload helpers may grow")
 public final class FrameDirtyRanges {

@@ -8,6 +8,9 @@ import java.util.Arrays;
  *
  * <p>All blend operations write into a caller-supplied {@code out} pose and allocate nothing. {@code out} may be the same object as one
  * of the inputs.
+ *
+ * <p><b>Thread safety.</b> Not thread-safe: it is mutable, so use one instance per thread or synchronise externally. Concurrent reads are safe only
+ * while no thread is writing.
  */
 public final class Pose {
 

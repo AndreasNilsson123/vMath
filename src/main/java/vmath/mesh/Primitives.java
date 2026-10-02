@@ -14,6 +14,9 @@ import java.util.Map;
  * would have no area (at the poles, between duplicated rows) are left out.
  *
  * <p>Segment counts are clamped to sensible minimums (3 around, 1 along) instead of throwing.
+ *
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time. The arrays and buffers you pass in are
+ * not synchronised, so two threads must not write the same one.
  */
 public final class Primitives {
 

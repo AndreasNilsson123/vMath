@@ -9,6 +9,9 @@ import vmath.bulk.VisibilitySet;
  * {@link VisibilitySet} (only visible objects are examined), and none allocates.
  *
  * <p>Every test is conservative: an object the light reaches is never removed.
+ *
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time. The arrays and buffers you pass in are
+ * not synchronised, so two threads must not write the same one.
  */
 public final class LightCull {
 

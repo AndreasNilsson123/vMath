@@ -1,5 +1,6 @@
 package vmath.cookbook;
 
+import vmath.Report;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -65,7 +66,7 @@ class CookbookTest {
         Vec3d reference = camera.project(object);                        // everything in double
         double relativeError = Math.max(Math.abs(ndc.x() - reference.x()), Math.abs(ndc.y() - reference.y()));
         double naiveError = Math.max(Math.abs(naive.x() - reference.x()), Math.abs(naive.y() - reference.y()));
-        System.out.printf("camera-relative recipe: error %.2e NDC units, narrowing first %.2e%n", relativeError, naiveError);
+        Report.printf("camera-relative recipe: error %.2e NDC units, narrowing first %.2e%n", relativeError, naiveError);
         assertTrue(relativeError < 1e-5, "camera-relative error " + relativeError);
         assertTrue(naiveError > 100 * relativeError, "narrowing first is far worse: " + naiveError + " against " + relativeError);
 
@@ -234,7 +235,7 @@ class CookbookTest {
             // recipe end
             assertEquals(0, ring.stalls(), "a GPU one frame behind never makes a 3-frame ring wait");
             long everything = 12L * objectCount * 64;
-            System.out.printf("GPU-driven recipe: uploaded %d of %d bytes (%.1f%%)%n", bytesUploaded, everything, 100.0 * bytesUploaded / everything);
+            Report.printf("GPU-driven recipe: uploaded %d of %d bytes (%.1f%%)%n", bytesUploaded, everything, 100.0 * bytesUploaded / everything);
             assertTrue(bytesUploaded < everything / 3, "only the changed matrices after the first frames: " + bytesUploaded);
             ring.drain();
         }

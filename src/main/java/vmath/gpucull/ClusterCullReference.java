@@ -17,6 +17,9 @@ import vmath.spatial.ConeCull;
  * <p>Reads and writes the same bytes as the shader in {@link GpuCullGlsl#clusterShader}. Every test is conservative (NaN is never a separation), so the result may keep a cluster that
  * a perfect test would drop and never drops one that is needed. The set of chosen clusters is a cut of the hierarchy, which is what makes the surface crack free (see
  * {@link vmath.mesh.ClusterHierarchy}); the frustum, cone and Hi-Z tests only remove whole clusters from it.
+ *
+ * <p><b>Thread safety.</b> Stateless: the pass is a static method. The {@link Counters}, the command buffer and the arrays you pass in are not
+ * synchronised, so two threads must not share one of them.
  */
 @Experimental("the pass structure may change")
 public final class ClusterCullReference {

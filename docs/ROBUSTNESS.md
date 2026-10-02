@@ -89,7 +89,7 @@ before and 6.49 ± 0.25 after, `chainQuat` 18.7 ± 13.3 before (a noisy run) and
 
 The value types are records, so `equals` and `hashCode` are exact and bitwise-like: **NaN equals itself** (and has a consistent hash), **0 and -0 are different
 keys**, and infinities compare by sign. `approxEquals(other, eps)` is the opposite: -0 equals 0, and NaN, and even infinity against the same infinity, are never
-approximately equal (the difference is NaN). Epsilon-hash helpers for spatial hashing are not built.
+approximately equal (the difference is NaN). `SpatialHash` has the epsilon-neighbourhood helpers for hashing positions (`docs/EQUALITY.md`).
 
 ## What this does not cover
 

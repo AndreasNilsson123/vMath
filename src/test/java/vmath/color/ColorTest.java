@@ -1,5 +1,6 @@
 package vmath.color;
 
+import vmath.Report;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -83,7 +84,7 @@ class ColorTest {
                 off = Math.max(off, Math.abs(exact - fast));
             }
         }
-        System.out.printf("sRGB fast: decode worst error %.5f, encode worst error %.5f (%.2f of an 8-bit step), %.2f%% of bytes differ, at most %d off%n",
+        Report.printf("sRGB fast: decode worst error %.5f, encode worst error %.5f (%.2f of an 8-bit step), %.2f%% of bytes differ, at most %d off%n",
                 worstDecode, worstEncode, worstEncode * 255, 100.0 * differentBytes / (total + 1), off);
         assertTrue(worstDecode < 0.002, "decode error " + worstDecode);
         assertTrue(worstEncode < 0.003, "encode error " + worstEncode);

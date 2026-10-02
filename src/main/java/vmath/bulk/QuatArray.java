@@ -9,6 +9,9 @@ import vmath.core.Quatf;
 /**
  * Many quaternions in one {@code float[]}, four floats each ({@code x, y, z, w}), with batch normalise, multiply and slerp kernels that work on
  * the array directly and allocate nothing. The kernels accept the same array as input and output.
+ *
+ * <p><b>Thread safety.</b> Not thread-safe: it is mutable, so use one instance per thread or synchronise externally. Concurrent reads are safe only
+ * while no thread is writing.
  */
 public final class QuatArray {
 

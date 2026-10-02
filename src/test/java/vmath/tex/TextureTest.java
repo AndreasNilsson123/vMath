@@ -208,4 +208,17 @@ class TextureTest {
         cubeNotSquare.putInt(24, 2);
         assertThrows(Ktx2.FormatException.class, () -> Ktx2.parse(cubeNotSquare));
     }
+
+    @Test
+    void sizesNearTheIntegerLimitDoNotOverflow() {
+        // width + blockWidth - 1 overflowed an int; the block counts are exact now
+        assertEquals(536_870_912, TextureFormat.BC7_UNORM.blocksWide(Integer.MAX_VALUE));
+        assertEquals(Integer.MAX_VALUE, TextureFormat.R8_UNORM.blocksWide(Integer.MAX_VALUE));
+        assertEquals(16L * 536_870_912L * 536_870_912L, TextureFormat.BC7_UNORM.imageBytes(Integer.MAX_VALUE, Integer.MAX_VALUE));
+        // a texture that is large but addressable is accepted, one that is not is refused instead of reporting negative sizes
+        TextureLayout big = new TextureLayout(TextureFormat.R8_UNORM, 1 << 20, 1 << 20, 1, 1, 1, 1);
+        assertEquals(1L << 40, big.totalBytes());
+        assertThrows(IllegalArgumentException.class, () -> new TextureLayout(TextureFormat.R8G8B8A8_SRGB, Integer.MAX_VALUE, Integer.MAX_VALUE, 1, 1, 1, 1));
+        assertThrows(IllegalArgumentException.class, () -> new TextureLayout(TextureFormat.BC7_UNORM, Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MAX_VALUE, 1, Integer.MAX_VALUE, 6));
+    }
 }

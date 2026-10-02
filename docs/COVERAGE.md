@@ -79,3 +79,11 @@ the representable cell range.
   and the like run the same analysis; the packages with oracle tests of their own (`vmath.spatial`, `vmath.mesh`) are the interesting ones.
 - The first run mutated test classes that live in the same package as production code (`vmath.core.*` matches `Vec3fTest`); that inflated the first attempt's count and was fixed by restricting PIT to the main
   output directories. Those numbers were discarded.
+
+## The allocation contract under other JIT settings
+
+`AllocationContractTest` measures bytes allocated per call after a warm-up, so it depends on the JIT having compiled the path and removed short-lived temporaries. `Alloc.applies()` therefore skips (reports as *skipped*, not passed) the whole contract under `-Xint`, with a
+debugger attached, or with `-XX:TieredStopAtLevel` below 4 (C1 does no escape analysis); `-Dvmath.alloc.force=true` measures regardless, and `-Pvmath.testJvmArgs="..."` passes flags to the test JVM. Measured on 2026-10-02 with
+`-Pvmath.testJvmArgs=-XX:TieredStopAtLevel=1 -Dvmath.alloc.force=true` (C1 only): **20 of the 21 contract tests still pass**, which says that the library's paths are written allocation-free rather than relying on escape analysis. The one that fails is the off-heap
+accessor test, whose `MemorySegment` accesses depend on C2 removing the access wrappers. The figures printed by tests (error bounds, hit rates, counts) appear only with `-Dvmath.verbose=true`.
+

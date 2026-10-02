@@ -19,6 +19,9 @@ import vmath.annotations.Experimental;
  *
  * <p>{@link #floatKey} and {@link #doubleKey} are the other half of exact hashing: they map every NaN to one bit pattern and negative zero to positive zero, for code that wants
  * {@code 0.0} and {@code -0.0} to be the same key.
+ *
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time. The arrays and buffers you pass in are
+ * not synchronised, so two threads must not write the same one.
  */
 @Experimental("the helper set may grow")
 public final class SpatialHash {

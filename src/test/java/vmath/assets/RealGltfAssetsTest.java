@@ -1,5 +1,6 @@
 package vmath.assets;
 
+import vmath.Report;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -546,7 +547,7 @@ class RealGltfAssetsTest {
                 assertEquals(1f, sum, 1e-4f, "the merged weights of vertex " + v + " still sum to 1");
             }
             double awareDeviation = skinnedDeviation(g, t, original, aware, ra.attributes());
-            System.out.println("TUBE-SIMPLIFY target " + target + " of " + original.triangleCount() + ": skin-blind reached " + rb.trianglesAfter()
+            Report.println("TUBE-SIMPLIFY target " + target + " of " + original.triangleCount() + ": skin-blind reached " + rb.trianglesAfter()
                     + " triangles, skinned deviation " + blindDeviation + "; skin-aware reached " + ra.trianglesAfter() + " triangles, skinned deviation " + awareDeviation
                     + " (tube radius 0.25, length 1.5)");
             assertTrue(blindDeviation > 0.15, "without the weights the bent tube is wrecked (" + blindDeviation + "): this is why the attribute term exists");

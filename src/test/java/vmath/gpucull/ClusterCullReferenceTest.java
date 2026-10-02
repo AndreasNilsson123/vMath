@@ -1,5 +1,6 @@
 package vmath.gpucull;
 
+import vmath.Report;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -162,7 +163,7 @@ class ClusterCullReferenceTest {
             assertEquals(counters.drawn, got.size());
             assertEquals(counters.inFrustum - counters.backFacing - counters.occluded - counters.overflow, counters.drawn);
         }
-        System.out.printf("CLUSTERCULL compared %d expected clusters over 120 views, %d differences (float against double rounding at the borderline)%n", compared, mismatched);
+        Report.printf("CLUSTERCULL compared %d expected clusters over 120 views, %d differences (float against double rounding at the borderline)%n", compared, mismatched);
         assertTrue(compared > 3000, "the sample must be substantial: " + compared);
         assertTrue(mismatched <= compared * 0.002, "the reference and the oracle must agree except for rounding at a threshold: " + mismatched);
         assertTrue(drawnTotal > 0);

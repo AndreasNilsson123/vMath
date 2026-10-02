@@ -8,6 +8,9 @@ import vmath.core.Vec2f;
  *
  * <p>The sequence is Halton (2, 3): low-discrepancy, so any prefix and any full cycle cover the pixel evenly, unlike random
  * offsets that clump.
+ *
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time. The arrays and buffers you pass in are
+ * not synchronised, so two threads must not write the same one.
  */
 public final class Jitter {
 

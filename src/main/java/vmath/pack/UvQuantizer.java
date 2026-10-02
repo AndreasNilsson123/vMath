@@ -6,6 +6,9 @@ import vmath.annotations.Experimental;
  * Texture-coordinate quantization onto a grid of {@code 2^bits} levels per axis inside a rectangle, for 1 to 16 bits. A set of UVs that stays inside {@code [0, 1]} fits the
  * unit rectangle (a plain unorm16 or unorm12 is then enough); UVs that tile or wrap need a rectangle that covers their range. {@link #fit} finds it from the data.
  * The error is half a step, {@code extent / (2 * (2^bits - 1))}, per axis: 7.6e-6 of the extent at 16 bits, and 1.2e-4 at 12.
+ *
+ * <p><b>Thread safety.</b> Immutable after construction, so it can be shared between threads freely. The arrays it hands out are its own storage: do
+ * not modify them.
  */
 @Experimental("the set of helpers may grow")
 public final class UvQuantizer {

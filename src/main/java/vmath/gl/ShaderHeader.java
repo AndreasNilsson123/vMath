@@ -30,6 +30,8 @@ import vmath.gl.GlslType.Vec;
  * {@code float4x4} and so on with the same member order. Matrices are column-major in the data; in Slang declare them with the row/column-major option that matches
  * (for Vulkan targets {@code -fvk-use-gl-layout}, or {@code column_major} on the members you use), and check the first compile against the reflection with
  * {@link LayoutValidator}.
+ *
+ * <p><b>Thread safety.</b> Immutable once built, so it can be shared. The {@link Builder} is not thread-safe.
  */
 @Experimental("the output format may change")
 public final class ShaderHeader {

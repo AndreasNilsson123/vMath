@@ -15,6 +15,9 @@ import vmath.core.Vec3f;
  *
  * <p>The quaternions are assumed to be unit length (use {@link QuatArray#normalizeAll} on a copy, or normalise when writing). The batch kernels read and
  * write the arrays directly and allocate nothing.
+ *
+ * <p><b>Thread safety.</b> Not thread-safe: it is mutable, so use one instance per thread or synchronise externally. Concurrent reads are safe only
+ * while no thread is writing.
  */
 public final class TransformArray {
 

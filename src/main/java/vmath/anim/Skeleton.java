@@ -11,6 +11,9 @@ import java.util.Arrays;
  *
  * <p>The bind pose is given as local transforms of 10 floats per joint: translation {@code x, y, z}, unit quaternion
  * {@code x, y, z, w}, scale {@code x, y, z} (the layout of {@link Pose#data()}). Quaternions are normalised on the way in.
+ *
+ * <p><b>Thread safety.</b> Immutable after construction, so it can be shared between threads freely. The arrays it hands out are its own storage: do
+ * not modify them.
  */
 public final class Skeleton {
 

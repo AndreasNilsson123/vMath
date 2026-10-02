@@ -10,6 +10,9 @@ import vmath.core.Vec3f;
  * direction) of the first hit within {@code [0, tMax]}, or {@link Float#POSITIVE_INFINITY} for a miss, so
  * {@code t < tMax} and {@code Math.min} compose naturally when searching for the nearest hit. A ray that starts
  * inside a solid volume reports {@code t = 0}.
+ *
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time. The arrays and buffers you pass in are
+ * not synchronised, so two threads must not write the same one.
  */
 @GenerateDouble
 public final class Intersectionf {

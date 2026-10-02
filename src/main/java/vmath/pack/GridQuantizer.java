@@ -16,6 +16,9 @@ import vmath.geo.Aabbf;
  * <p>The stored codes are unsigned and fit in a {@code short} for up to 16 bits (read them back with {@code & 0xFFFF}). {@link #dequantizationMatrix()} maps the
  * normalized value of a code ({@code code / (2^bits - 1)}, which is what a GPU produces when it reads the code as a normalized integer, for 8 and 16 bits) back to the
  * model space, so it can be folded into the model matrix.
+ *
+ * <p><b>Thread safety.</b> Immutable after construction, so it can be shared between threads freely. The arrays it hands out are its own storage: do
+ * not modify them.
  */
 @Experimental("the set of helpers may grow")
 public final class GridQuantizer {

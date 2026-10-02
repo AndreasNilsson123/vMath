@@ -12,6 +12,9 @@ import java.util.Arrays;
  * force scan. Read them with {@link #index} and {@link #distanceSquared}.
  *
  * <p>An object whose distance is NaN (a NaN box or a NaN query point) is never kept.
+ *
+ * <p><b>Thread safety.</b> Not thread-safe: it is mutable, so use one instance per thread or synchronise externally. Concurrent reads are safe only
+ * while no thread is writing.
  */
 public final class Neighbors {
 

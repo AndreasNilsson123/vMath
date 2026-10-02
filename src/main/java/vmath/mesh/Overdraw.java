@@ -15,6 +15,9 @@ import vmath.annotations.Experimental;
  * new region of the mesh, orders the clusters by how far their average normal points away from the mesh centre, and keeps the result only when it lowers
  * the measured overdraw without raising the vertex-cache miss ratio by more than a threshold. Both sort directions are tried, because which one helps
  * depends on the shape. Only the order of the triangles changes.
+ *
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time. The arrays and buffers you pass in are
+ * not synchronised, so two threads must not write the same one.
  */
 @Experimental("the clustering heuristic and the result record may change")
 public final class Overdraw {

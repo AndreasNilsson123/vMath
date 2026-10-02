@@ -22,6 +22,9 @@ import vmath.gl.GpuWriter;
  * <p><b>Cost.</b> For every light the columns, rows and slices it can touch are found first (the screen extent of its bounding sphere by the tangent-angle method, the
  * depth extent directly), and only those clusters are tested, so the cost follows the area the lights cover, not clusters times lights. Nothing is allocated once the
  * buffers have grown to fit.
+ *
+ * <p><b>Thread safety.</b> Not thread-safe: it is mutable, so use one instance per thread or synchronise externally. Concurrent reads are safe only
+ * while no thread is writing.
  */
 @Experimental("the light kinds and the buffer layout may change")
 public final class ClusterLights {

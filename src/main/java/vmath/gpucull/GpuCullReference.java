@@ -27,6 +27,9 @@ import vmath.gl.GpuWriter;
  * those that pass and were not drawn in phase 1, and records which objects are visible now (next frame's history).
  *
  * <p>The shader that does the same thing is {@link GpuCullGlsl#computeShader}; it is text that is not compiled here, and this class is what it is checked against by reading.
+ *
+ * <p><b>Thread safety.</b> Stateless: the passes are static methods. The {@link Counters}, the buffers and the sets you pass in are not synchronised,
+ * so two threads must not share one of them.
  */
 @Experimental("the buffer layout and the pass structure may change")
 public final class GpuCullReference {

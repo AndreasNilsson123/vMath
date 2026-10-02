@@ -5,6 +5,9 @@ import java.util.Arrays;
 /**
  * A growable {@code int[]}: the result buffer for spatial queries. Reuse one instance across frames
  * ({@link #clear()} keeps the storage), so queries allocate nothing once it has grown to its working size.
+ *
+ * <p><b>Thread safety.</b> Not thread-safe: it is mutable, so use one instance per thread or synchronise externally. Concurrent reads are safe only
+ * while no thread is writing.
  */
 public final class IntList {
 

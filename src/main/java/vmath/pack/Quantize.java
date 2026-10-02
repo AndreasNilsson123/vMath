@@ -7,6 +7,9 @@ import vmath.annotations.Experimental;
  * to fewer bits (which keeps the value a float but makes the data far more compressible). {@link Norm} has the fixed 8-, 10- and 16-bit formats with the GL packing
  * rules; this is for formats of your own choosing, such as 12-bit UVs or 14-bit positions. The conventions are the same as there: values outside the range are clamped,
  * NaN becomes 0, rounding is to nearest (ties up), and zero is exact in the signed form.
+ *
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time. The arrays and buffers you pass in are
+ * not synchronised, so two threads must not write the same one.
  */
 @Experimental("the set of helpers may grow")
 public final class Quantize {

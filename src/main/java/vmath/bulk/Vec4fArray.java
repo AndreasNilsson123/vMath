@@ -11,6 +11,9 @@ import vmath.core.Vec4f;
 /**
  * Many 4D vectors (homogeneous positions, colours, tangents with a sign, plane equations) in one {@code float[]}, four floats each. The batch methods read and
  * write the array directly and allocate nothing; they accept the same array as input and output. The shape is the same as {@link Vec3fArray}.
+ *
+ * <p><b>Thread safety.</b> Not thread-safe: it is mutable, so use one instance per thread or synchronise externally. Concurrent reads are safe only
+ * while no thread is writing.
  */
 @Experimental("the kernel set may grow")
 public final class Vec4fArray {

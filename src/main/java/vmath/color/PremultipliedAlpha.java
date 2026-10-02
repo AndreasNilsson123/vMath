@@ -9,6 +9,9 @@ import vmath.annotations.Experimental;
  * ({@link Srgb}), unpremultiply before encoding.
  *
  * <p>Pixels are {@code r, g, b, a} consecutive floats; the 8-bit packed form is a 32-bit int with red in the lowest byte, as {@code Norm.packUnorm4x8} writes it.
+ *
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time. The arrays and buffers you pass in are
+ * not synchronised, so two threads must not write the same one.
  */
 @Experimental("the set of helpers may grow")
 public final class PremultipliedAlpha {

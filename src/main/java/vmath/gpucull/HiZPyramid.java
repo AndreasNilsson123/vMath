@@ -20,6 +20,9 @@ import vmath.occlusion.HiZ;
  * texel in each direction, so it touches at most 2 x 2 texels; the object is hidden when its nearest farness is beyond the farthest of those texels, which means every pixel under
  * the rectangle is covered by something nearer. It is <b>sound</b>: it never reports hidden an object whose rectangle has a pixel that shows something at least as far as the object's
  * nearest point (checked against a per-pixel test in {@code HiZPyramidTest}); it may report visible an object that is in fact hidden, which costs a draw, never an image error.
+ *
+ * <p><b>Thread safety.</b> Read-only once built by {@link #fromDepth}: the query methods can be called from any number of threads, and {@link #reduce}
+ * must have finished before the pyramid is shared.
  */
 @Experimental("the pyramid model and its test may change")
 public final class HiZPyramid {

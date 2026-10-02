@@ -13,6 +13,9 @@ import java.util.List;
  * held (normally the bind pose). Step or cubic interpolation is not supported.
  *
  * <p>Build one with {@link #builder(int)}.
+ *
+ * <p><b>Thread safety.</b> Immutable after construction, so it can be shared between threads freely. The arrays it hands out are its own storage: do
+ * not modify them.
  */
 public final class AnimationClip {
 

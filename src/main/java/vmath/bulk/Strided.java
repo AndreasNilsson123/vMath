@@ -13,6 +13,9 @@ import java.nio.ByteOrder;
  * {@code components * 4} is the tightly packed case and is copied in one bulk operation (when the byte order is the native one). A larger stride
  * leaves the bytes between elements untouched, which is how other attributes of an interleaved buffer survive. Bounds are checked by the destination.
  * Nothing allocates.
+ *
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time. The arrays and buffers you pass in are
+ * not synchronised, so two threads must not write the same one.
  */
 public final class Strided {
 

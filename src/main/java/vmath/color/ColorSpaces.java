@@ -17,6 +17,9 @@ import vmath.core.Vec3f;
  * </ul>
  *
  * <p>Oklab and Oklch values outside the sRGB gamut give linear RGB components outside {@code [0, 1]}; clamp them (or reduce the chroma) before display.
+ *
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time. The arrays and buffers you pass in are
+ * not synchronised, so two threads must not write the same one.
  */
 @Experimental("the set of helpers may grow")
 public final class ColorSpaces {

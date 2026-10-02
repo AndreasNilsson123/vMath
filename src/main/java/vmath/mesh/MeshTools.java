@@ -10,6 +10,9 @@ import java.util.Arrays;
  * chosen perpendicular to its normal with handedness {@code +1}. Non-finite positions are the caller's problem.
  *
  * <p>All accumulation is done in {@code double}, one pass over the triangles, with a few temporary arrays sized to the mesh.
+ *
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time. The arrays and buffers you pass in are
+ * not synchronised, so two threads must not write the same one.
  */
 public final class MeshTools {
 

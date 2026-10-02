@@ -14,6 +14,38 @@ import java.lang.management.ManagementFactory;
  */
 public final class Alloc {
 
+    /**
+     * The conditions under which the contract means anything. The JIT must be allowed to compile with C2 and to remove temporaries by escape analysis: under {@code -Xint}
+     * (nothing is compiled), with a debugger attached (an agent changes compilation) or with the compilation level capped below 4 (C1 does no escape analysis), a path that is
+     * allocation-free in production allocates, and the figures say nothing about the library. The checks are then skipped (reported as skipped, not as passed);
+     * {@code -Dvmath.alloc.force=true} measures regardless.
+     */
+    public static boolean applies() {
+        if (Boolean.getBoolean("vmath.alloc.force")) {
+            return true; // measure anyway, to see what a given JVM setting does to the figures
+        }
+        for (String a : ManagementFactory.getRuntimeMXBean().getInputArguments()) {
+            if (a.equals("-Xint") || a.startsWith("-agentlib:jdwp") || a.startsWith("-Xrunjdwp")) {
+                return false;
+            }
+            if (a.startsWith("-XX:TieredStopAtLevel=")) {
+                try {
+                    if (Integer.parseInt(a.substring("-XX:TieredStopAtLevel=".length())) < 4) {
+                        return false;
+                    }
+                } catch (NumberFormatException e) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    private static void requireApplies() {
+        org.junit.jupiter.api.Assumptions.assumeTrue(applies(), "the allocation contract is only measured with the JIT enabled (not under -Xint, a debugger or C1-only interpretation)");
+    }
+
+
     /** Average bytes per call allowed before a path counts as allocating: a few stray bytes over a whole run are measurement noise. */
     public static final double SLACK_BYTES_PER_CALL = 0.25;
 
@@ -24,6 +56,7 @@ public final class Alloc {
 
     /** Average bytes allocated per call of {@code r}, after {@code warmup} untimed calls, over {@code calls} calls. */
     public static double bytesPerCall(Runnable r, int warmup, int calls) {
+        requireApplies();
         long id = Thread.currentThread().threadId();
         for (int i = 0; i < warmup; i++) {
             r.run();

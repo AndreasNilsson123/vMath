@@ -20,6 +20,9 @@ import vmath.gl.GlslType.Struct;
  * <p>Member names are paths relative to the struct: {@code planes[0]}, {@code lights[0].color}. Reflection often reports an array as its first element
  * ({@code name[0]}), and the check accepts that and the bare name. {@link #expected} produces the list the Java side implies, which is also a convenient thing to
  * print when a validation fails.
+ *
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time. The arrays and buffers you pass in are
+ * not synchronised, so two threads must not write the same one.
  */
 @Experimental("the reflection input record may gain fields")
 public final class LayoutValidator {

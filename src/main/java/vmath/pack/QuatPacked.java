@@ -12,6 +12,9 @@ import vmath.core.Quatf;
  * dropped one), bits 30 and 31 hold the dropped component's index (0 x, 1 y, 2 z, 3 w). This is the usual format for orientations in
  * animation streams and for vertex tangent frames. The worst-case rotation error is about 0.004 radians (0.24 degrees), measured over millions of random rotations
  * (see {@code docs/FORMATS.md}).
+ *
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time. The arrays and buffers you pass in are
+ * not synchronised, so two threads must not write the same one.
  */
 public final class QuatPacked {
 

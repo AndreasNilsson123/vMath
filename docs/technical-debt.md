@@ -21,33 +21,33 @@ Scope uses the roadmap's sizes: S ≈ hours, M ≈ days, L ≈ 1–2 weeks, XL =
 Index (tick when fixed):
 
 - [ ] **TD-01** High: GPU-facing code verified only against Java references
-- [ ] **TD-02** High: release identity unresolved (group id, version against tag, licence holder)
+- [x] **TD-02** High: release identity unresolved (group id, version against tag, licence holder)
 - [ ] **TD-03** High: 35% of public declarations have no doc comment
-- [ ] **TD-04** High: thread-safety contracts missing; two concurrency hazards untested
-- [ ] **TD-05** Medium: one third of the classes are `@Experimental` with no promotion plan
+- [x] **TD-04** High: thread-safety contracts missing; two concurrency hazards untested
+- [x] **TD-05** Medium: one third of the classes are `@Experimental` with no promotion plan
 - [ ] **TD-06** Medium: test strength unmeasured outside `vmath.core`; coverage ignores three modules
-- [ ] **TD-07** Medium: kernel selection (SPI) logic barely tested, and repeated service lookups
+- [x] **TD-07** Medium: kernel selection (SPI) logic barely tested, and repeated service lookups
 - [ ] **TD-08** Medium: copy-pasted container boilerplate
 - [ ] **TD-09** Medium: duplicated traversal and kernel code
 - [ ] **TD-10** Medium: oversized classes and methods
 - [ ] **TD-11** Medium: package layering and a single 17-package module
-- [ ] **TD-12** Medium: stale README and ROADMAP text
-- [ ] **TD-13** Medium: dependency lag and version strings in four places
+- [x] **TD-12** Medium: stale README and ROADMAP text
+- [x] **TD-13** Medium: dependency lag and version strings in four places
 - [ ] **TD-14** Medium: build logic complexity and hard-coded toolchains
-- [ ] **TD-15** Medium: native memory ownership (`SegmentFloatArray`, rings)
+- [x] **TD-15** Medium: native memory ownership (`SegmentFloatArray`, rings)
 - [ ] **TD-16** Medium: algorithmic hot spots with measured cost
-- [ ] **TD-17** Medium: allocation in paths that read as allocation-free
-- [ ] **TD-18** Medium: generated writers and new classes below the coverage of their neighbours; public methods no test calls
-- [ ] **TD-19** Medium: loaders for untrusted input are not fuzzed
+- [x] **TD-17** Medium: allocation in paths that read as allocation-free
+- [x] **TD-18** Medium: generated writers and new classes below the coverage of their neighbours; public methods no test calls
+- [x] **TD-19** Medium: loaders for untrusted input are not fuzzed
 - [ ] **TD-20** Medium: performance is not guarded in CI
-- [ ] **TD-21** Low: test hygiene (threshold oracles, JIT-dependent tests, an assertion-free test, stdout)
+- [x] **TD-21** Low: test hygiene (threshold oracles, JIT-dependent tests, an assertion-free test, stdout)
 - [ ] **TD-22** Low: Valhalla readiness checked by string matching; Valhalla CI job cannot fail
-- [ ] **TD-23** Low: compiler and javadoc warnings
-- [ ] **TD-24** Low: dead and superseded code
-- [ ] **TD-25** Low: inconsistent error signalling
-- [ ] **TD-26** Low: live backing arrays exposed by the containers and `Mesh`
+- [x] **TD-23** Low: compiler and javadoc warnings
+- [x] **TD-24** Low: dead and superseded code
+- [x] **TD-25** Low: inconsistent error signalling
+- [x] **TD-26** Low: live backing arrays exposed by the containers and `Mesh`
 - [ ] **TD-27** Low: suppressed lints and unchecked casts
-- [ ] **TD-28** Low: known functional gaps recorded in prose only
+- [x] **TD-28** Low: known functional gaps recorded in prose only
 
 ---
 
@@ -65,7 +65,7 @@ Clean, so not itemised:
 - **No mutable static state** in main or template code (every `static` field is `final`), no `synchronized`, no `ThreadLocal`, no `System.out`/`System.err`/`printStackTrace`, one `catch (Throwable)` (the executor hand-off in `ParallelFrustumKernel`, which rethrows).
 - **No `@Deprecated` usage** and no deprecation warnings from the compiler.
 - **The compiler is quiet:** two `javac` warnings in the whole library (TD-23), none in tests.
-- **Untrusted input is guarded where it enters:** `Gltf` checks sizes and offsets with overflow-safe arithmetic, limits JSON depth and zero-fill size (TD-19 is about *testing* that, not about missing guards).
+- **Untrusted input is guarded where it enters:** `Gltf` checks sizes and offsets with overflow-safe arithmetic, limits JSON depth and zero-fill size (TD-19 fuzzed that: the glTF reader held, the KTX2 size arithmetic had an overflow, now fixed).
 - **Release hygiene that exists:** `.github/workflows/ci.yml` builds on Linux and Windows, runs a nightly random-seed build and a Valhalla job; japicmp runs in `check`; per-package coverage floors run in `check`.
 
 ---
@@ -104,6 +104,7 @@ None found. The closest calls are listed as High (TD-01, TD-04) with the reason 
 - **Estimated scope:** S, but it needs the owner's decisions (not an engineering problem).
 - **Testing required:** `./gradlew publishAllPublicationsToStagingRepository verifyPublication`, a fresh-clone `build`, `japicmp` against the chosen baseline, and a consumer project that resolves the staged artifacts.
 - **Depends on:** none. INF-10 (done as setup) consumes it.
+- **Status:** Done 2026-10-02 except one decision that is the owner's: the Maven group is now `io.github.andreasnilsson123` and the version `0.2.0-SNAPSHOT`, the japicmp baseline is pinned to its commit in `gradle/baseline-commits.txt`, and `docs/PUBLISHING.md`, `CHANGELOG.md` and `docs/API-COMPAT.md` say so. **Still open:** confirm that the `LICENSE` holder ("Andreas Nilsson") is right, and verify the Central namespace before the first upload.
 
 ### TD-03 — 35% of the public declarations have no doc comment
 
@@ -134,6 +135,7 @@ None found. The closest calls are listed as High (TD-01, TD-04) with the reason 
 ---
 
 ## 5. Medium
+- **Status:** Done 2026-10-02: 72 classes gained a **Thread safety** paragraph (stateless, immutable or one-per-thread; `Gltf` is one-per-thread because `skin()` caches) and the 31 that already had one were left as they were; `SegmentFloatArray` states its growth rule and a test shows a stale segment fails loudly while readers on other threads see the data when nobody mutates; `ParallelFrustumKernel` documents its executor contract, with tests for a rejecting executor (the call fails after the handed-out chunks finish, the kernel recovers) and a deferring one (the call blocks until the work runs, shown not to return early); `PrefixSum.exclusiveParallel` takes an `Executor` (tested, including refusal); kernel selection is tested from many threads. I chose not to add a timeout to the parallel kernel: a chunk still running after a timeout would write into the result after the call returned.
 
 ### TD-05 — One third of the classes are `@Experimental`, with no promotion plan
 
@@ -144,6 +146,7 @@ None found. The closest calls are listed as High (TD-01, TD-04) with the reason 
 - **Estimated scope:** S.
 - **Testing required:** none new; japicmp then covers the promoted classes automatically.
 - **Depends on:** TD-01 (the GPU classes cannot be promoted before that), TD-03 (promoted APIs need documentation).
+- **Status:** Done 2026-10-02: `docs/VERSIONING.md` lists every experimental package, the promotion rule and the evidence still missing for each; the release checklist reviews it.
 
 ### TD-06 — Test strength is unmeasured outside `vmath.core`; coverage ignores three modules
 
@@ -165,6 +168,7 @@ None found. The closest calls are listed as High (TD-01, TD-04) with the reason 
 - **Estimated scope:** S.
 - **Testing required:** the cases above in core; one test that two `best()` calls do not re-scan (a counting provider).
 - **Depends on:** TD-04 (the cache must be safe for concurrent first use).
+- **Status:** Done 2026-10-02: provider lists are looked up once (initialization-on-demand holder) in `FrustumKernels` and `MatrixKernels`; selection now skips providers that throw or cannot be instantiated, falls back to scalar when the chosen provider cannot build its kernel, and — fixing a real bug — a provider only beats the scalar kernel with a priority above 0 (before, a provider with priority -5 won). `FrustumKernelSelectionTest` and `MatrixKernelSelectionTest` register six misbehaving test providers through `META-INF/services` in the test resources.
 
 ### TD-08 — Copy-pasted container boilerplate
 
@@ -219,6 +223,7 @@ None found. The closest calls are listed as High (TD-01, TD-04) with the reason 
 - **Estimated scope:** S.
 - **Testing required:** the doc-identifier test above; `CookbookDocTest` already guards the cookbook.
 - **Depends on:** none.
+- **Status:** Done 2026-10-02: README layout list, JOML section and next steps rewritten; the first review of the code moved to `docs/history.md` and ROADMAP section 1 now describes the repository as it is; `DocReferencesTest` fails when a document names a type that no source declares (the roadmap, this register and the history are exempt).
 
 ### TD-13 — Dependency lag, and the version strings live in four places
 
@@ -230,6 +235,7 @@ None found. The closest calls are listed as High (TD-01, TD-04) with the reason 
 - **Estimated scope:** S for the catalog and the bot, S to M for JUnit 6 (a major version: check the launcher and the `junit-platform-launcher` runtime dependency).
 - **Testing required:** the whole build, the Valhalla build and the japicmp comparison after each bump; the JOML oracle tests may expose a JOML behaviour change that must be understood, not tolerated.
 - **Depends on:** none.
+- **Status:** Done 2026-10-02: `gradle/libs.versions.toml` holds every version (JUnit 6.1.3, JOML 1.10.9, japicmp 0.26.2, JaCoCo 0.8.15, PIT, JMH), Gradle is 9.8.0, `.github/dependabot.yml` proposes updates weekly; the full build, the Valhalla build and japicmp pass on the new versions.
 
 ### TD-14 — Build logic complexity and hard-coded toolchains
 
@@ -252,6 +258,7 @@ None found. The closest calls are listed as High (TD-01, TD-04) with the reason 
 - **Estimated scope:** S to M.
 - **Testing required:** a test that drops a `SegmentFloatArray` without closing it and checks the arena is reclaimed (if a cleaner is added); a ring test that `close()` drains and releases every fence; a `Gltf` test on a file larger than the default heap fraction is not practical, so test the chosen limit.
 - **Depends on:** TD-04.
+- **Status:** Done 2026-10-02: `SegmentFloatArray` registers a `Cleaner` (tested: an unclosed, unreachable array's arena is released), `PersistentBufferRing` is `AutoCloseable` (`close()` drains; tested), `Gltf.load` refuses files over 1 GiB (`load(Path, long)` takes another limit; tested with small limits on the main file and a buffer file), and `docs/MEMORY.md` has an ownership table.
 
 ### TD-16 — Algorithmic hot spots with measured cost
 
@@ -275,6 +282,7 @@ None found. The closest calls are listed as High (TD-01, TD-04) with the reason 
 - **Estimated scope:** S to M.
 - **Testing required:** extend `AllocationContractTest`; a mesh export test on a large mesh comparing the bytes with the previous output (byte-identical); `MeshBench` if one exists for export (add one).
 - **Depends on:** none.
+- **Status:** Done 2026-10-02: `SegmentFloatArray.addMat4`/`getMat4` no longer allocate a scratch array (the matrix is written and read field by field); `Octahedral.pack16(x, y, z)` / `pack8(x, y, z)` and `Quantizer.pack(x, y, z, ...)` take components and allocate nothing, and `MeshExport.writeVertices` uses them: it allocated about 48 bytes per vertex (228 KB for 4,753 vertices) and now about 200 bytes per call whatever the mesh size. The primitive search is bit-identical to the old one (300,000 vectors, `OctahedralPrimitivesTest`). `AllocationContractTest` covers the off-heap accessors and fails if `writeVertices` grows with the vertex count. The `Vec3f`-returning colour and hash overloads allocate by design and say so.
 
 ### TD-18 — Generated writers and new classes below their neighbours' coverage; public methods no test calls
 
@@ -287,6 +295,7 @@ None found. The closest calls are listed as High (TD-01, TD-04) with the reason 
 - **Estimated scope:** M.
 - **Testing required:** the tests themselves, then `coverageSummary` (raise the floors of the packages that improve).
 - **Depends on:** TD-06 (mutation testing will point at the same places more precisely).
+- **Status:** Done 2026-10-02: `ApiEdgeCasesTest` covers the argument checks, accessors and fallbacks the coverage report listed (both writer overloads of every generated struct, the small containers, the allocators' constructors and `slice`, the quantizers, `FrameDirtyRanges`, a zero-rotation skeleton joint, zero quaternions in `normalizeAll`/`slerp`/`nlerp`) and calls the previously unreferenced accessors (`Gltf` counts, `Mesh.disableTangents`, `DepthBuffer.addTriangles`, `TextureFormat.isCompressed`, `HiZPyramid.depthRange`). What stays uncovered are `FreeListAllocator.validate()` failure messages, which can only be reached by corrupting the allocator.
 
 ### TD-19 — Loaders for untrusted input are not fuzzed
 
@@ -297,6 +306,7 @@ None found. The closest calls are listed as High (TD-01, TD-04) with the reason 
 - **Estimated scope:** M.
 - **Testing required:** the fuzz test itself (it is the test); it should print the seed on failure like the existing property tests.
 - **Depends on:** TD-10 (do this before splitting `Gltf`).
+- **Status:** Done. Seeded mutation fuzz tests: `gltf/LoaderFuzzTest` (damaged .glb/.gltf and external files, damaged JSON, deep nesting; contract: only `GltfException`, no Error, under 5 s a case) and `tex/Ktx2FuzzTest` (damaged KTX2 files; only `FormatException`, `layout()` null or valid), helper `vmath.Fuzz`. `-Dvmath.trials` scales the cases; run at 20,000 trials on seeds 1, 2, 3 and 24301: no violations. The glTF reader and JSON parser held; the KTX2 fuzz found a real overflow (`TextureFormat.blocksWide` int overflow, unchecked long products in `TextureLayout`, negative sizes for headers with width 2^31-1), fixed and covered by `TextureTest.sizesNearTheIntegerLimitDoNotOverflow`. Not done: a nightly CI job with more trials.
 
 ### TD-20 — Performance is not guarded in CI
 
@@ -322,6 +332,7 @@ None found. The closest calls are listed as High (TD-01, TD-04) with the reason 
 - **Estimated scope:** S.
 - **Testing required:** the suite stays green on both CI operating systems; the contract test under `-Xcomp` and `-XX:TieredStopAtLevel=1` to see which settings it tolerates.
 - **Depends on:** none.
+- **Status:** Done 2026-10-02: measured figures print through `Report` only with `-Dvmath.verbose=true`; `writeAssetsWhenAsked` is an assumption (skipped unless asked, and it asserts the files it wrote); `Alloc.applies()` skips the contract under `-Xint`, a debugger or C1-only settings; measured under C1 only, 20 of the 21 contract tests still pass (`docs/COVERAGE.md`). The threshold oracles were kept; their failure messages carry the measured value.
 
 ### TD-22 — Valhalla readiness is checked by string matching, and the Valhalla CI job cannot fail
 
@@ -342,6 +353,7 @@ None found. The closest calls are listed as High (TD-01, TD-04) with the reason 
 - **Estimated scope:** S.
 - **Testing required:** a clean `--rerun-tasks` build with `-Werror`.
 - **Depends on:** TD-27 (what the suppressed lints would show).
+- **Status:** Done 2026-10-02: `Counters` have explicit constructors, the annotations and `SimdFrustumCuller` are documented, the javadoc of the bench and codegen modules (not published) is switched off, and the core library and its tests compile with `-Werror` (the JOML jar's own `[classfile]` notices are excluded for the test compile). The four `[incubating]` notices of the simd module remain: the Vector API is incubating.
 
 ### TD-24 — Dead and superseded code
 
@@ -352,6 +364,7 @@ None found. The closest calls are listed as High (TD-01, TD-04) with the reason 
 - **Estimated scope:** S.
 - **Testing required:** `japicmp` (deprecation is compatible); `Std140Test` stays until removal.
 - **Depends on:** TD-02 (the version in `since`).
+- **Status:** Done 2026-10-02: `TransformMath.multiplyQuat` deleted; `Std140` is `@Deprecated(since = "0.2.0", forRemoval = true)`, its test suppresses the removal warning, `docs/GPU.md` and the `Mat3f` Javadoc point to the replacements. Removal is planned for the next breaking release.
 
 ### TD-25 — Inconsistent error signalling
 
@@ -362,6 +375,7 @@ None found. The closest calls are listed as High (TD-01, TD-04) with the reason 
 - **Estimated scope:** S.
 - **Testing required:** the exception-type assertions already in the tests, updated where an outlier changes.
 - **Depends on:** TD-03.
+- **Status:** Done 2026-10-02: the rule is written in `docs/API.md` ("Conventions that apply everywhere") with the examples that follow it; the existing code already conformed once the rule was stated as "bad value argument: IAE; the call is impossible in the current state of an object involved: ISE", so no exception type was changed.
 
 ### TD-26 — Live backing arrays are exposed
 
@@ -372,6 +386,7 @@ None found. The closest calls are listed as High (TD-01, TD-04) with the reason 
 - **Estimated scope:** S.
 - **Testing required:** none new.
 - **Depends on:** none.
+- **Status:** Done 2026-10-02: the live-array rule is stated in `docs/API.md`, and `Mesh.validate()` (new) checks stream lengths and index range after direct writes (tested).
 
 ### TD-27 — Suppressed lints and unchecked casts
 
@@ -393,6 +408,7 @@ None found. The closest calls are listed as High (TD-01, TD-04) with the reason 
 - **Estimated scope:** S for the table.
 - **Testing required:** none.
 - **Depends on:** TD-12.
+- **Status:** Done 2026-10-02: the README has a Limitations table that links each gap to its document; four stale "not built" statements found while writing it were corrected (`docs/CULLING.md`, `docs/ROBUSTNESS.md`, `docs/MEMORY.md`, `docs/ANIMATION.md`).
 
 ---
 

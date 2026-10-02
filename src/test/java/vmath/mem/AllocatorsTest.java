@@ -346,6 +346,23 @@ class AllocatorsTest {
     }
 
     @Test
+    void closingTheRingWaitsForAndReleasesEveryFence() {
+        FakeGpu gpu = new FakeGpu();
+        MemorySegment mapped = MemorySegment.ofArray(new byte[3 * 1024]);
+        try (PersistentBufferRing<Integer> ring = new PersistentBufferRing<>(mapped, 3, 256, gpu)) {
+            for (int f = 0; f < 3; f++) {
+                ring.beginFrame();
+                ring.allocate(100, 16);
+                ring.endFrame();
+            }
+            assertEquals(3, gpu.inserted);
+            assertEquals(0, gpu.released, "the GPU has not finished with any region yet");
+        }
+        assertEquals(3, gpu.released, "close() released every fence");
+        assertEquals(3, gpu.waits, "and waited for each one that had not signalled");
+    }
+
+    @Test
     void ringChecksItsUsage() {
         FakeGpu gpu = new FakeGpu();
         MemorySegment mapped = MemorySegment.ofArray(new byte[1024]);

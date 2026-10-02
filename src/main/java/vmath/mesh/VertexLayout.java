@@ -13,6 +13,9 @@ import vmath.gl.VertexFormat;
  * <pre>{@code
  * VertexLayout layout = VertexLayout.builder().position().normalOct16().tangent().uvHalf(0).build();
  * }</pre>
+ *
+ * <p><b>Thread safety.</b> Immutable after construction, so it can be shared between threads freely. The arrays it hands out are its own storage: do
+ * not modify them.
  */
 public final class VertexLayout {
 

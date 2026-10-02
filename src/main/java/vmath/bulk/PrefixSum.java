@@ -11,6 +11,9 @@ import vmath.annotations.Experimental;
  * sequential scan of the chunk totals, then {@link #scanChunkExclusive} on every chunk (in parallel) with its starting offset. {@link #exclusiveParallel} does
  * exactly that on the common fork-join pool (it allocates a small amount for the pool tasks, so it is not for per-frame hot paths); to schedule the chunks
  * yourself, call the two primitives.
+ *
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time. The arrays and buffers you pass in are
+ * not synchronised, so two threads must not write the same one.
  */
 @Experimental("the set of overloads may grow")
 public final class PrefixSum {
@@ -129,5 +132,92 @@ public final class PrefixSum {
         }
         IntStream.range(0, count).parallel().forEach(c -> scanChunkExclusive(a, c * size, Math.min(n, (c + 1) * size), totals[c]));
         return totals[count];
+    }
+
+    /**
+     * As {@link #exclusiveParallel(int[], int, int)} but on an executor of your choice instead of the common pool. The calling thread runs the first chunk itself and waits
+     * for the others, so the executor must eventually run every task it accepts (see {@link vmath.spatial.ParallelFrustumKernel}'s executor contract) and the call must not be
+     * made from a thread that the executor needs in order to make progress. Failures of a chunk are rethrown after all chunks have finished.
+     *
+     * @return the total
+     */
+    public static int exclusiveParallel(int[] a, int n, int chunks, java.util.concurrent.Executor executor) {
+        check(a.length, n);
+        if (chunks < 1) {
+            throw new IllegalArgumentException("chunks must be at least 1: " + chunks);
+        }
+        java.util.Objects.requireNonNull(executor, "executor");
+        if (chunks == 1 || n < 2 * chunks) {
+            return exclusive(a, n);
+        }
+        int size = (n + chunks - 1) / chunks;
+        int count = (n + size - 1) / size;
+        int[] totals = new int[count + 1];
+        runChunks(count, executor, c -> totals[c + 1] = chunkSum(a, c * size, Math.min(n, (c + 1) * size)));
+        for (int c = 0; c < count; c++) {
+            totals[c + 1] += totals[c];
+        }
+        runChunks(count, executor, c -> scanChunkExclusive(a, c * size, Math.min(n, (c + 1) * size), totals[c]));
+        return totals[count];
+    }
+
+    /** Runs {@code body(0 .. count - 1)}: chunk 0 here, the others on the executor, and waits for all of them. */
+    private static void runChunks(int count, java.util.concurrent.Executor executor, java.util.function.IntConsumer body) {
+        java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(count - 1);
+        java.util.concurrent.atomic.AtomicReference<Throwable> failure = new java.util.concurrent.atomic.AtomicReference<>();
+        int handed = 0;
+        try {
+            for (int c = 1; c < count; c++) {
+                int chunk = c;
+                executor.execute(() -> {
+                    try {
+                        body.accept(chunk);
+                    } catch (Throwable t) {
+                        failure.compareAndSet(null, t);
+                    } finally {
+                        done.countDown();
+                    }
+                });
+                handed++;
+            }
+        } catch (RuntimeException | Error e) {
+            // the executor refused a task: wait for the ones it took, then report the refusal
+            for (int c = handed + 1; c < count; c++) {
+                done.countDown();
+            }
+            awaitUninterruptibly(done);
+            throw e;
+        }
+        try {
+            body.accept(0);
+        } catch (Throwable t) {
+            failure.compareAndSet(null, t);
+        }
+        awaitUninterruptibly(done);
+        Throwable t = failure.get();
+        if (t instanceof RuntimeException re) {
+            throw re;
+        }
+        if (t instanceof Error err) {
+            throw err;
+        }
+        if (t != null) {
+            throw new IllegalStateException(t);
+        }
+    }
+
+    private static void awaitUninterruptibly(java.util.concurrent.CountDownLatch latch) {
+        boolean interrupted = false;
+        while (true) {
+            try {
+                latch.await();
+                break;
+            } catch (InterruptedException e) {
+                interrupted = true;
+            }
+        }
+        if (interrupted) {
+            Thread.currentThread().interrupt();
+        }
     }
 }

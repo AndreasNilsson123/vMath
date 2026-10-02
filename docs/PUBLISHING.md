@@ -30,8 +30,8 @@ hard-to-undo step: do it from a release commit (below), not from a working tree.
 
 Three things are needed that the build cannot do for you:
 
-1. **A verified namespace.** The coordinates are `vmath:vmath` (`group` in `build.gradle.kts`). Central only accepts a group you have proven you own: `io.github.andreasnilsson123` is available
-   through the Central Portal's GitHub verification, or a domain you control. Change `group` before the first release; it is part of every consumer's dependency.
+1. **A verified namespace.** The coordinates are `io.github.andreasnilsson123:vmath` (`group` in `build.gradle.kts`; the JPMS module is still named `vmath`). Central only accepts a group whose namespace you have verified in the Central Portal
+   (for an `io.github.<user>` group the portal asks you to create a public repository with a name it gives you); do that before the first upload. The group is part of every consumer's dependency, so settle it before the first release, not after.
 2. **Signing.** Set `SIGNING_KEY` (an ASCII-armoured private key) and `SIGNING_PASSWORD` in the environment and the publications are signed with it (the `signing` plugin is applied only then).
 3. **Upload.** Central takes the staged repository as a bundle through the Central Portal (or a publishing plugin of your choice); the staging output above is the content to bundle. No Central
    upload is configured in this build.
@@ -45,4 +45,4 @@ and publish from there.
 
 - The `-Pvalhalla` build. Its classes use preview features of a JDK 28 early-access build, so they only load on a JVM started with `--enable-preview`; the publish tasks are disabled in that mode.
   A Valhalla artifact would need its own coordinates or classifier once value classes are final.
-- Snapshots from a dirty tree: the version is `0.1.0-SNAPSHOT` until a release.
+- Snapshots from a dirty tree: the version is `0.2.0-SNAPSHOT` until a release (`v0.1.0` is already tagged, so the next release is 0.2.0).

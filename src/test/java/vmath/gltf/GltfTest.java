@@ -800,6 +800,22 @@ class GltfTest {
     }
 
     @Test
+    void aFileLargerThanTheLimitIsRefusedBeforeItIsRead(@TempDir Path dir) throws IOException {
+        Files.write(dir.resolve("tri data.bin"), java.util.Arrays.copyOf(triangleBuffer(), 5000)); // a buffer file much larger than the glTF file
+        String json = "{\"asset\":{\"version\":\"2.0\"},\"buffers\":[{\"byteLength\":104,\"uri\":\"tri%20data.bin\"}]," + TRIANGLE_REST + "}";
+        Files.writeString(dir.resolve("tri.gltf"), json);
+        long main = Files.size(dir.resolve("tri.gltf"));
+        assertTrue(main < 4000);
+        // the main file is over a limit of 100 bytes
+        assertThrows(GltfException.class, () -> Gltf.load(dir.resolve("tri.gltf"), 100));
+        // the main file fits but the buffer file does not
+        assertThrows(GltfException.class, () -> Gltf.load(dir.resolve("tri.gltf"), main + 10));
+        // with room for both it loads
+        assertEquals(1f, Gltf.load(dir.resolve("tri.gltf"), 5000).toMesh(0, 0).positions()[3]);
+        assertEquals(1L << 30, Gltf.DEFAULT_MAX_FILE_BYTES);
+    }
+
+    @Test
     void aBufferUriCannotLeaveTheDirectory(@TempDir Path dir) throws IOException {
         Path sub = Files.createDirectory(dir.resolve("models"));
         Files.write(dir.resolve("secret.bin"), triangleBuffer());

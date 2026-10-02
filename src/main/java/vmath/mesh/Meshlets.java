@@ -22,6 +22,9 @@ import vmath.spatial.ConeCull;
  * <p><b>Bounds.</b> The sphere is the centre of the meshlet's vertex box with the radius reaching the farthest vertex (conservative, not minimal). The cone is
  * {@link ConeCull#computeCone}: axis and cutoff (the sine of the half-angle), with cutoff 1 (never culls) when the triangle normals spread too wide. The pair
  * plugs straight into {@link ConeCull#backfacing} and {@link ConeCull.Clusters}.
+ *
+ * <p><b>Thread safety.</b> Immutable after construction, so it can be shared between threads freely. The arrays it hands out are its own storage: do
+ * not modify them.
  */
 @Experimental("the builder heuristic may change; the layout follows common mesh-shader conventions")
 public final class Meshlets {

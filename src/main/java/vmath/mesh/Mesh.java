@@ -292,6 +292,38 @@ public final class Mesh {
 
     // ---------------------------------------------------------------- queries
 
+    /**
+     * Checks the invariants that direct writes into the live arrays ({@link #positions()}, {@link #indices()}, ...) can break: every stream is long enough for the vertices,
+     * the index count is a multiple of three, and every index names an existing vertex. Positions are not checked for NaN (a mesh may carry them). Costs O(indices).
+     *
+     * @return a description of the first problem found, or {@code null} if the mesh is consistent
+     */
+    public String validate() {
+        if (positions.length < vertexCount * 3) {
+            return "positions hold " + positions.length + " floats, fewer than 3 per vertex for " + vertexCount + " vertices";
+        }
+        if (normals != null && normals.length < vertexCount * 3) {
+            return "normals hold " + normals.length + " floats, fewer than 3 per vertex for " + vertexCount + " vertices";
+        }
+        if (tangents != null && tangents.length < vertexCount * 4) {
+            return "tangents hold " + tangents.length + " floats, fewer than 4 per vertex for " + vertexCount + " vertices";
+        }
+        for (int s = 0; s < MAX_UV_SETS; s++) {
+            if (uvs[s] != null && uvs[s].length < vertexCount * 2) {
+                return "uv set " + s + " holds " + uvs[s].length + " floats, fewer than 2 per vertex for " + vertexCount + " vertices";
+            }
+        }
+        if (indexCount % 3 != 0 || indexCount > indices.length) {
+            return "the index count " + indexCount + " is not a whole number of triangles inside an index array of " + indices.length;
+        }
+        for (int i = 0; i < indexCount; i++) {
+            if (indices[i] < 0 || indices[i] >= vertexCount) {
+                return "index " + i + " is " + indices[i] + ", outside the " + vertexCount + " vertices";
+            }
+        }
+        return null;
+    }
+
     /** The axis-aligned box around all vertices; {@link Aabbf#EMPTY} when there are none. */
     public Aabbf bounds() {
         if (vertexCount == 0) {

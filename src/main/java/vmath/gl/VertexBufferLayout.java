@@ -22,6 +22,9 @@ import vmath.annotations.Experimental;
  *
  * <p>Attributes are placed one after another, each aligned to its component size; the stride is rounded up to a multiple of 4. Use {@code attributeAt} to put an
  * attribute at a given offset (to match a buffer that was written by other code).
+ *
+ * <p><b>Thread safety.</b> Immutable after construction, so it can be shared between threads freely. The arrays it hands out are its own storage: do
+ * not modify them.
  */
 @Experimental("the description may gain binding and divisor details")
 public final class VertexBufferLayout {

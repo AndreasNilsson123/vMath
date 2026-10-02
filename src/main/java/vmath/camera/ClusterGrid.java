@@ -17,6 +17,9 @@ import vmath.annotations.Experimental;
  * <p><b>Cluster index</b> is {@code (slice * tilesY + row) * tilesX + column}, slices outermost, so the clusters of one depth slice are contiguous.
  *
  * <p>Perspective projections only. Everything is view space (x right, y up, z negative forward, like {@link Cameraf#viewPositionFromDepth}).
+ *
+ * <p><b>Thread safety.</b> Immutable after construction, so it can be shared between threads freely. The arrays it hands out are its own storage: do
+ * not modify them.
  */
 @Experimental("the grid layout and the set of helpers may change")
 public final class ClusterGrid {

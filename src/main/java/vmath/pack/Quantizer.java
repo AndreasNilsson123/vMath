@@ -12,6 +12,9 @@ import vmath.geo.Aabbf;
  * <p>For a mesh, compute the {@link Aabbf} of its vertices once, quantize every vertex with {@link #pack}, and fold
  * {@link #dequantizationMatrix()} into the model matrix (or the vertex shader) so the GPU reads the 16-bit values as normalized
  * integers and restores the positions with one matrix multiply.
+ *
+ * <p><b>Thread safety.</b> Immutable after construction, so it can be shared between threads freely. The arrays it hands out are its own storage: do
+ * not modify them.
  */
 public final class Quantizer {
 
@@ -41,9 +44,14 @@ public final class Quantizer {
 
     /** The three unorm16 values of {@code p} (clamped to the box), each in {@code 0..65535}, written to {@code dst[offset..offset+2]}. */
     public void pack(Vec3f p, short[] dst, int offset) {
-        dst[offset] = (short) axis(p.x(), bounds.minX(), sizeX);
-        dst[offset + 1] = (short) axis(p.y(), bounds.minY(), sizeY);
-        dst[offset + 2] = (short) axis(p.z(), bounds.minZ(), sizeZ);
+        pack(p.x(), p.y(), p.z(), dst, offset);
+    }
+
+    /** {@link #pack(Vec3f, short[], int)} for a position given by its components; allocates nothing. */
+    public void pack(float x, float y, float z, short[] dst, int offset) {
+        dst[offset] = (short) axis(x, bounds.minX(), sizeX);
+        dst[offset + 1] = (short) axis(y, bounds.minY(), sizeY);
+        dst[offset + 2] = (short) axis(z, bounds.minZ(), sizeZ);
     }
 
     /** The position stored in three unorm16 values (as returned in the {@code short}s of {@link #pack}). */

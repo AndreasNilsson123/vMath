@@ -10,6 +10,9 @@ import vmath.geo.Aabbf;
  *
  * <p>The backing arrays are exposed ({@link #minXs()} and friends) for kernels. They are replaced when the container
  * grows, so re-fetch them after {@code add}/{@code ensureCapacity} instead of caching them.
+ *
+ * <p><b>Thread safety.</b> Not thread-safe: it is mutable, so use one instance per thread or synchronise externally. Concurrent reads are safe only
+ * while no thread is writing.
  */
 public final class BoundsArray {
 

@@ -1,5 +1,6 @@
 package vmath.assets;
 
+import vmath.Report;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -24,10 +25,12 @@ class AssetFilesTest {
     @Test
     void writeAssetsWhenAsked() throws IOException {
         String target = System.getProperty("vmath.writeAssets");
-        if (target != null) {
-            AssetFactory.writeAll(Path.of(target));
-            System.out.println("ASSETS written to " + Path.of(target).toAbsolutePath());
+        org.junit.jupiter.api.Assumptions.assumeTrue(target != null, "a generator, not a check: run with -Dvmath.writeAssets=<directory> to regenerate the assets");
+        AssetFactory.writeAll(Path.of(target));
+        for (String name : AssetFactory.all().keySet()) {
+            org.junit.jupiter.api.Assertions.assertTrue(java.nio.file.Files.exists(Path.of(target).resolve(name)), "the generator wrote " + name);
         }
+        Report.println("ASSETS written to " + Path.of(target).toAbsolutePath());
     }
 
     static byte[] resource(String path) throws IOException {

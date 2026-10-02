@@ -1,5 +1,6 @@
 package vmath.mesh;
 
+import vmath.Report;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -174,7 +175,7 @@ class MeshletsTest {
                 }
             }
         }
-        System.out.println("MESHLET-CULL fraction " + (double) culled / total + " of " + ml.count() + " meshlets");
+        Report.println("MESHLET-CULL fraction " + (double) culled / total + " of " + ml.count() + " meshlets");
         assertTrue(culled > total / 4, "a sphere seen from 6 radii away: " + culled + " of " + total);
     }
 

@@ -7,6 +7,9 @@ package vmath.core;
  * <p>3D codes take 21 bits per axis (63 bits, so always non-negative as a {@code long}); 2D codes take 32 bits per
  * axis and use all 64 bits. Coordinates are treated as unsigned; use {@link #quantize} to map a float in a known range
  * onto the grid.
+ *
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time. The arrays and buffers you pass in are
+ * not synchronised, so two threads must not write the same one.
  */
 public final class Morton {
 

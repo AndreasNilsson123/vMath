@@ -8,6 +8,9 @@ package vmath.pack;
  * <p>The conversions are the JDK's own {@link Float#floatToFloat16(float)} and {@link Float#float16ToFloat(short)}, so rounding is
  * round-to-nearest-even and they are intrinsified on hardware with F16C or NEON. This class adds bulk versions over arrays and
  * packing of two or four halves into one {@code int} or {@code long}.
+ *
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time. The arrays and buffers you pass in are
+ * not synchronised, so two threads must not write the same one.
  */
 public final class Half {
 

@@ -1,0 +1,6 @@
+vmath.bulk.TestMatrixKernelProviders$Low
+vmath.bulk.TestMatrixKernelProviders$Zero
+vmath.bulk.TestMatrixKernelProviders$Unsupported
+vmath.bulk.TestMatrixKernelProviders$ThrowsWhenAsked
+vmath.bulk.TestMatrixKernelProviders$FailingCreate
+vmath.bulk.TestMatrixKernelProviders$BrokenConstructor

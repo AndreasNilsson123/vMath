@@ -61,8 +61,9 @@ java {
 
 tasks.withType<JavaCompile>().configureEach {
     options.encoding = "UTF-8"
-    // -exports: vmath.annotations.Experimental has class retention on purpose (japicmp reads it), but the annotations module is "requires static", so javac would warn on every use
-    // -Werror: the library and its tests compile without a single warning, and it should stay that way
+    // -exports is off because vmath.annotations.Experimental has class retention on purpose (japicmp reads it) while the annotations module is "requires static": with the lint on,
+    // javac reports exactly one warning per @Experimental class (54 on 2026-10-02) and nothing else, so nothing real is hidden. -preview is off for the Valhalla build's preview class files.
+    // -Werror: the library and its tests compile without a single other warning, and it should stay that way.
     options.compilerArgs.addAll(listOf("-Xlint:all", "-Xlint:-preview", "-Xlint:-exports", "-Werror"))
 }
 
@@ -96,8 +97,10 @@ tasks.test {
     // ModuleDescriptorTest inspects the real jar: the module path is what consumers use.
     dependsOn(tasks.jar)
     systemProperty("vmath.jar", tasks.jar.get().archiveFile.get().asFile.absolutePath)
+    // Extra JVM flags for the test JVM, e.g. -Pvmath.testJvmArgs="-XX:TieredStopAtLevel=1" to see which JIT settings the allocation contract tolerates.
+    providers.gradleProperty("vmath.testJvmArgs").orNull?.let { jvmArgs(it.trim().split(Regex("\\s+"))) }
     // Forward -Dvmath.seed / -Dvmath.trials from the command line, e.g. a nightly job with a fresh seed.
-    listOf("vmath.seed", "vmath.trials", "vmath.writeAssets", "vmath.writeDocs").forEach { key ->
+    listOf("vmath.seed", "vmath.trials", "vmath.writeAssets", "vmath.writeDocs", "vmath.verbose", "vmath.alloc.force").forEach { key ->
         System.getProperty(key)?.let { systemProperty(key, it) }
     }
 }

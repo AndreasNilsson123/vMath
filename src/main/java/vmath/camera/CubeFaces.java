@@ -16,6 +16,9 @@ import vmath.geo.Frustumf;
  *
  * <p>For {@link DepthRange#REVERSED_ZERO_TO_ONE} the projection has an infinite far plane (there is no finite reversed builder),
  * so {@code far} is ignored there.
+ *
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time. The arrays and buffers you pass in are
+ * not synchronised, so two threads must not write the same one.
  */
 public final class CubeFaces {
 

@@ -17,6 +17,9 @@ package vmath.occlusion;
  * The CPU {@link DepthBuffer} does the same test with occluders rasterized on the CPU instead, in a single phase and with the
  * opposite depth convention ({@code 1 / w}, so it reduces with {@code min}); use it as the reference when checking a GPU
  * implementation.
+ *
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time. The arrays and buffers you pass in are
+ * not synchronised, so two threads must not write the same one.
  */
 public final class HiZ {
 

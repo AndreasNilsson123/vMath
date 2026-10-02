@@ -128,12 +128,12 @@ public enum TextureFormat {
 
     /** Blocks needed to cover {@code width} texels (partial blocks at the edge count as whole blocks). */
     public int blocksWide(int width) {
-        return (width + blockWidth - 1) / blockWidth;
+        return (int) (((long) width + blockWidth - 1) / blockWidth); // in long: width + blockWidth - 1 overflows an int near Integer.MAX_VALUE
     }
 
     /** Blocks needed to cover {@code height} texels. */
     public int blocksHigh(int height) {
-        return (height + blockHeight - 1) / blockHeight;
+        return (int) (((long) height + blockHeight - 1) / blockHeight);
     }
 
     /** Bytes of one 2D image of {@code width} x {@code height} texels, tightly packed, edge blocks rounded up. */

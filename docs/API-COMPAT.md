@@ -10,7 +10,9 @@ and fails on binary- or source-incompatible changes. The tool is the japicmp CLI
 ./gradlew japicmp -Pjapicmp.allowBreak          # report the differences but do not fail (deliberate break)
 ```
 
-The report is written to `build/reports/japicmp/index.html`. The baseline is built with `git archive <tag>` plus a nested
+The report is written to `build/reports/japicmp/index.html`. The baseline tag is **pinned**: `gradle/baseline-commits.txt` records `<tag> <commit>`, and `exportBaselineSource` stops with a message if the tag points anywhere else
+(a moved tag would otherwise change what the API is compared with, silently). Move a tag only on purpose, and update the file in the same commit. The baseline tag is **pinned**: `gradle/baseline-commits.txt` records `<tag> <commit>`, and `exportBaselineSource` stops with a message if the tag points anywhere else
+(a moved tag would otherwise change what the API is compared with, silently). Move a tag only on purpose, and update the file in the same commit. The baseline is built with `git archive <tag>` plus a nested
 `gradlew jar` into `build/baseline/vmath-baseline.jar` (task chain `exportBaselineSource`, `unpackBaselineSource`,
 `buildBaselineJar`, `stageBaselineJar`), so it is only rebuilt when the tag changes or `build/` is cleaned.
 

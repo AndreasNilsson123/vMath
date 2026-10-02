@@ -12,6 +12,9 @@ import vmath.annotations.Experimental;
  * pixelWidth, pixelHeight, pixelDepth, layerCount, faceCount, levelCount, supercompressionScheme}), four 32-bit index fields for the data format descriptor
  * and the key/value data, two 64-bit fields for the supercompression global data, and then {@code max(levelCount, 1)} level index entries of three 64-bit values
  * ({@code byteOffset, byteLength, uncompressedByteLength}).
+ *
+ * <p><b>Thread safety.</b> Immutable after construction, so it can be shared between threads freely. The arrays it hands out are its own storage: do
+ * not modify them.
  */
 @Experimental("covers the header and level index only; key/value data and the data format descriptor are reported as ranges, not parsed")
 public final class Ktx2 {
@@ -126,7 +129,13 @@ public final class Ktx2 {
                 throw new FormatException("level " + i + " lies outside the data");
             }
         }
-        return new Header(vkFormat, typeSize, w, h, d, layers, faces, levelCount, scheme, dfdOff, dfdLen, kvdOff, kvdLen, sgdOff, sgdLen, levels);
+        Header header = new Header(vkFormat, typeSize, w, h, d, layers, faces, levelCount, scheme, dfdOff, dfdLen, kvdOff, kvdLen, sgdOff, sgdLen, levels);
+        try {
+            header.layout(); // a header whose dimensions describe a texture that cannot be addressed is malformed, whatever else it says
+        } catch (IllegalArgumentException e) {
+            throw new FormatException("the dimensions are not a valid texture: " + e.getMessage());
+        }
+        return header;
     }
 
     /**
