@@ -49,7 +49,7 @@ that is not the class itself, documentation of every public member, and the evid
 | `camera`: `ClusterGrid`, `ClusterLights`, `PlanarViews`, `Stereo`, `DualParaboloid` | the lighting buffers consumed by a shader; stereo and portal conventions used in a real HMD or portal renderer |
 | `mesh`: `ClusterHierarchy`, `MeshLod`, `MeshSimplifier`, `Meshlets`, `Overdraw`, `RectPacker`, `UvAtlas` | attribute support in `ClusterHierarchy`; a second consumer of each result type (the records have changed twice already) |
 | `gltf`, `tex`: `Gltf`, `Ktx2`, `TextureFormat`, `TextureLayout`, `CubeFace` | fuzzing of the loaders (TD-19); a restructure of `Gltf` (TD-10) |
-| `pack`, `color`, `core`: the quantizers, `Quantize`, the four colour classes, `SpatialHash`, `FastMath`, `Predicates`, `DoubleDouble` | a release without change; wide-gamut spaces decided in or out for `color` |
+| `pack`, `color`, `core`: the quantizers, `Quantize`, the four colour classes, `SpatialHash`, `FastMath`, `Predicates`, `DoubleDouble`, `Polygons`, `ConvexHull`, `ConvexPolytope`, `Sat`, `Gjk`, `ConvexShape`, `ConvexShapes`, `IkSolver` | a release without change; wide-gamut spaces decided in or out for `color` |
 
 ## Compatibility checks
 

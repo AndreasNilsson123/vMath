@@ -830,4 +830,60 @@ class AllocationContractTest {
         org.junit.jupiter.api.Assertions.assertTrue(perCallLarge <= perCallSmall + 64.0,
                 "writeVertices allocates per vertex: " + perCallSmall + " B per call for " + small.vertexCount() + " vertices, " + perCallLarge + " B for " + large.vertexCount());
     }
+
+    // ------------------------------------------------------------ inverse kinematics
+
+    @Test
+    void ikSolvers() {
+        int n = 6;
+        int[] parents = new int[n];
+        float[] bind = new float[n * 10];
+        for (int j = 0; j < n; j++) {
+            parents[j] = j - 1;
+            bind[j * 10 + 3 + 3] = 1f;
+            bind[j * 10 + 7] = bind[j * 10 + 8] = bind[j * 10 + 9] = 1f;
+            bind[j * 10] = j == 0 ? 0f : 1f;
+        }
+        var skeleton = new vmath.anim.Skeleton(parents, bind);
+        var pose = new vmath.anim.Pose(skeleton);
+        var ik = new vmath.anim.IkSolver(skeleton);
+        int[] chain = {0, 1, 2, 3, 4, 5};
+        assertNoAllocation("IkSolver.twoBone", WARM, CALLS, () -> ik.twoBone(pose, 0, 1, 2, 1.2f, 0.9f, 0.3f, 0f, 1f, 2f));
+        assertNoAllocation("IkSolver.fabrik", WARM, CALLS, () -> ik.fabrik(pose, chain, 6, 2f, 2f, 1f, 16, 1e-4f));
+        assertNoAllocation("IkSolver.ccd", WARM, CALLS, () -> ik.ccd(pose, chain, 6, 2f, -1f, 1f, 16, 1e-4f));
+        assertNoAllocation("IkSolver.lookAt", WARM, CALLS, () -> {
+            ik.lookAt(pose, 2, 1f, 0f, 0f, 3f, 1f, 2f, 1f);
+            ik.lookAt(pose, 2, 1f, 0f, 0f, 0f, 1f, 0f, 3f, 1f, 2f, 0f, 1f, 0f, 0.5f);
+        });
+    }
+
+    // ------------------------------------------------------------ collision
+
+    @Test
+    void gjkAndEpaQueries() {
+        vmath.geo.Gjk gjk = new vmath.geo.Gjk();
+        vmath.geo.Gjk.Result result = new vmath.geo.Gjk.Result();
+        float[] points = new float[3 * 40];
+        SplittableRandom r = new SplittableRandom(5);
+        for (int i = 0; i < points.length; i++) {
+            points[i] = (float) (r.nextDouble() * 2 - 1);
+        }
+        var hull = vmath.geo.ConvexPolytope.of(points, 40);
+        var box = vmath.geo.ConvexShapes.of(new vmath.geo.Aabbf(-1, -1, -1, 1, 1, 1));
+        var sphereNear = vmath.geo.ConvexShapes.sphere(0.9, 0.1, 0.2, 0.7);
+        var sphereFar = vmath.geo.ConvexShapes.sphere(5, 0, 0, 1);
+        var capsule = vmath.geo.ConvexShapes.of(vmath.geo.Capsulef.of(new Vec3f(-1, 0, 0), new Vec3f(1, 0.5f, 0), 0.4f));
+        assertNoAllocation("Gjk.distance", WARM, CALLS, () -> {
+            gjk.distance(hull, sphereFar, result);
+            gjk.distance(box, capsule, result);
+        });
+        assertNoAllocation("Gjk.intersects", WARM, CALLS, () -> {
+            gjk.intersects(hull, box);
+            gjk.intersects(sphereNear, capsule);
+        });
+        assertNoAllocation("Gjk.penetration (EPA)", WARM_BIG, CALLS_BIG, () -> {
+            gjk.penetration(hull, sphereNear, result);
+            gjk.penetration(box, capsule, result);
+        });
+    }
 }

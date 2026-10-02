@@ -229,9 +229,9 @@ Value records for single shapes; SoA storage in `vmath-bulk` for large sets.
       *Done: watertight ray-triangle.*
 - [ ] **GEO-4 (P2, M)** Bounding-volume fitting: min sphere (Welzl), PCA OBB, k-DOP, bounding-volume from transformed AABB
       (Arvo, exact for affine).
-- [ ] **GEO-5 (P2, M)** Convex hull (3D quickhull), convex polytope intersection, GJK/EPA distance + penetration, SAT helpers.
+- [x] **GEO-5 (P2, M)** Convex hull (3D quickhull), convex polytope intersection, GJK/EPA distance + penetration, SAT helpers. `ConvexHull`, `ConvexPolytope`, `Sat`, `Gjk`; see `docs/GEOMETRY.md` (not benchmarked yet).
 - [ ] **GEO-6 (P2, M)** Curves and interpolation: Bézier, Hermite, Catmull-Rom, B-spline, arc-length parameterization, easing.
-- [ ] **GEO-7 (P2, M)** Polygon utilities: 2D/3D triangulation (ear clipping), polygon clip (Sutherland–Hodgman), winding.
+- [x] **GEO-7 (P2, M)** Polygon utilities: 2D/3D triangulation (ear clipping), polygon clip (Sutherland–Hodgman), winding. `Polygons`; see `docs/GEOMETRY.md`.
 - [ ] **GEO-8 (P3, L)** Signed distance function primitives and CSG combinators (CPU-side, for picking and mesh generation).
 
 ### Phase H. Spatial structures and culling framework (P1)
@@ -326,7 +326,7 @@ can be chained and composed, and they run on SoA bounds.
 - [x] **ANIM-2 (P2, L)** Skeletal animation: pose sampling (keyframe search, quaternion slerp), skinning matrices, blend/additive/layered
       blending, GPU skinning buffer layout. Dual-quaternion skinning option.  
       *Done: `Skeleton`, `Pose`, `AnimationClip`, `ClipSampler`, `Skinning` (joint matrices, CPU reference, unorm8 weight packing, 64-byte `mat4` stride). Dual-quaternion skinning is not built.*
-- [ ] **ANIM-3 (P2, M)** Inverse kinematics (two-bone, FABRIK, CCD) and look-at constraints.
+- [x] **ANIM-3 (P2, M)** Inverse kinematics (two-bone, FABRIK, CCD) and look-at constraints. `IkSolver`; see `docs/ANIMATION.md` (no joint limits yet).
 - [ ] **ANIM-4 (P3, M)** Morph targets/blend shapes packing, root motion extraction, animation compression (curve fitting, quantized keys).
 - [ ] **ANIM-5 (P3, L)** Physics-adjacent math: rigid-body integrators, inertia tensors from shapes, contact manifold math
       (only the math; the engine would be a separate project).

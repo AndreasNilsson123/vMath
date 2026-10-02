@@ -31,3 +31,16 @@ Measured (`AnimationBench`, JDK 25, ~0 B/op): for 64 / 128 joints with 30-key tr
 takes about 150 us. Sampling dominates; a faster sampler is the obvious next step.
 
 Not built: IK, morph targets, animation compression, dual-quaternion skinning, step/cubic interpolation inside `AnimationClip` (the glTF loader converts STEP and CUBICSPLINE curves to linear keys).
+
+## Inverse kinematics: `IkSolver`
+
+`IkSolver` (experimental) turns the rotations of a chain of joints in a `Pose` so that the tip reaches a target point in the space of `Skinning.worldMatrices`. It only changes
+rotations, so the bone lengths stay as they are, and a target out of reach leaves the chain straight towards it. Each call returns the distance still left, which is the thing to check.
+
+- `twoBone`: the exact solution for a three-joint limb (arm, leg), with an optional pole point that decides which way the middle joint bends.
+- `fabrik` and `ccd`: any chain length, with an iteration limit and a tolerance. Neither is guaranteed to converge: in the tests with random chains and reachable targets, 64 FABRIK
+  iterations were not enough for a chain whose target lay close to its root (1000 were), and one of 300 random chains still missed the target by more than 0.1% of the reach after 1000.
+- `lookAt`: turns one joint so that a local axis points at a target, optionally keeping a second axis towards a world up direction, blended in by a weight (0 leaves the pose alone).
+
+A chain is a list of joint indices in which each is the child of the one before. The solvers assume uniform scale along the chain and its ancestors. One instance owns its scratch
+arrays (no allocation per solve, checked by the allocation contract test) and is not thread-safe. There are no joint limits or twist constraints yet. No benchmark has been run.

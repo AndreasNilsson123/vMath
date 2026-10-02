@@ -6,6 +6,8 @@ Nothing has been released yet; the baseline for the compatibility check is the t
 ## Unreleased
 
 ### Added
+- Geometry (experimental): `Polygons` (area, winding, containment, simplicity, ear-clipping triangulation with holes, 3D polygons, Sutherland-Hodgman clipping), `ConvexHull` (exact quickhull), `ConvexPolytope`, `Sat`, `Gjk` (distance, intersection, EPA penetration), `ConvexShape`/`ConvexShapes`; `docs/GEOMETRY.md`.
+- Animation (experimental): `IkSolver` (two-bone with pole, FABRIK, CCD, look-at with up axis).
 - Quality tooling: JaCoCo coverage with per-package floors in `check`, PIT mutation testing (`mutationTest`), `docs/COVERAGE.md`.
 - Publishing setup for `vmath`, `vmath-simd` and `vmath-annotations` (sources and javadoc jars, POM metadata, staging repository check, GitHub Packages), `docs/PUBLISHING.md`.
 - `SpatialHash` (cell indices, hashes, packed keys, epsilon-neighbourhood lookup, canonical float keys), `docs/EQUALITY.md`.
