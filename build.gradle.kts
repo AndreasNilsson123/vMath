@@ -104,7 +104,7 @@ tasks.test {
     // Extra JVM flags for the test JVM, e.g. -Pvmath.testJvmArgs="-XX:TieredStopAtLevel=1" to see which JIT settings the allocation contract tolerates.
     providers.gradleProperty("vmath.testJvmArgs").orNull?.let { jvmArgs(it.trim().split(Regex("\\s+"))) }
     // Forward -Dvmath.seed / -Dvmath.trials from the command line, e.g. a nightly job with a fresh seed.
-    listOf("vmath.seed", "vmath.trials", "vmath.writeAssets", "vmath.writeDocs", "vmath.verbose", "vmath.alloc.force", "vmath.docs.all").forEach { key ->
+    listOf("vmath.seed", "vmath.trials", "vmath.writeAssets", "vmath.writeDocs", "vmath.verbose", "vmath.alloc.force", "vmath.docs.all", "vmath.glslang").forEach { key ->
         System.getProperty(key)?.let { systemProperty(key, it) }
     }
 }
@@ -122,7 +122,7 @@ jacoco {
 
 tasks.jacocoTestReport {
     dependsOn(tasks.test)
-    onlyIf { !valhalla }
+    enabled = !valhalla
     reports {
         xml.required.set(true)
         html.required.set(true)
@@ -146,7 +146,7 @@ val coverageFloors = mapOf(
 
 tasks.jacocoTestCoverageVerification {
     dependsOn(tasks.test)
-    onlyIf { !valhalla }
+    enabled = !valhalla
     violationRules {
         rule {
             element = "BUNDLE"
@@ -222,7 +222,7 @@ tasks.register<JavaExec>("mutationTest") {
     group = "verification"
     description = "Runs PIT mutation testing on the classes given by -Pmutation.classes with the tests given by -Pmutation.tests."
     dependsOn(tasks.testClasses, tasks.jar)
-    onlyIf { !valhalla }
+    enabled = !valhalla
     javaLauncher.set(javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(baselineJdk)) })
     classpath = pitest
     mainClass.set("org.pitest.mutationtest.commandline.MutationCoverageReport")
@@ -232,6 +232,10 @@ tasks.register<JavaExec>("mutationTest") {
     val report = layout.buildDirectory.dir("reports/pitest")
     val testClasspath = sourceSets.test.get().runtimeClasspath
     val mainClasses = sourceSets.main.get().output.classesDirs
+    val jarFile = tasks.jar.flatMap { it.archiveFile }
+    val projectDir = layout.projectDirectory
+    val sourceDirs = listOf(projectDir.dir("src/main/java").asFile, projectDir.dir("src/test/java").asFile)
+    val generatedDirs = listOf(generatedMain, generatedTest)
     doFirst {
         if (!classes.isPresent) {
             throw GradleException("pass the classes to mutate, for example -Pmutation.classes=vmath.core.Morton")
@@ -245,11 +249,11 @@ tasks.register<JavaExec>("mutationTest") {
             "--mutableCodePaths", mainClasses.files.filter { it.exists() }.joinToString(",") { it.absolutePath },   // only production classes: tests in the same package are not mutated
             "--targetTests", tests.get(),
             "--classPath", testClasspath.files.filter { it.exists() }.joinToString(",") { it.absolutePath },
-            "--sourceDirs", listOf("src/main/java", "src/test/java", generatedMain.get().asFile.path, generatedTest.get().asFile.path).joinToString(",") { file(it).absolutePath },
+            "--sourceDirs", (sourceDirs + generatedDirs.map { it.get().asFile }).joinToString(",") { it.absolutePath },
             "--threads", threads.get(),
             "--outputFormats", "HTML,XML",
             "--timestampedReports", "false",
-            "--jvmArgs", "-Djoml.nounsafe=true,-Dvmath.jar=" + tasks.jar.get().archiveFile.get().asFile.absolutePath
+            "--jvmArgs", "-Djoml.nounsafe=true,-Dvmath.jar=" + jarFile.get().asFile.absolutePath
         )
     })
 }
@@ -259,42 +263,48 @@ tasks.register<JavaExec>("mutationTest") {
 val generatedMain = layout.buildDirectory.dir("generated/sources/vmath/main")
 val generatedTest = layout.buildDirectory.dir("generated/sources/vmath/test")
 
-val generateSources = tasks.register<JavaExec>("generateSources") {
-    group = "build"
-    description = "Generates the float and double types (and their tests) from the templates."
-    val launcher = javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(baselineJdk)) }
-    javaLauncher.set(launcher)
-    classpath = codegen
-    mainClass.set("vmath.codegen.Codegen")
-
+// local values only (no script-level members inside the lambdas), so that the configuration cache can store the task
+val generateSources = run {
+    val isValhalla = valhalla
+    val jdk = baselineJdk
     val templates = layout.projectDirectory.dir("src/template/java")
     val testTemplates = layout.projectDirectory.dir("src/testTemplate/java")
     val handWritten = layout.projectDirectory.dir("src/main/java")
     val handWrittenTests = layout.projectDirectory.dir("src/test/java")
     val renames = layout.projectDirectory.file("codegen-renames.properties")
+    val outMain = generatedMain
+    val outTest = generatedTest
+    val launcher = javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(jdk)) }
+    tasks.register<JavaExec>("generateSources") {
+        group = "build"
+        description = "Generates the float and double types (and their tests) from the templates."
+        javaLauncher.set(launcher)
+        classpath = codegen
+        mainClass.set("vmath.codegen.Codegen")
 
-    inputs.dir(templates)
-    inputs.dir(testTemplates)
-    inputs.file(renames)
-    inputs.property("valhalla", valhalla)
-    // @GpuStruct records are found by scanning the hand-written sources (main and test)
-    inputs.dir(handWritten)
-    inputs.dir(handWrittenTests)
-    outputs.dir(generatedMain)
-    outputs.dir(generatedTest)
+        inputs.dir(templates)
+        inputs.dir(testTemplates)
+        inputs.file(renames)
+        inputs.property("valhalla", isValhalla)
+        // @GpuStruct records are found by scanning the hand-written sources (main and test)
+        inputs.dir(handWritten)
+        inputs.dir(handWrittenTests)
+        outputs.dir(outMain)
+        outputs.dir(outTest)
 
-    argumentProviders.add(CommandLineArgumentProvider {
-        buildList {
-            addAll(listOf("--templates", templates.asFile.path, "--test-templates", testTemplates.asFile.path))
-            addAll(listOf("--out", generatedMain.get().asFile.path, "--test-out", generatedTest.get().asFile.path))
-            addAll(listOf("--renames", renames.asFile.path))
-            addAll(listOf("--gpu", handWritten.asFile.path + "=" + generatedMain.get().asFile.path))
-            addAll(listOf("--gpu", handWrittenTests.asFile.path + "=" + generatedTest.get().asFile.path))
-            if (valhalla) {
-                addAll(listOf("--sources", handWritten.asFile.path, "--valhalla"))
+        argumentProviders.add(CommandLineArgumentProvider {
+            buildList {
+                addAll(listOf("--templates", templates.asFile.path, "--test-templates", testTemplates.asFile.path))
+                addAll(listOf("--out", outMain.get().asFile.path, "--test-out", outTest.get().asFile.path))
+                addAll(listOf("--renames", renames.asFile.path))
+                addAll(listOf("--gpu", handWritten.asFile.path + "=" + outMain.get().asFile.path))
+                addAll(listOf("--gpu", handWrittenTests.asFile.path + "=" + outTest.get().asFile.path))
+                if (isValhalla) {
+                    addAll(listOf("--sources", handWritten.asFile.path, "--valhalla"))
+                }
             }
-        }
-    })
+        })
+    }
 }
 
 sourceSets {
@@ -345,122 +355,129 @@ dependencies {
     japicmpCli("${libs.japicmp.get().module}:${libs.versions.japicmp.get()}:jar-with-dependencies")
 }
 
-val japicmpTag = providers.gradleProperty("japicmp.baselineTag").orElse("v0.1.0")
-val japicmpBaselineOverride = providers.gradleProperty("japicmp.baseline")
-val japicmpAllowBreak = providers.gradleProperty("japicmp.allowBreak").isPresent
-val baselineDir = layout.buildDirectory.dir("baseline")
-
-/** Whether the baseline tag exists in this checkout (false when git is missing or this is a source archive). */
-val baselineTagExists: Boolean by lazy {
-    try {
-        providers.exec {
-            commandLine("git", "rev-parse", "--verify", "--quiet", "refs/tags/${japicmpTag.get()}")
-            isIgnoreExitValue = true
-        }.standardOutput.asText.get().isNotBlank()
-    } catch (e: Exception) {
-        false
-    }
-}
-
-val baselineJar = baselineDir.map { it.file("vmath-baseline.jar").asFile }
-val usesBuiltBaseline = !japicmpBaselineOverride.isPresent && !valhalla
-
-val exportBaselineSource = tasks.register<Exec>("exportBaselineSource") {
-    group = "verification"
-    description = "Exports the baseline tag's sources with git archive."
-    onlyIf { usesBuiltBaseline && baselineTagExists }
-    val tar = baselineDir.map { it.file("src.tar") }
-    outputs.file(tar)
-    doFirst { baselineDir.get().asFile.mkdirs() }
-    // The baseline is pinned: gradle/baseline-commits.txt records "<tag> <commit>", and a tag that has been moved to another commit stops the build instead of silently changing what the API is compared with.
-    doFirst {
-        val pin = layout.projectDirectory.file("gradle/baseline-commits.txt").asFile
-        val expected = if (pin.exists()) pin.readLines().map { it.trim().split(Regex("\\s+")) }.firstOrNull { it.size == 2 && it[0] == japicmpTag.get() }?.get(1) else null
-        if (expected != null) {
-            val actual = providers.exec {
-                commandLine("git", "rev-parse", "--verify", "${japicmpTag.get()}^{commit}")
-            }.standardOutput.asText.get().trim()
-            check(actual == expected) {
-                "The baseline tag ${japicmpTag.get()} points at $actual but gradle/baseline-commits.txt pins $expected. If the tag was moved on purpose, update the file and say why in the commit."
-            }
-        }
-    }
-    commandLine("git", "archive", "--format=tar", "--output=${tar.get().asFile.absolutePath}", japicmpTag.get())
-}
-
-val unpackBaselineSource = tasks.register<Sync>("unpackBaselineSource") {
-    onlyIf { usesBuiltBaseline && baselineTagExists }
-    dependsOn(exportBaselineSource)
-    from(tarTree(baselineDir.map { it.file("src.tar") }))
-    into(baselineDir.map { it.dir("src") })
-}
-
-val buildBaselineJar = tasks.register<Exec>("buildBaselineJar") {
-    group = "verification"
-    description = "Builds the jar of the baseline tag in a separate Gradle build."
-    onlyIf { usesBuiltBaseline && baselineTagExists }
-    dependsOn(unpackBaselineSource)
-    val src = baselineDir.map { it.dir("src").asFile }
-    val out = baselineDir.map { it.dir("out").asFile.absolutePath }
+// The tasks below use only local values (providers, files, flags), never script-level members, so that the configuration cache can store them.
+run {
+    val tag = providers.gradleProperty("japicmp.baselineTag").orElse("v0.1.0")
+    val baselineOverride = providers.gradleProperty("japicmp.baseline")
+    val allowBreak = providers.gradleProperty("japicmp.allowBreak").isPresent
+    val isValhalla = valhalla
+    val baselineDir = layout.buildDirectory.dir("baseline")
+    val pinFile = layout.projectDirectory.file("gradle/baseline-commits.txt")
     val windows = org.gradle.internal.os.OperatingSystem.current().isWindows
-    // The nested build must not write into this build's output directory, whatever vmath.buildRoot says.
-    val extra = if (gradle.startParameter.isOffline) listOf("--offline") else emptyList()
-    doFirst {
-        val dir = src.get()
-        workingDir(dir)
-        val wrapper = if (windows) listOf("cmd", "/c", File(dir, "gradlew.bat").absolutePath)
-        else listOf("sh", File(dir, "gradlew").absolutePath)
-        commandLine(wrapper + listOf("jar", "-Pvmath.buildRoot=${out.get()}", "--console=plain") + extra)
-    }
-}
+    val offline = gradle.startParameter.isOffline
 
-val stageBaselineJar = tasks.register<Copy>("stageBaselineJar") {
-    onlyIf { usesBuiltBaseline && baselineTagExists }
-    dependsOn(buildBaselineJar)
-    from(baselineDir.map { it.dir("out/vmath/libs") }) {
-        include("vmath-*.jar")
-        exclude("*-sources.jar")
-    }
-    into(baselineDir)
-    rename { "vmath-baseline.jar" }
-}
+    // Whether the baseline tag exists in this checkout (false when git is missing or this is a source archive).
+    val tagExists = providers.exec {
+        commandLine("git", "rev-parse", "--verify", "--quiet", "refs/tags/${tag.get()}")
+        isIgnoreExitValue = true
+    }.standardOutput.asText.map { it.isNotBlank() }.orElse(false)
+    val usesBuiltBaseline = baselineOverride.map { false }.orElse(!isValhalla)
+    val buildBaseline = tagExists.zip(usesBuiltBaseline) { exists, built -> exists && built }
 
-val japicmp = tasks.register<JavaExec>("japicmp") {
-    group = "verification"
-    description = "Fails on binary-incompatible changes to the public API since the baseline."
-    dependsOn(tasks.jar)
-    if (usesBuiltBaseline) {
-        dependsOn(stageBaselineJar)
-    }
-    classpath = japicmpCli
-    mainClass.set("japicmp.JApiCmp")
-    val report = layout.buildDirectory.dir("reports/japicmp")
-    val baselinePath = japicmpBaselineOverride.map { file(it) }.orElse(baselineJar)
-    onlyIf {
-        val ok = !valhalla && baselinePath.get().exists()
-        if (!ok) {
-            logger.lifecycle("japicmp skipped: no baseline (tag '${japicmpTag.get()}' missing or no -Pjapicmp.baseline jar)" +
-                    if (valhalla) ", and the Valhalla profile changes record kinds" else "")
+    val export = tasks.register<Exec>("exportBaselineSource") {
+        group = "verification"
+        description = "Exports the baseline tag's sources with git archive."
+        val enabled = buildBaseline
+        onlyIf { enabled.get() }
+        val tar = baselineDir.map { it.file("src.tar") }
+        outputs.file(tar)
+        val tagName = tag
+        // The baseline is pinned: gradle/baseline-commits.txt records "<tag> <commit>", and a tag that has been moved to another commit stops the build instead of silently changing what the API is compared with.
+        val expectedCommit = providers.fileContents(pinFile).asText.map { text ->
+            text.lines().map { it.trim().split(Regex("\\s+")) }.firstOrNull { it.size == 2 && it[0] == tagName.get() }?.get(1) ?: ""
+        }.orElse("")
+        val actualCommit = enabled.flatMap {
+            if (it) providers.exec { commandLine("git", "rev-parse", "--verify", "${tagName.get()}^{commit}"); isIgnoreExitValue = true }.standardOutput.asText.map { s -> s.trim() }
+            else providers.provider { "" }
         }
-        ok
-    }
-    doFirst { report.get().asFile.mkdirs() }
-    argumentProviders.add(CommandLineArgumentProvider {
-        buildList {
-            addAll(listOf("--old", baselinePath.get().absolutePath))
-            addAll(listOf("--new", tasks.jar.get().archiveFile.get().asFile.absolutePath))
-            addAll(listOf("--only-modified", "-a", "public"))
-            addAll(listOf("--exclude", "@vmath.annotations.Experimental")) // docs/VERSIONING.md
-            addAll(listOf("--html-file", report.get().file("index.html").asFile.absolutePath))
-            if (!japicmpAllowBreak) {
-                addAll(listOf("--error-on-binary-incompatibility", "--error-on-source-incompatibility"))
+        doFirst {
+            tar.get().asFile.parentFile.mkdirs()
+            val expected = expectedCommit.get()
+            if (expected.isNotEmpty()) {
+                check(actualCommit.get() == expected) {
+                    "The baseline tag ${tagName.get()} points at ${actualCommit.get()} but gradle/baseline-commits.txt pins $expected. If the tag was moved on purpose, update the file and say why in the commit."
+                }
             }
         }
-    })
+        commandLine("git", "archive", "--format=tar", "--output=${tar.get().asFile.absolutePath}", tagName.get())
+    }
+
+    val unpack = tasks.register<Sync>("unpackBaselineSource") {
+        val enabled = buildBaseline
+        onlyIf { enabled.get() }
+        dependsOn(export)
+        from(tarTree(baselineDir.map { it.file("src.tar") }))
+        into(baselineDir.map { it.dir("src") })
+    }
+
+    val buildJar = tasks.register<Exec>("buildBaselineJar") {
+        group = "verification"
+        description = "Builds the jar of the baseline tag in a separate Gradle build."
+        val enabled = buildBaseline
+        onlyIf { enabled.get() }
+        dependsOn(unpack)
+        val src = baselineDir.map { it.dir("src").asFile }
+        val out = baselineDir.map { it.dir("out").asFile.absolutePath }
+        // The nested build must not write into this build's output directory, whatever vmath.buildRoot says.
+        val extra = if (offline) listOf("--offline") else emptyList()
+        doFirst {
+            val dir = src.get()
+            workingDir(dir)
+            val wrapper = if (windows) listOf("cmd", "/c", File(dir, "gradlew.bat").absolutePath)
+            else listOf("sh", File(dir, "gradlew").absolutePath)
+            commandLine(wrapper + listOf("jar", "-Pvmath.buildRoot=${out.get()}", "--console=plain") + extra)
+        }
+    }
+
+    val stage = tasks.register<Copy>("stageBaselineJar") {
+        val enabled = buildBaseline
+        onlyIf { enabled.get() }
+        dependsOn(buildJar)
+        from(baselineDir.map { it.dir("out/vmath/libs") }) {
+            include("vmath-*.jar")
+            exclude("*-sources.jar")
+        }
+        into(baselineDir)
+        rename { "vmath-baseline.jar" }
+    }
+
+    tasks.register<JavaExec>("japicmp") {
+        group = "verification"
+        description = "Fails on binary-incompatible changes to the public API since the baseline."
+        dependsOn(tasks.jar)
+        dependsOn(stage) // a no-op unless the baseline is built from the tag
+        classpath = configurations["japicmpCli"]
+        mainClass.set("japicmp.JApiCmp")
+        val report = layout.buildDirectory.dir("reports/japicmp")
+        val jarFile = tasks.jar.flatMap { it.archiveFile }
+        val baselinePath = baselineOverride.map { layout.projectDirectory.file(it) }.orElse(baselineDir.map { it.file("vmath-baseline.jar") })
+        val tagName = tag
+        onlyIf {
+            val ok = !isValhalla && baselinePath.get().asFile.exists()
+            if (!ok) {
+                logger.lifecycle("japicmp skipped: no baseline (tag '${tagName.get()}' missing or no -Pjapicmp.baseline jar)" +
+                        if (isValhalla) ", and the Valhalla profile changes record kinds" else "")
+            }
+            ok
+        }
+        doFirst { report.get().asFile.mkdirs() }
+        argumentProviders.add(CommandLineArgumentProvider {
+            buildList {
+                addAll(listOf("--old", baselinePath.get().asFile.absolutePath))
+                addAll(listOf("--new", jarFile.get().asFile.absolutePath))
+                addAll(listOf("--only-modified", "-a", "public"))
+                addAll(listOf("--exclude", "@vmath.annotations.Experimental")) // docs/VERSIONING.md
+                addAll(listOf("--html-file", report.get().file("index.html").asFile.absolutePath))
+                if (!allowBreak) {
+                    addAll(listOf("--error-on-binary-incompatibility", "--error-on-source-incompatibility"))
+                }
+            }
+        })
+    }
 }
 
 tasks.check {
-    dependsOn(japicmp)
+    dependsOn("japicmp")
     dependsOn(tasks.javadoc)
     dependsOn(tasks.jacocoTestCoverageVerification)
 }

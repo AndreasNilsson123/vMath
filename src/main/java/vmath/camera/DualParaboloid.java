@@ -91,7 +91,7 @@ public final class DualParaboloid {
 
     /**
      * A GLSL function that does {@link #project} in a vertex shader: {@code viewPos} is in the hemisphere's view space; the result is the clip position
-     * ({@code w} is 1) and {@code side} is positive in front of the hemisphere, to be written to a clip distance. Not compiled by the library's tests.
+     * ({@code w} is 1) and {@code side} is positive in front of the hemisphere, to be written to a clip distance. Compiled with glslang in {@code ShaderCompileTest}, never run on a GPU.
      */
     public static String glsl() {
         return """

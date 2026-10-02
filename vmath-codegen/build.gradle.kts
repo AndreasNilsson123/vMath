@@ -1,6 +1,5 @@
 plugins {
     `java-library`
-    jacoco
 }
 
 java {
@@ -27,38 +26,7 @@ tasks.javadoc {
     enabled = false
 }
 
-// Coverage (docs/COVERAGE.md, TD-06). Not on the -Pvalhalla build: the JaCoCo release in use does not read JDK 28 class files.
-jacoco {
-    toolVersion = libs.versions.jacoco.get()
-}
-
-tasks.jacocoTestReport {
-    dependsOn(tasks.test)
-    onlyIf { !providers.gradleProperty("valhalla").isPresent }
-    reports {
-        xml.required.set(true)
-        html.required.set(true)
-    }
-}
-
-tasks.test {
-    extensions.configure<JacocoTaskExtension> { isEnabled = !providers.gradleProperty("valhalla").isPresent }
-    finalizedBy(tasks.jacocoTestReport)
-}
-
-// Floors two to three points under what was measured (docs/COVERAGE.md).
-tasks.jacocoTestCoverageVerification {
-    dependsOn(tasks.test)
-    onlyIf { !providers.gradleProperty("valhalla").isPresent }
-    violationRules {
-        rule {
-            element = "BUNDLE"
-            limit { counter = "LINE"; minimum = "0.76".toBigDecimal() }
-            limit { counter = "BRANCH"; minimum = "0.62".toBigDecimal() }
-        }
-    }
-}
-
-tasks.check {
-    dependsOn(tasks.jacocoTestCoverageVerification)
-}
+// Coverage and its floor (gradle/module-coverage.gradle.kts)
+extra["coverageLineFloor"] = "0.76"
+extra["coverageBranchFloor"] = "0.62"
+apply(from = rootProject.file("gradle/module-coverage.gradle.kts"))

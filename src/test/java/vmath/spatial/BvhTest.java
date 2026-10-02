@@ -243,7 +243,7 @@ class BvhTest {
                     }
                 }
                 boolean found = q.raycastBounds(ray, tMax, b, hit);
-                assertEquals(bestI >= 0, found, "n=" + n + " ray " + ray + " tMax " + tMax);
+                assertEquals(bestI >= 0, found, "n=" + n + " ray " + ray + " tMax " + tMax + (n <= 3 ? " boxes " + b.get(0) + (n > 1 ? " " + b.get(1) : "") + (n > 2 ? " " + b.get(2) : "") + " rayAabb says " + bestT + " at " + bestI : ""));
                 if (found) {
                     hits++;
                     assertEquals(bestT, hit.t, 1e-3f + 1e-4f * bestT, "distance");
@@ -385,5 +385,29 @@ class BvhTest {
         q.overlapSphere(Spheref.of(Vec3f.ZERO, 1f), b, list);
         assertTrue(list.isEmpty());
         assertEquals(0f, bvh.sahCost());
+    }
+
+    @Test
+    void aRayAlongAFaceOfABoxTouchesIt() {
+        // found by seed 23 of the nightly sweep: the origin lies exactly on a face and the direction is zero on that axis; the slab test then produced an empty interval
+        BoundsArray b = new BoundsArray(3);
+        b.add(10f, -56f, -3.5f, 12.75f, -55.5f, -1.5f);
+        b.add(2f, 40f, -50f, 4f, 43f, -48f);
+        b.add(26f, -2f, -32f, 28f, 0.5f, -29f);
+        BvhQuery q = new BvhQuery(StaticBvh.build(b));
+        BvhQuery.BvhHit hit = new BvhQuery.BvhHit();
+        float inf = Float.POSITIVE_INFINITY;
+        Rayf onTopFace = new Rayf(-0.3f, -55.5f, -2.5f, 1f, 0f, 0f);
+        Rayf onBottomFace = new Rayf(-0.3f, -56f, -2.5f, 1f, 0f, 0f);
+        Rayf onBackFace = new Rayf(-0.3f, -55.7f, -1.5f, 1f, 0f, 0f);
+        Rayf justInside = new Rayf(-0.3f, -55.5001f, -2.5f, 1f, 0f, 0f);
+        Rayf justOutside = new Rayf(-0.3f, -55.4999f, -2.5f, 1f, 0f, 0f);
+        for (Rayf ray : new Rayf[] {onTopFace, onBottomFace, onBackFace, justInside}) {
+            assertTrue(Intersectionf.rayAabb(ray, b.get(0), inf) < inf, "the reference counts touching as a hit: " + ray);
+            assertTrue(q.raycastBounds(ray, inf, b, hit), "the BVH must hit " + ray);
+            assertEquals(0, hit.primitive);
+            assertEquals(10.3f, hit.t, 1e-3f);
+        }
+        assertFalse(q.raycastBounds(justOutside, inf, b, hit), "a hair above the top face is a miss");
     }
 }

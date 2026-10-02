@@ -74,7 +74,7 @@ extensions.configure<PublishingExtension> {
     }
 }
 
-tasks.withType<PublishToMavenRepository>().configureEach { onlyIf { !valhallaBuild } }
+tasks.withType<PublishToMavenRepository>().configureEach { enabled = !valhallaBuild }
 
 // Snapshot publications get a timestamp in their file names, so a second staging run would leave two sets of files side by side: clear this module's staged files first.
 val cleanStaging = tasks.register<Delete>("cleanStaging") {
@@ -85,7 +85,7 @@ tasks.withType<PublishToMavenRepository>().configureEach {
         dependsOn(cleanStaging)
     }
 }
-tasks.withType<PublishToMavenLocal>().configureEach { onlyIf { !valhallaBuild } }
+tasks.withType<PublishToMavenLocal>().configureEach { enabled = !valhallaBuild }
 
 val signingKey = providers.environmentVariable("SIGNING_KEY")
 if (signingKey.isPresent) {

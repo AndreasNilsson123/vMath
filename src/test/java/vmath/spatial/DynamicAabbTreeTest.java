@@ -536,4 +536,20 @@ class DynamicAabbTreeTest {
         }
         assertTrue(hits > 100, "too few hits: " + hits);
     }
+
+    @Test
+    void aRayAlongAFaceOfABoxTouchesIt() {
+        // the same case as BvhTest: the origin lies exactly on a face and the direction is zero on that axis
+        DynamicAabbTree tree = new DynamicAabbTree();
+        tree.insert(10f, -56f, -3.5f, 12.75f, -55.5f, -1.5f, 7);
+        tree.insert(2f, 40f, -50f, 4f, 43f, -48f, 8);
+        DynamicAabbTree.Query q = tree.newQuery();
+        BvhQuery.BvhHit hit = new BvhQuery.BvhHit();
+        for (vmath.geo.Rayf ray : new vmath.geo.Rayf[] {new vmath.geo.Rayf(-0.3f, -55.5f, -2.5f, 1f, 0f, 0f), new vmath.geo.Rayf(-0.3f, -56f, -2.5f, 1f, 0f, 0f),
+                new vmath.geo.Rayf(-0.3f, -55.7f, -1.5f, 1f, 0f, 0f)}) {
+            assertTrue(q.raycast(ray, Float.POSITIVE_INFINITY, null, hit), "must hit " + ray);
+            assertEquals(10.3f, hit.t, 1e-3f);
+        }
+        assertFalse(q.raycast(new vmath.geo.Rayf(-0.3f, -55.4999f, -2.5f, 1f, 0f, 0f), Float.POSITIVE_INFINITY, null, hit));
+    }
 }

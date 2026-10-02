@@ -33,7 +33,7 @@ public final class FreeListAllocator {
     private final MemorySegment backing;
     private long[] start = new long[16];
     private long[] length = new long[16];
-    private boolean[] free = new boolean[16];
+    private long[] freeBits = new long[1]; // bit i: block i is free; the bits above the last block are 0
     private int blocks;
     private long freeBytes;
 
@@ -80,21 +80,64 @@ public final class FreeListAllocator {
     /** The size of the largest single free block: the biggest request that can succeed. */
     public long largestFree() {
         long best = 0;
-        for (int i = 0; i < blocks; i++) {
-            if (free[i] && length[i] > best) {
-                best = length[i];
+        for (int w = 0; w < freeBits.length; w++) {
+            for (long word = freeBits[w]; word != 0L; word &= word - 1) {
+                long len = length[(w << 6) + Long.numberOfTrailingZeros(word)];
+                if (len > best) {
+                    best = len;
+                }
             }
         }
         return best;
     }
 
+    private boolean isFree(int i) {
+        return (freeBits[i >>> 6] & (1L << i)) != 0L;
+    }
+
+    private void setFree(int i, boolean value) {
+        if (value) {
+            freeBits[i >>> 6] |= 1L << i;
+        } else {
+            freeBits[i >>> 6] &= ~(1L << i);
+        }
+    }
+
+    /** Makes room for a bit at index {@code at} (the new bit is clear): the bits from {@code at} up move one place up. */
+    private void insertBit(int at) {
+        int words = (blocks + 1 + 63) >>> 6;
+        if (words > freeBits.length) {
+            freeBits = Arrays.copyOf(freeBits, Math.max(words, freeBits.length * 2));
+        }
+        int w = at >>> 6, b = at & 63;
+        for (int k = words - 1; k > w; k--) {
+            freeBits[k] = (freeBits[k] << 1) | (freeBits[k - 1] >>> 63);
+        }
+        long low = freeBits[w] & ((1L << b) - 1);
+        long high = freeBits[w] & -(1L << b);
+        freeBits[w] = low | (high << 1);
+    }
+
+    /** Removes the bit at index {@code at}: the bits above it move one place down. */
+    private void removeBit(int at) {
+        int w = at >>> 6, b = at & 63;
+        long low = freeBits[w] & ((1L << b) - 1);
+        long high = b == 63 ? 0L : freeBits[w] & -(1L << (b + 1));
+        freeBits[w] = low | (high >>> 1);
+        for (int k = w; k + 1 < freeBits.length; k++) {
+            freeBits[k] |= (freeBits[k + 1] & 1L) << 63;
+            freeBits[k + 1] >>>= 1;
+        }
+    }
+
     /** Frees everything. */
     public void reset() {
         blocks = capacity == 0 ? 0 : 1;
+        Arrays.fill(freeBits, 0L);
         if (blocks == 1) {
             start[0] = 0;
             length[0] = capacity;
-            free[0] = true;
+            setFree(0, true);
         }
         freeBytes = capacity;
     }
@@ -104,19 +147,49 @@ public final class FreeListAllocator {
             int n = blocks * 2;
             start = Arrays.copyOf(start, n);
             length = Arrays.copyOf(length, n);
-            free = Arrays.copyOf(free, n);
         }
         System.arraycopy(start, at, start, at + 1, blocks - at);
         System.arraycopy(length, at, length, at + 1, blocks - at);
-        System.arraycopy(free, at, free, at + 1, blocks - at);
+        insertBit(at);
         blocks++;
     }
 
     private void remove(int at) {
         System.arraycopy(start, at + 1, start, at, blocks - at - 1);
         System.arraycopy(length, at + 1, length, at, blocks - at - 1);
-        System.arraycopy(free, at + 1, free, at, blocks - at - 1);
+        removeBit(at);
         blocks--;
+    }
+
+    /** The free block the strategy picks for a request, or -1. Walks the free blocks only: the bitmap lets it step over allocated ones 64 at a time. */
+    private int choose(long size, long alignment) {
+        int chosen = -1;
+        long chosenWaste = Long.MAX_VALUE;
+        for (int w = 0; w < freeBits.length; w++) {
+            for (long word = freeBits[w]; word != 0L; word &= word - 1) {
+                int i = (w << 6) + Long.numberOfTrailingZeros(word);
+                if (length[i] < size) {
+                    continue;
+                }
+                long aligned = (start[i] + alignment - 1) & -alignment;
+                long padding = aligned - start[i];
+                if (aligned < start[i] || padding > length[i] - size) {
+                    continue;
+                }
+                if (strategy == Strategy.FIRST_FIT) {
+                    return i;
+                }
+                long waste = length[i] - padding - size;
+                if (waste < chosenWaste) {
+                    chosen = i;
+                    chosenWaste = waste;
+                    if (waste == 0) {
+                        return i;
+                    }
+                }
+            }
+        }
+        return chosen;
     }
 
     /**
@@ -127,30 +200,7 @@ public final class FreeListAllocator {
         if (size < 1) {
             throw new IllegalArgumentException("size must be positive: " + size);
         }
-        int chosen = -1;
-        long chosenWaste = Long.MAX_VALUE;
-        for (int i = 0; i < blocks; i++) {
-            if (!free[i] || length[i] < size) {
-                continue;
-            }
-            long aligned = (start[i] + alignment - 1) & -alignment;
-            long padding = aligned - start[i];
-            if (aligned < start[i] || padding > length[i] - size) {
-                continue;
-            }
-            long waste = length[i] - padding - size;
-            if (strategy == Strategy.FIRST_FIT) {
-                chosen = i;
-                break;
-            }
-            if (waste < chosenWaste) {
-                chosen = i;
-                chosenWaste = waste;
-                if (waste == 0) {
-                    break;
-                }
-            }
-        }
+        int chosen = choose(size, alignment);
         if (chosen < 0) {
             return NONE;
         }
@@ -165,15 +215,15 @@ public final class FreeListAllocator {
             at++;
             start[at] = aligned;
             length[at] = size + tail;
-            free[at] = true;
+            setFree(at, true);
         }
-        free[at] = false;
+        setFree(at, false);
         if (tail > 0) {
             length[at] = size;
             insert(at + 1);
             start[at + 1] = aligned + size;
             length[at + 1] = tail;
-            free[at + 1] = true;
+            setFree(at + 1, true);
         }
         freeBytes -= size;
         return aligned;
@@ -197,7 +247,7 @@ public final class FreeListAllocator {
     /** The size of the allocated block at {@code offset}, or -1 if no allocated block starts there. */
     public long sizeOf(long offset) {
         int i = find(offset);
-        return i >= 0 && !free[i] ? length[i] : -1L;
+        return i >= 0 && !isFree(i) ? length[i] : -1L;
     }
 
     /**
@@ -207,17 +257,17 @@ public final class FreeListAllocator {
      */
     public long free(long offset) {
         int i = find(offset);
-        if (i < 0 || free[i]) {
+        if (i < 0 || isFree(i)) {
             throw new IllegalArgumentException("offset " + offset + " is not the start of an allocated block");
         }
         long size = length[i];
-        free[i] = true;
+        setFree(i, true);
         freeBytes += size;
-        if (i + 1 < blocks && free[i + 1]) {
+        if (i + 1 < blocks && isFree(i + 1)) {
             length[i] += length[i + 1];
             remove(i + 1);
         }
-        if (i > 0 && free[i - 1]) {
+        if (i > 0 && isFree(i - 1)) {
             length[i - 1] += length[i];
             remove(i);
         }
@@ -251,11 +301,11 @@ public final class FreeListAllocator {
             if (length[i] < 1) {
                 return "block " + i + " is empty";
             }
-            if (i > 0 && free[i] && free[i - 1]) {
+            if (i > 0 && isFree(i) && isFree(i - 1)) {
                 return "blocks " + (i - 1) + " and " + i + " are both free and adjacent";
             }
             position += length[i];
-            if (free[i]) {
+            if (isFree(i)) {
                 freeSum += length[i];
             }
         }

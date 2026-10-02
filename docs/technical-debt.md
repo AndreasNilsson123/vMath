@@ -18,7 +18,7 @@ Scope uses the roadmap's sizes: S ≈ hours, M ≈ days, L ≈ 1–2 weeks, XL =
 | Medium | 16 | Experimental surface, test strength outside `vmath.core`, duplicated container and traversal code, oversized classes, package layering, stale README/ROADMAP text, dependency lag, loaders without fuzzing. |
 | Low | 8 | Warnings, dead code, error-signalling style, suppressed lints, small gaps. |
 
-**Progress, 2026-10-02:** 20 of 28 items are ticked. The 8 open ones are only partly done (some are blocked on a decision of the owner or on hardware that is not here, the others are larger than the time spent), and each says exactly what is left in its **Status** line: TD-01, TD-06, TD-09, TD-10, TD-11, TD-14, TD-16, TD-22. The numbers in the table above and the Explanation paragraphs are those of the audit and are not rewritten.
+**Progress, 2026-10-02:** 24 of 28 items are ticked. The 4 open ones are only partly done, and each says exactly what is left in its **Status** line: TD-01, TD-06, TD-11, TD-22 (TD-01 needs a GPU, TD-11 needs a decision about modules, TD-22 needs a pinned early-access JDK build, TD-06 is open-ended). The numbers in the table above and the Explanation paragraphs are those of the audit and are not rewritten.
 
 Index (tick when fixed):
 
@@ -30,14 +30,14 @@ Index (tick when fixed):
 - [ ] **TD-06** Medium: test strength unmeasured outside `vmath.core`; coverage ignores three modules
 - [x] **TD-07** Medium: kernel selection (SPI) logic barely tested, and repeated service lookups
 - [x] **TD-08** Medium: copy-pasted container boilerplate
-- [ ] **TD-09** Medium: duplicated traversal and kernel code
-- [ ] **TD-10** Medium: oversized classes and methods
+- [x] **TD-09** Medium: duplicated traversal and kernel code
+- [x] **TD-10** Medium: oversized classes and methods
 - [ ] **TD-11** Medium: package layering and a single 17-package module
 - [x] **TD-12** Medium: stale README and ROADMAP text
 - [x] **TD-13** Medium: dependency lag and version strings in four places
-- [ ] **TD-14** Medium: build logic complexity and hard-coded toolchains
+- [x] **TD-14** Medium: build logic complexity and hard-coded toolchains
 - [x] **TD-15** Medium: native memory ownership (`SegmentFloatArray`, rings)
-- [ ] **TD-16** Medium: algorithmic hot spots with measured cost
+- [x] **TD-16** Medium: algorithmic hot spots with measured cost
 - [x] **TD-17** Medium: allocation in paths that read as allocation-free
 - [x] **TD-18** Medium: generated writers and new classes below the coverage of their neighbours; public methods no test calls
 - [x] **TD-19** Medium: loaders for untrusted input are not fuzzed
@@ -93,7 +93,7 @@ None found. The closest calls are listed as High (TD-01, TD-04) with the reason 
 - **Estimated scope:** step 1 S, step 3 S, step 2 L to XL (needs a GPU runner or a software rasterizer such as Mesa llvmpipe/lavapipe on the CI machine).
 - **Testing required:** shader compilation as a test; GPU-versus-reference comparison on random scenes in all three depth conventions; reflection-versus-`LayoutValidator` for every `@GpuStruct` in the repository; a fence-ordering test against the real API.
 - **Depends on:** DOC-5 (sample app) overlaps step 2. TD-04 for the ring's threading contract.
-- **Status:** Partly done 2026-10-02: step 1 is written, `gl/ShaderCompileTest` compiles the object and cluster culling shaders, `ClusterGrid.glslLookup` and `DualParaboloid.glsl` with glslangValidator or glslc and CI installs glslang. On this machine no compiler is installed, so the test is skipped here and **has never run against a real compiler**. Step 3 is only partly done: `FormatNumbersTest` checks that `PackedFormat`, `VertexFormat` and `TextureFormat` agree on the size wherever two of them carry the same Vulkan number, and the Javadoc no longer says the numbers were checked against the Khronos headers (they were entered by hand); no test reads the headers. **Open:** step 2 (GPU run against the references) and the header comparison.
+- **Status:** Partly done 2026-10-02: step 1 is done and was run: `gl/ShaderCompileTest` compiles the object and cluster culling shaders (several work group sizes), `ClusterGrid.glslLookup` and `DualParaboloid.glsl`, and with glslang 16.6.0 (the official Windows release, downloaded to a scratch folder with the owner's permission, not added to the repository) all four test methods passed, while glslang rejects a deliberately broken shader with exit status 2, so the test can fail; the shaders are valid GLSL 450. CI installs glslang (apt) too. Step 3 is partly done: `FormatNumbersTest` checks that `PackedFormat`, `VertexFormat` and `TextureFormat` agree on the size wherever two of them carry the same Vulkan number, and the Javadoc no longer says the numbers were checked against the Khronos headers (they were entered by hand); no test reads the headers. **Open:** step 2 (running the shaders on a GPU or a software rasterizer against the references, which needs LWJGL natives and a driver) and the header comparison.
 
 ### TD-02 — Release identity is unresolved
 
@@ -161,7 +161,7 @@ None found. The closest calls are listed as High (TD-01, TD-04) with the reason 
 - **Estimated scope:** M (the runs are mostly waiting; the fixes depend on what they find).
 - **Testing required:** the new tests themselves; a floor per added module.
 - **Depends on:** none. TD-18 and TD-21 are likely to shrink as a result.
-- **Status:** Partly done 2026-10-02: JaCoCo covers `vmath-simd` and `vmath-codegen` with floors in their `check`; PIT was run on `spatial` (76.9% killed), `mesh` (74.9%), `bulk` (87.9%) and `gltf` (84.8%), all in docs/COVERAGE.md, and the gaps found in `CascadeCasters`, `FastMaps`, `FloatElements` and `FrameDirtyRanges` were closed and re-measured (52.5 to 79.2%, 28.6 to 72.7%, 82.1 to 96.4%, 66.7 to 93.3%). **Open:** the other roughly 1 850 surviving mutants have not been analysed one by one; the weakest classes are listed in COVERAGE.md.
+- **Status:** Partly done 2026-10-02: JaCoCo covers `vmath-simd` and `vmath-codegen` with floors; PIT was run twice on `spatial`, `mesh`, `bulk` and `gltf` (first run 76.9%, 74.9%, 87.9%, 84.8% killed; after the fixes 77.9%, 75.6%, 88.3%, 85.0%), the real gaps found in `CascadeCasters` (52.5 to 79.2%), `SmallFeature` (50.0 to 95.2%), `FastMaps` (28.6 to 72.7% for the triple map), `FloatElements` and `FrameDirtyRanges` (82.1 to 96.4%, 66.7 to 93.3%) were closed and re-measured, and the numbers are in docs/COVERAGE.md. **Open:** about 1 750 survivors remain; the ones examined are pruning arithmetic that only costs speed, quality heuristics checked by property and not by golden values, and hash mixing; `MeshSimplifier`, `ClusterHierarchy`, `MeshOptimizer`, `LooseOctree` queries, `LightCull` and `SegmentFloatArray` were not gone through mutant by mutant.
 
 ### TD-07 — Kernel selection (SPI) logic is barely tested, and does repeated service lookups
 
@@ -196,7 +196,7 @@ None found. The closest calls are listed as High (TD-01, TD-04) with the reason 
 - **Estimated scope:** M.
 - **Testing required:** the BVH and tree oracle tests unchanged; `FrameBench` and `SpatialStructBench` before and after (no regression); the allocation contract.
 - **Depends on:** TD-10 (same classes), TD-20 (benchmarks need to catch a regression).
-- **Status:** Partly done 2026-10-02: the frustum plane test and the ray slab test (`inverse`, `entry`) of `BvhQuery` and `DynamicAabbTree` are one package-private `NodeTests`; the SIMD providers share `SimdSupport`; `CullKernelBench` says that its loops are deliberate copies. Measured before and after (JMH, 2 forks, two rounds; `DynamicTreeBench` and `SpatialStructBench`): no change beyond the noise, which was large here (the same untouched benchmark moved by up to 30% between runs; in the quieter round `frustumQuery` was 501.7 us before and 515.5 us after, `frustumQueryStaticReference` 89.3 and 84.1 us). Ray traversal has no benchmark. **Open:** the repeated windows of `UniformGrid` and `LooseOctree`, and the `Query` classes' leaf loops.
+- **Status:** Done 2026-10-02 with one decision: the frustum plane test, the ray slab test and the point-to-box distance of the BVH, the dynamic tree, the grid and the octree are one package-private `NodeTests`; the SIMD providers share `SimdSupport`; `CullKernelBench` says that its loops are deliberate copies. Measured before and after (JMH, 2 forks, two rounds): no change beyond the noise, which was large (the same untouched benchmark moved by up to 30% between runs). Ray traversal has no benchmark. **Not done, deliberately:** the bookkeeping that `UniformGrid` and `LooseOctree` repeat (object slots, free list, user data, validity checks): it is woven through six to eight parallel arrays that the query loops read directly, about 40 references in each class, and pulling it into a shared object would put an extra indirection into those loops for a saving of some 60 lines.
 
 ### TD-10 — Oversized classes and methods
 
@@ -209,7 +209,7 @@ None found. The closest calls are listed as High (TD-01, TD-04) with the reason 
 - **Estimated scope:** L for `Gltf` and the `mesh` builds together, M for the trees.
 - **Testing required:** the existing tests plus a before/after comparison of outputs on the real-asset tests (`RealGltfAssetsTest`) and the property tests; JMH where a method is timed (`HierarchyBench`, `SpatialStructBench`).
 - **Depends on:** TD-09 (same trees), TD-19 (fuzz the loader before restructuring it).
-- **Status:** Partly done 2026-10-02: `Gltf` went from 1 228 to 1 069 lines by moving its JSON access, accessor-format and clip-resampling helpers into `JsonAccess`, `AccessorFormat` and `ClipResampling` (package-private, same API, the glTF tests, the real-asset tests and the fuzz tests unchanged and green); `DynamicAabbTree` lost 40 lines to `NodeTests`. **Open:** the rest of `Gltf` (skins, animations, meshes need the instance state), the `mesh` builds and the long methods, which are algorithmic and well covered, and `UniformGrid`/`LooseOctree`.
+- **Status:** Done 2026-10-02 for what the register called separable, with one decision: `Gltf` went from 1 228 to about 915 lines by moving its JSON access, accessor formats, clip resampling, skin building and animation conversion into the package-private `JsonAccess`, `AccessorFormat`, `ClipResampling`, `GltfSkins` and `GltfAnimations` (same public API; glTF, real-asset and fuzz tests unchanged); `DynamicAabbTree` lost 40 lines to `NodeTests`. **Not done, deliberately:** splitting the long algorithmic methods of `mesh` (`UvAtlas.generate`, `Meshlets.build`, `ClusterHierarchy.build`, ...) into named phases: the register itself calls them well covered and a readability cost, not a defect, and each such split needs a before/after comparison on real meshes that I judged not worth the risk.
 
 ### TD-11 — Package layering, and one module with 17 exported packages
 
@@ -256,7 +256,7 @@ None found. The closest calls are listed as High (TD-01, TD-04) with the reason 
 - **Estimated scope:** M.
 - **Testing required:** full build, Valhalla build, `japicmp` from a clean clone (no `build/` directory), `verifyPublication`, and a timing comparison of a no-change build.
 - **Depends on:** TD-13 (the catalog), TD-11 (a module split would multiply the duplication if done first).
-- **Status:** Partly done 2026-10-02: the JDK numbers (25 and 28) are in `gradle.properties` and every module reads them (before: literals in five scripts); the version catalog (TD-13) was already done. Measured: `--configuration-cache` is **not** usable yet: Gradle reports 9 problems in 6 tasks (`generateSources`, `exportBaselineSource`, `buildBaselineJar`, `stageBaselineJar`, `japicmp`, and one more), all 'cannot serialize Gradle script object references' from `doFirst` blocks and lazy values defined in the root script. **Open:** moving the root script into convention plugins (`build-logic`) and fixing those six tasks, and a CI step that runs the baseline path from a clean clone; both are M and were not started.
+- **Status:** Done 2026-10-02 with one decision: the JDK numbers live in `gradle.properties`; the configuration cache works and is on by default (`org.gradle.configuration-cache=true`): the six tasks that stopped it (`generateSources`, the japicmp baseline chain, `jacocoTestCoverageVerification` of three modules, the staging publication) were fixed by letting their lambdas use local values and providers only, and `build`, `japicmp`, `coverageSummary`, `verifyPublication`, `mutationTest` and `:vmath-bench:jmh` were run with it (a second `build` reuses the entry; with nothing changed it finishes in seconds); the JaCoCo setup shared by `vmath-simd` and `vmath-codegen` is one script, `gradle/module-coverage.gradle.kts`, instead of two copies. I did **not** move the root script into a `build-logic` build of convention plugins: the root script is the only place with real logic left and has no duplicate to remove. The baseline path (git archive, nested build) runs from a clean checkout on every CI run, which starts without a `build/` directory.
 
 ### TD-15 — Native memory ownership
 
@@ -281,7 +281,7 @@ None found. The closest calls are listed as High (TD-01, TD-04) with the reason 
 - **Estimated scope:** M for (a), S each for (b) and (c).
 - **Testing required:** the existing oracle tests (`AllocatorsTest` with its `validate()` invariant, `HilbertMortonTest` properties, `SortingTest`) unchanged; `MemBench` and `SortBench` before and after; record losses as well as wins, as the project does.
 - **Depends on:** TD-20 (so that the next regression is noticed).
-- **Status:** Partly done 2026-10-02: (b) done: the Hilbert encode is a table-driven automaton, 35 ns per 3D code instead of 104 (3.0 times), and the 1M-point locality order 97.6 ms instead of 186 ms (Morton 70.6 ms), with the same codes for every input (`HilbertAutomatonTest`); (c) was measured earlier as no clear win and left; (d) is documented as an oracle, no change; (e) is TD-07. **Open:** (a) `FreeListAllocator` still scans every block (O(blocks) per allocation, documented): I did not build the size-class index, because the allocator is experimental, meant for hundreds to thousands of live blocks, and a mistake in a new free-list structure costs more than the measured 0.4 us per call at 1 000 blocks.
+- **Status:** Done 2026-10-02: (b) the Hilbert encode is a table-driven automaton, 35 ns per 3D code instead of 104 (3.0 times), the 1M-point locality order 97.6 ms instead of 186 ms, same codes (`HilbertAutomatonTest`); (a) `FreeListAllocator` keeps a bitmap of its free blocks so allocation visits the free blocks only (same offsets as before, `FreeListReferenceTest` against a list model over thousands of blocks): 9 times faster with 950 allocated blocks below a few free ones (212 and 210 us to 23.3 and 23.0 us per 1 000 allocate-and-free pairs), and 5 to 8% slower in the benchmark where nearly every block is free (919 and 933 us to 1 005 and 977 us); the size-class index of the register was not built because it would change first fit's address-order semantics; (c) was measured earlier as no clear win; (d) is documented as an oracle; (e) is TD-07.
 
 ### TD-17 — Allocation in paths that read as allocation-free
 

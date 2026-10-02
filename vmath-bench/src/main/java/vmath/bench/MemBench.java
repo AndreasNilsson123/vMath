@@ -37,6 +37,7 @@ public class MemBench {
     private ArenaAllocator arena;
     private SlabAllocator slab;
     private FreeListAllocator freeList;
+    private FreeListAllocator crowded; // 950 allocated blocks below a few free ones: the case where most blocks the scan meets are allocated
     private RingAllocator ring;
     private HandleRegistry registry;
     private final long[] handles = new long[1000];
@@ -54,6 +55,14 @@ public class MemBench {
         arena = new ArenaAllocator(1 << 24);
         slab = new SlabAllocator(64, 1000);
         freeList = new FreeListAllocator(1 << 24, FreeListAllocator.Strategy.BEST_FIT);
+        crowded = new FreeListAllocator(1 << 20, FreeListAllocator.Strategy.FIRST_FIT);
+        long[] blocks = new long[1000];
+        for (int i = 0; i < blocks.length; i++) {
+            blocks[i] = crowded.allocate(64, 16);
+        }
+        for (int i = 950; i < blocks.length; i += 2) {
+            crowded.free(blocks[i]); // free holes near the end, separated by allocated blocks
+        }
         ring = new RingAllocator(1 << 20, 3);
         registry = new HandleRegistry(1000);
         SplittableRandom r = new SplittableRandom(5);
@@ -109,6 +118,17 @@ public class MemBench {
         }
         for (int i = 0; i < 1000; i++) {
             freeList.free(offsets[order[i]]);
+        }
+        return sum;
+    }
+
+    @Benchmark
+    public long freeListCrowdedAllocateFree1000() {
+        long sum = 0;
+        for (int i = 0; i < 1000; i++) {
+            long o = crowded.allocate(64, 16);
+            sum += o;
+            crowded.free(o);
         }
         return sum;
     }

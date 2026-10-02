@@ -54,6 +54,12 @@ Nothing has been released yet; the baseline for the compatibility check is the t
 - `FloatElements` (public, cannot be extended outside the package) is the base class of `Vec3fArray`, `Vec4fArray`, `QuatArray`, `Mat4fArray` and `TransformArray`: the shared methods are inherited instead of repeated. Growth no longer overflows `int` silently for absurd sizes (`OutOfMemoryError` with a message).
 - `Gltf` keeps its JSON tree in `JsonObject` and `JsonArray` (package-private), so it needs no unchecked cast, and its accessor-format, JSON-access and clip-resampling helpers are the package-private classes `AccessorFormat`, `JsonAccess` and `ClipResampling`. The JDK numbers of the build are in `gradle.properties`. `BvhQuery` and `DynamicAabbTree` share their node tests (`NodeTests`), and the two SIMD providers share `SimdSupport`.
 - `Hilbert.encode2` and `encode3` are table-driven (an automaton over Morton digits): 35 ns per 3D code instead of 104 ns, the same codes; the locality order of 1M points with Hilbert went from 186 ms to 97.6 ms.
+- `FreeListAllocator` keeps a bitmap of its free blocks and allocation visits only those (same offsets as before; 9 times faster when most blocks are allocated, 5 to 8% slower when nearly all are free). The build is configuration-cache safe and the cache is on by default (`gradle.properties`); `Gltf`'s skin and animation conversion are the package-private `GltfSkins` and `GltfAnimations`; `NodeTests` also holds the point-to-box distance of the four spatial structures.
+- Tests: `FreeListReferenceTest` (against a list model), `SmallFeatureTest` (`SmallFeature` and `Distance` stages against their formulas), `HilbertAutomatonTest`; `ShaderCompileTest` has run against glslang 16.6.0 and passed.
+
+### Fixed
+- `BvhQuery.raycast` and `DynamicAabbTree.Query.raycast` missed a box when the ray's origin lay exactly on one of its faces and the ray's direction was zero along that axis (an axis-parallel ray running along a face): the slab test produced an empty interval. Now such a ray touches the box, as `Intersectionf.rayAabb` says. Found by seed 23 of the nightly-style sweep; `BvhTest` and `DynamicAabbTreeTest` have the case.
+- `CamerafTest.frustumAgreesWithTheProjection` expected the wrong side of the near plane for reversed-Z cameras (a test bug, the frustum was right).
 
 ### Deprecated
 - `vmath.gl.Std140`, for removal: use `GlslType`, `StructLayout`, `GpuWriter` or a generated `@GpuStruct` writer.

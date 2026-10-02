@@ -11,7 +11,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -414,12 +413,18 @@ public final class Gltf {
 
     // ---------------------------------------------------------------- reference checks
 
-    private int accessorRef(Object o, String what) {
+    /** The accessor index an integer in the JSON names; {@link GltfException} when there is no such accessor. */
+    int accessorRef(Object o, String what) {
         int a = (int) num(o, what);
         if (a < 0 || a >= accessors.size()) {
             throw new GltfException(what + " refers to accessor " + a + " which does not exist");
         }
         return a;
+    }
+
+    /** The parsed JSON root, for the package-private builders. */
+    Map<String, Object> root() {
+        return root;
     }
 
     // ---------------------------------------------------------------- simple access
@@ -850,7 +855,8 @@ public final class Gltf {
         }
     }
 
-    private int[] parents() {
+    /** The parent node of every node, -1 for roots. */
+    int[] parents() {
         int[] parent = new int[nodes.size()];
         Arrays.fill(parent, -1);
         for (int i = 0; i < parent.length; i++) {
@@ -874,114 +880,7 @@ public final class Gltf {
         if (cached != null) {
             return cached;
         }
-        List<Object> skins = list(root.get("skins"));
-        Map<String, Object> s = obj(skins.get(index), "skins[" + index + "]");
-        List<Object> jl = list(s.get("joints"));
-        int n = jl.size();
-        if (n < 1) {
-            throw new GltfException("skins[" + index + "] has no joints");
-        }
-        int[] jointNode = new int[n];
-        Map<Integer, Integer> slot = new HashMap<>();
-        for (int k = 0; k < n; k++) {
-            jointNode[k] = (int) num(jl.get(k), "joint");
-            if (jointNode[k] < 0 || jointNode[k] >= nodes.size() || slot.put(jointNode[k], k) != null) {
-                throw new GltfException("skins[" + index + "] has a bad or repeated joint node " + jointNode[k]);
-            }
-        }
-        int[] nodeParent = parents();
-        // the parent of a joint is its direct parent node when that is a joint too; a joint whose nearest joint ancestor is further up has a node in between
-        int[] parentSlot = new int[n];
-        int[] depth = new int[n];
-        for (int k = 0; k < n; k++) {
-            int direct = nodeParent[jointNode[k]];
-            parentSlot[k] = direct >= 0 && slot.containsKey(direct) ? slot.get(direct) : -1;
-            int up = direct;
-            while (parentSlot[k] < 0 && up >= 0) {
-                if (slot.containsKey(up)) {
-                    throw new GltfException("skins[" + index + "]: a node that is not a joint sits between joints " + up + " and " + jointNode[k]);
-                }
-                up = nodeParent[up];
-            }
-        }
-        for (int k = 0; k < n; k++) {
-            int d = 0, cur = k;
-            while (parentSlot[cur] >= 0) {
-                cur = parentSlot[cur];
-                d++;
-            }
-            depth[k] = d;
-        }
-        Integer[] order = new Integer[n];
-        for (int k = 0; k < n; k++) {
-            order[k] = k;
-        }
-        Arrays.sort(order, (a, b) -> depth[a] != depth[b] ? Integer.compare(depth[a], depth[b]) : Integer.compare(a, b));
-        int[] skinToSkeleton = new int[n];
-        for (int j = 0; j < n; j++) {
-            skinToSkeleton[order[j]] = j;
-        }
-        int[] parents = new int[n];
-        int[] nodesInOrder = new int[n];
-        float[] bind = new float[n * 10];
-        String[] names = new String[n];
-        for (int j = 0; j < n; j++) {
-            int k = order[j];
-            parents[j] = parentSlot[k] < 0 ? -1 : skinToSkeleton[parentSlot[k]];
-            nodesInOrder[j] = jointNode[k];
-            Node node = nodes.get(jointNode[k]);
-            names[j] = node.name() != null ? node.name() : "joint" + jointNode[k];
-            float[] t = node.translation(), r = node.rotation(), sc = node.scale();
-            if (node.matrix() != null) {
-                Mat4f.Trs trs = Mat4f.fromArray(node.matrix(), 0).decompose();
-                t = new float[] {trs.translation().x(), trs.translation().y(), trs.translation().z()};
-                r = new float[] {trs.rotation().x(), trs.rotation().y(), trs.rotation().z(), trs.rotation().w()};
-                sc = new float[] {trs.scale().x(), trs.scale().y(), trs.scale().z()};
-            }
-            System.arraycopy(t, 0, bind, j * 10, 3);
-            System.arraycopy(r, 0, bind, j * 10 + 3, 4);
-            System.arraycopy(sc, 0, bind, j * 10 + 7, 3);
-        }
-        Skeleton skeleton;
-        try {
-            skeleton = new Skeleton(parents, bind, names);
-        } catch (IllegalArgumentException e) {
-            throw new GltfException("skins[" + index + "]: " + e.getMessage(), e);
-        }
-        float[] ibm = null;
-        if (s.get("inverseBindMatrices") != null) {
-            int acc = accessorRef(s.get("inverseBindMatrices"), "inverseBindMatrices");
-            AccessorInfo info = accessorInfo(acc);
-            if (!info.type().equals("MAT4") || info.count() < n) {
-                throw new GltfException("skins[" + index + "]: inverseBindMatrices must be MAT4 with at least one per joint");
-            }
-            float[] raw = readFloats(acc);
-            ibm = new float[n * 16];
-            for (int k = 0; k < n; k++) {
-                System.arraycopy(raw, k * 16, ibm, skinToSkeleton[k] * 16, 16);
-            }
-        }
-        // the world matrix above the skeleton: every root joint must hang from the same place
-        Mat4f rootTransform = Mat4f.IDENTITY;
-        Mat4f[] worlds = null;
-        boolean first = true;
-        for (int k = 0; k < n; k++) {
-            if (parentSlot[k] >= 0) {
-                continue;
-            }
-            int above = nodeParent[jointNode[k]];
-            if (above >= 0 && worlds == null) {
-                worlds = worldMatrices();
-            }
-            Mat4f here = above >= 0 ? worlds[above] : Mat4f.IDENTITY;
-            if (first) {
-                rootTransform = here;
-                first = false;
-            } else if (!rootTransform.approxEquals(here, 1e-4f)) {
-                throw new GltfException("skins[" + index + "]: the root joints hang below different transforms");
-            }
-        }
-        SkinData data = new SkinData(str(s, "name", null), skeleton, nodesInOrder, skinToSkeleton, ibm, rootTransform);
+        SkinData data = GltfSkins.build(this, index);
         skinCache.put(index, data);
         return data;
     }
@@ -1008,62 +907,7 @@ public final class Gltf {
      * channels are ignored). STEP becomes a pair of keys per step, CUBICSPLINE is sampled {@code cubicRate} times a second (and at every key).
      */
     public AnimationClip clip(int animation, SkinData skin, float cubicRate) {
-        if (!(cubicRate > 0f)) {
-            throw new IllegalArgumentException("cubicRate must be positive: " + cubicRate);
-        }
-        Map<String, Object> an = obj(list(root.get("animations")).get(animation), "animations[" + animation + "]");
-        List<Object> samplerList = list(an.get("samplers"));
-        Map<Integer, Integer> jointOfNode = new HashMap<>();
-        for (int j = 0; j < skin.jointNodes().length; j++) {
-            jointOfNode.put(skin.jointNodes()[j], j);
-        }
-        AnimationClip.Builder builder = AnimationClip.builder(skin.skeleton().jointCount());
-        Set<String> seen = new HashSet<>();
-        for (Object co : list(an.get("channels"))) {
-            Map<String, Object> ch = obj(co, "channel");
-            Map<String, Object> target = obj(ch.get("target"), "channel target");
-            String path = str(target, "path", "");
-            int node = (int) lng(target, "node", -1);
-            Integer joint = jointOfNode.get(node);
-            AnimationClip.Channel channel = switch (path) {
-                case "translation" -> AnimationClip.Channel.TRANSLATION;
-                case "rotation" -> AnimationClip.Channel.ROTATION;
-                case "scale" -> AnimationClip.Channel.SCALE;
-                default -> null;
-            };
-            if (joint == null || channel == null) {
-                continue;
-            }
-            if (!seen.add(joint + ":" + path)) {
-                throw new GltfException("animations[" + animation + "] has two channels for " + path + " of node " + node);
-            }
-            int si = (int) lng(ch, "sampler", -1);
-            if (si < 0 || si >= samplerList.size()) {
-                throw new GltfException("a channel refers to sampler " + si + " which does not exist");
-            }
-            Map<String, Object> sm = obj(samplerList.get(si), "animation sampler");
-            String interpolation = str(sm, "interpolation", "LINEAR");
-            float[] times = readFloats(accessorRef(sm.get("input"), "sampler input"));
-            float[] values = readFloats(accessorRef(sm.get("output"), "sampler output"));
-            int comps = channel.components();
-            int perKey = interpolation.equals("CUBICSPLINE") ? 3 : 1;
-            if (values.length != times.length * comps * perKey) {
-                throw new GltfException("animation sampler output has " + values.length + " values for " + times.length + " keys of " + interpolation + " "
-                        + path);
-            }
-            float[][] converted = switch (interpolation) {
-                case "LINEAR" -> new float[][] {times, values};
-                case "STEP" -> stepToLinear(times, values, comps);
-                case "CUBICSPLINE" -> resampleCubic(times, values, comps, cubicRate);
-                default -> throw new GltfException("unknown interpolation " + interpolation);
-            };
-            try {
-                builder.track(joint, channel, converted[0], converted[1]);
-            } catch (IllegalArgumentException e) {
-                throw new GltfException("animations[" + animation + "]: " + e.getMessage(), e);
-            }
-        }
-        return builder.build();
+        return GltfAnimations.clip(this, animation, skin, cubicRate);
     }
 
 }

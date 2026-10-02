@@ -573,7 +573,7 @@ public final class UniformGrid {
             if (b[o] > x1 || b[o + 3] < x0 || b[o + 1] > y1 || b[o + 4] < y0 || b[o + 2] > z1 || b[o + 5] < z0) {
                 return false;
             }
-            return r2 < 0f || distanceSquared(b, o, cx, cy, cz) <= r2;
+            return r2 < 0f || NodeTests.boxDistanceSquared(b, o, cx, cy, cz) <= r2;
         }
 
         private static float clampCoord(float v, UniformGrid g) {
@@ -600,7 +600,7 @@ public final class UniformGrid {
             float[] bx = g.box;
             for (int i = 0, n = g.bigCount; i < n; i++) {
                 int h = g.bigObjects[i];
-                out.offer(g.item[h], distanceSquared(bx, h * 6, x, y, z));
+                out.offer(g.item[h], NodeTests.boxDistanceSquared(bx, h * 6, x, y, z));
             }
             long limit = (long) MAX_CELL;
             int cx = clampCell(g.cellIndex(clampCoord(x, g)), limit);
@@ -658,15 +658,8 @@ public final class UniformGrid {
                     continue;
                 }
                 stamp[h] = epoch;
-                out.offer(g.item[h], distanceSquared(g.box, h * 6, x, y, z));
+                out.offer(g.item[h], NodeTests.boxDistanceSquared(g.box, h * 6, x, y, z));
             }
-        }
-
-        private static float distanceSquared(float[] b, int o, float px, float py, float pz) {
-            float dx = Math.max(Math.max(b[o] - px, 0f), px - b[o + 3]);
-            float dy = Math.max(Math.max(b[o + 1] - py, 0f), py - b[o + 4]);
-            float dz = Math.max(Math.max(b[o + 2] - pz, 0f), pz - b[o + 5]);
-            return dx * dx + dy * dy + dz * dz;
         }
     }
 }

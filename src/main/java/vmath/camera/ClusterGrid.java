@@ -268,7 +268,7 @@ public final class ClusterGrid {
     /**
      * GLSL for the fragment-side lookup of this grid: constants and a function {@code clusterIndex(fragCoord, viewDepth)} that compute {@link #clusterOf} with the same
      * formulas (one logarithm for the slice). {@code fragCoord} must be in the pixel convention the grid was built for ({@link #yDown()}) and {@code viewDepth} is the
-     * distance along the view direction, for example {@code -viewPosition.z}. Not compiled or run by the library's tests, which check the text against the numbers.
+     * distance along the view direction, for example {@code -viewPosition.z}. Compiled (with glslang, in {@code ShaderCompileTest}) but never run; the other tests check the text against the numbers.
      */
     public String glslLookup() {
         return "const uvec3 CLUSTER_GRID = uvec3(" + tilesX + "u, " + tilesY + "u, " + slices + "u);\n"

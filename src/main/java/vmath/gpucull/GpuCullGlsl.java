@@ -7,7 +7,7 @@ import vmath.gl.DrawElementsIndirectGpu;
  * GLSL for the compute shaders that do what {@link GpuCullReference} and {@link ClusterCullReference} do: one invocation per object (or cluster), the frustum test, the Hi-Z test
  * and an append to an indirect draw list. The struct declarations come from the generated {@code GLSL} constants of the layouts, so offsets cannot drift from the Java side.
  *
- * <p><b>Not compiled or run by the library's tests</b> (no graphics API is available to them): the tests check that the text is complete and consistent with the layouts, and the Java
+ * <p><b>Never run on a GPU.</b> {@code ShaderCompileTest} compiles the text with glslang when a compiler is installed (it passed with glslang 16.6.0 on 2026-10-02), and the other tests check that it is complete and consistent with the layouts; the Java
  * references were written first and the shaders from them, step by step. Treat the first run on a GPU as a test of the shader against the reference (compare the instance lists as sets
  * per draw, the cluster commands as sets).
  *

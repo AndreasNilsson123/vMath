@@ -489,7 +489,7 @@ public final class LooseOctree {
                     if (b[o] > x1 || b[o + 3] < x0 || b[o + 1] > y1 || b[o + 4] < y0 || b[o + 2] > z1 || b[o + 5] < z0) {
                         continue;
                     }
-                    if (r2 < 0f || distanceSquared(b, o, cx, cy, cz) <= r2) {
+                    if (r2 < 0f || NodeTests.boxDistanceSquared(b, o, cx, cy, cz) <= r2) {
                         out.add(t.item[h]);
                     }
                 }
@@ -530,7 +530,7 @@ public final class LooseOctree {
                 }
                 int n = stack[sp];
                 for (int h = t.firstObject[n]; h != NONE; h = t.next[h]) {
-                    out.offer(t.item[h], distanceSquared(b, h * 6, x, y, z));
+                    out.offer(t.item[h], NodeTests.boxDistanceSquared(b, h * 6, x, y, z));
                 }
                 int count = 0;
                 for (int i = 0; i < 8; i++) {
@@ -566,13 +566,6 @@ public final class LooseOctree {
                 }
             }
             out.finish();
-        }
-
-        private static float distanceSquared(float[] b, int o, float px, float py, float pz) {
-            float dx = Math.max(Math.max(b[o] - px, 0f), px - b[o + 3]);
-            float dy = Math.max(Math.max(b[o + 1] - py, 0f), py - b[o + 4]);
-            float dz = Math.max(Math.max(b[o + 2] - pz, 0f), pz - b[o + 5]);
-            return dx * dx + dy * dy + dz * dz;
         }
     }
 }

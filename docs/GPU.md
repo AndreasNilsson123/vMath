@@ -99,7 +99,7 @@ layouts (`position`, `normal`, `tangent`, `uv0`, ...). It describes; it calls no
 **Shared shader headers** (`ShaderHeader`). Generates the include file for a set of `StructLayout`s (the `LAYOUT` constant of every generated `XxxGpu`): guard, structs
 with nested structs first and each once, `uint`/`int`/`float` constants for flag bits and sizes, optional GLSL interface blocks, and a comment per struct with its size and
 member offsets so a layout change shows in a diff. GLSL and Slang output (`float3`, `float4x4`, ...); the output is deterministic, so a build can regenerate and compare.
-The text is never compiled by the library's tests; it is checked for structure, ordering, deduplication and name conflicts. Matrices are column-major in the data, and Slang
+The header text is checked by the library's tests for structure, ordering, deduplication and name conflicts. Matrices are column-major in the data, and Slang
 needs the matching layout option (see the class comment).
 
 **Layout validation** (`LayoutValidator`). Compares a Java `StructLayout` with reflection data (GL program introspection or SPIR-V decorations) that the caller reduces to
@@ -163,8 +163,7 @@ the bounds stay in the planar layout the SIMD cull needs.
 ## GPU-driven culling (`vmath.gpucull`, experimental)
 
 CULL-13: the CPU-side layouts and a **CPU reference** of what a culling compute shader does, so that the shader has an exact oracle. Nothing here talks to a graphics API, and
-**the shaders in `GpuCullGlsl` were never compiled or run**: they are text written from the Java references step by step, and the tests only check the text for completeness and for
-consistency with the generated layouts. The first run on a GPU should be compared with the reference (as sets per draw: GPU atomics give no order).
+**the shaders in `GpuCullGlsl` have never run on a GPU**: they are text written from the Java references step by step. The tests check the text for completeness and for consistency with the generated layouts, and `ShaderCompileTest` compiles them (object and cluster shaders at several work group sizes, `ClusterGrid.glslLookup`, `DualParaboloid.glsl`) with a real front end when `glslangValidator` or `glslc` is installed: on 2026-10-02 all four test methods passed with glslang 16.6.0, so the text is syntactically and type-correct GLSL 450; that says nothing about whether it computes the right thing. The first run on a GPU should be compared with the reference (as sets per draw: GPU atomics give no order).
 
 **Layouts** (generated writers and GLSL declarations): `CullObject` (32 bytes std430: box min, draw index, box max, flags), `CullView` (192 bytes std140: six planes, view-projection
 matrix, object count, pyramid size and level count, `nearW`, depth convention, flags), `ClusterCullObject` (80 bytes: geometry sphere, normal cone, level-of-detail sphere and error of the

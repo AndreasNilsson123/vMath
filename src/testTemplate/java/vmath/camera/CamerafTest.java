@@ -196,18 +196,19 @@ class CamerafTest {
                 continue;
             }
             Vec3f ndc = new Vec3f(clip.x() / clip.w(), clip.y() / clip.w(), clip.z() / clip.w());
-            float zLo = depth == DepthRange.NEGATIVE_ONE_TO_ONE ? -1f : 0f;
-            float margin = Math.min(Math.min(1f - Math.abs(ndc.x()), 1f - Math.abs(ndc.y())),
-                    Math.min(ndc.z() - zLo, 1f - ndc.z()));
-            boolean farIrrelevant = Float.isInfinite(c.far());
-            if (Math.abs(margin) < 1e-2f && !farIrrelevant) {
+            // the near plane is at z = -1 (GL) or 0 (zero-to-one) or, reversed, at 1; the far plane is at the other end of the range, and is infinite when far is
+            boolean reversed = depth == DepthRange.REVERSED_ZERO_TO_ONE;
+            float zNear = reversed ? 1f : depth == DepthRange.NEGATIVE_ONE_TO_ONE ? -1f : 0f;
+            float zFar = reversed ? 0f : 1f;
+            float direction = reversed ? -1f : 1f;
+            float nearMargin = (ndc.z() - zNear) * direction;
+            float farMargin = (zFar - ndc.z()) * direction;
+            boolean farIrrelevant = Float.isInfinite(c.far()) || reversed;
+            float margin = Math.min(Math.min(1f - Math.abs(ndc.x()), 1f - Math.abs(ndc.y())), Math.min(nearMargin, farIrrelevant ? 1f : farMargin));
+            if (Math.abs(margin) < 1e-2f) {
                 continue;
             }
-            boolean expected = Math.abs(ndc.x()) <= 1f && Math.abs(ndc.y()) <= 1f && ndc.z() >= zLo && (farIrrelevant || ndc.z() <= 1f);
-            if (farIrrelevant && (Math.abs(1f - Math.abs(ndc.x())) < 1e-2f || Math.abs(1f - Math.abs(ndc.y())) < 1e-2f
-                    || Math.abs(ndc.z() - zLo) < 1e-2f)) {
-                continue;
-            }
+            boolean expected = Math.abs(ndc.x()) <= 1f && Math.abs(ndc.y()) <= 1f && nearMargin >= 0f && (farIrrelevant || farMargin >= 0f);
             check(c.frustum().contains(p) == expected, i, depth + " contains vs projection, ndc " + ndc);
             if (expected) {
                 inside++;

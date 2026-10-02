@@ -48,8 +48,8 @@ Who releases what (the allocators do arithmetic on a range and never own the mem
 | `FreeListAllocator` best fit, allocate and free (up to 1 000 live blocks, random free order) | 0.4 us per call, 805 us for 1 000 of each |
 | `HandleRegistry` create, `denseIndex`, destroy | about 3 ns each |
 
-The free list scans its blocks on every allocation and shifts arrays on every split and merge, so its cost grows with the number of live blocks; that is fine for hundreds of allocations (pools of meshes and
-textures) and the wrong tool for hundreds of thousands (use `SlabAllocator`, or sub-allocate in two levels). A free-block index (size classes) would remove the scan and has not been built.
+The free list keeps a bitmap of its free blocks next to the block arrays, so an allocation visits the free blocks only (allocated ones are skipped 64 at a time) and returns the same offsets as before (`FreeListReferenceTest` compares it with a plain list model over thousands of blocks, both strategies). Splits and merges still shift the block arrays, so the cost still grows with the number of live blocks; that is fine for hundreds to thousands of allocations (pools of meshes and
+textures) and the wrong tool for hundreds of thousands (use `SlabAllocator`, or sub-allocate in two levels). Measured on 2026-10-02 (JMH, 2 forks, two rounds, `MemBench`): with 950 allocated blocks below a few free ones (`freeListCrowdedAllocateFree1000`, first fit) 1 000 allocate-and-free pairs went from 212 and 210 us to 23.3 and 23.0 us, 9 times faster; in the benchmark above, where the alignment padding leaves nearly every second block free, it is 5 to 8% slower (919 and 933 us before, 1 005 and 977 us after), because the scan has no allocated blocks to skip and pays for the bit tricks. A size-class index would also speed up the search for a big enough block, and was not built: the address-order semantics of first fit would change.
 
 ## Not covered
 

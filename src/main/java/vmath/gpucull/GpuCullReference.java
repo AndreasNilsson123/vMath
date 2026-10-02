@@ -26,7 +26,7 @@ import vmath.gl.GpuWriter;
  * frustum only; the caller renders them, builds the pyramid from that depth ({@link HiZPyramid#fromDepth}), then {@link #cullPhase2} tests every object against the new pyramid, draws
  * those that pass and were not drawn in phase 1, and records which objects are visible now (next frame's history).
  *
- * <p>The shader that does the same thing is {@link GpuCullGlsl#computeShader}; it is text that is not compiled here, and this class is what it is checked against by reading.
+ * <p>The shader that does the same thing is {@link GpuCullGlsl#computeShader}; it compiles with glslang (see {@code ShaderCompileTest}) but has never run, and this class is what it is checked against by reading.
  *
  * <p><b>Thread safety.</b> Stateless: the passes are static methods. The {@link Counters}, the buffers and the sets you pass in are not synchronised,
  * so two threads must not share one of them.

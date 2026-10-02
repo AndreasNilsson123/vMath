@@ -841,11 +841,11 @@ public final class DynamicAabbTree {
             while (sp > 0) {
                 int n = stack[--sp];
                 int o = n * 6;
-                if (distanceSquared(t.bounds, o, cx, cy, cz) > r2) {
+                if (NodeTests.boxDistanceSquared(t.bounds, o, cx, cy, cz) > r2) {
                     continue;
                 }
                 if (t.link[(n << 3) + LEFT] == NULL) {
-                    if (distanceSquared(t.tight, o, cx, cy, cz) <= r2) {
+                    if (NodeTests.boxDistanceSquared(t.tight, o, cx, cy, cz) <= r2) {
                         out.add(t.link[(n << 3) + ITEM]);
                     }
                 } else {
@@ -879,11 +879,11 @@ public final class DynamicAabbTree {
                 int n = stack[sp];
                 int l = t.link[(n << 3) + LEFT];
                 if (l == NULL) {
-                    out.offer(t.link[(n << 3) + ITEM], distanceSquared(t.tight, n * 6, x, y, z));
+                    out.offer(t.link[(n << 3) + ITEM], NodeTests.boxDistanceSquared(t.tight, n * 6, x, y, z));
                 } else {
                     int r = t.link[(n << 3) + RIGHT];
-                    float dl = distanceSquared(t.bounds, l * 6, x, y, z);
-                    float dr = distanceSquared(t.bounds, r * 6, x, y, z);
+                    float dl = NodeTests.boxDistanceSquared(t.bounds, l * 6, x, y, z);
+                    float dr = NodeTests.boxDistanceSquared(t.bounds, r * 6, x, y, z);
                     if (sp + 2 > stack.length) {
                         stack = Arrays.copyOf(stack, stack.length * 2);
                     }
@@ -904,13 +904,6 @@ public final class DynamicAabbTree {
                 }
             }
             out.finish();
-        }
-
-        private static float distanceSquared(float[] b, int o, float px, float py, float pz) {
-            float dx = Math.max(Math.max(b[o] - px, 0f), px - b[o + 3]);
-            float dy = Math.max(Math.max(b[o + 1] - py, 0f), py - b[o + 4]);
-            float dz = Math.max(Math.max(b[o + 2] - pz, 0f), pz - b[o + 5]);
-            return dx * dx + dy * dy + dz * dz;
         }
 
         /**
