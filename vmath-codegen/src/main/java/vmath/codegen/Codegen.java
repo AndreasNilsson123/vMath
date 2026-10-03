@@ -26,6 +26,8 @@ import java.util.stream.Stream;
  *   --sources DIR         hand-written main sources; copied to --out with @ValueType applied (Valhalla profile)
  *   --renames FILE        extra exact renames for the double output, as a properties file (JOML types)
  *   --valhalla            emit {@code value record} for @ValueType
+ *   --family-templates DIR  templates of a module below this one, read only to learn which types have a double twin (repeatable)
+ *   --gpu-register DIR    sources of a module below this one, read only so that {@code @GpuStruct} records can refer to its structs (repeatable)
  *   --gpu SRC=OUT         generate {@code <Name>Gpu} classes for {@code @GpuStruct} records found in SRC into OUT (repeatable)
  * </pre>
  */
@@ -43,6 +45,8 @@ public final class Codegen {
         Path renamesFile = null;
         boolean valhalla = false;
         List<Path[]> gpu = new ArrayList<>();
+        List<Path> familyTemplates = new ArrayList<>();
+        List<Path> gpuRegister = new ArrayList<>();
         for (int i = 0; i < args.length; i++) {
             switch (args[i]) {
                 case "--templates" -> templates = Path.of(args[++i]);
@@ -52,6 +56,8 @@ public final class Codegen {
                 case "--sources" -> sources = Path.of(args[++i]);
                 case "--renames" -> renamesFile = Path.of(args[++i]);
                 case "--valhalla" -> valhalla = true;
+                case "--family-templates" -> familyTemplates.add(Path.of(args[++i]));
+                case "--gpu-register" -> gpuRegister.add(Path.of(args[++i]));
                 case "--gpu" -> {
                     String[] pair = args[++i].split("=", 2);
                     if (pair.length != 2) {
@@ -63,7 +69,7 @@ public final class Codegen {
             }
         }
         try {
-            run(templates, testTemplates, out, testOut, sources, renamesFile, valhalla, gpu);
+            run(templates, testTemplates, out, testOut, sources, renamesFile, valhalla, gpu, familyTemplates, gpuRegister);
         } catch (Transformer.TemplateException e) {
             System.err.println("codegen: " + e.getMessage());
             System.exit(1);
@@ -72,6 +78,11 @@ public final class Codegen {
 
     static void run(Path templates, Path testTemplates, Path out, Path testOut, Path sources, Path renamesFile,
             boolean valhalla, List<Path[]> gpu) throws IOException {
+        run(templates, testTemplates, out, testOut, sources, renamesFile, valhalla, gpu, List.of(), List.of());
+    }
+
+    static void run(Path templates, Path testTemplates, Path out, Path testOut, Path sources, Path renamesFile,
+            boolean valhalla, List<Path[]> gpu, List<Path> familyTemplates, List<Path> gpuRegister) throws IOException {
         Map<String, String> exact = new HashMap<>();
         Map<String, String> families = new HashMap<>();
         if (renamesFile != null && Files.exists(renamesFile)) {
@@ -84,7 +95,11 @@ public final class Codegen {
 
         List<Path> mainFiles = javaFiles(templates);
         List<Path> testFiles = javaFiles(testTemplates);
-        for (Path f : concat(mainFiles, testFiles)) {
+        List<Path> known = concat(mainFiles, testFiles);
+        for (Path dir : familyTemplates) {
+            known = concat(known, javaFiles(dir));
+        }
+        for (Path f : known) {
             for (Transformer.Family fam : Transformer.families(read(f), f.getFileName().toString())) {
                 families.put(fam.name(), fam.twin());
             }
@@ -106,6 +121,11 @@ public final class Codegen {
                 gpuFiles.addAll(javaFiles(pair[0]));
             }
             GpuStructGenerator generator = new GpuStructGenerator();
+            for (Path dir : gpuRegister) {
+                for (Path f : javaFiles(dir)) {
+                    generator.register(read(f), f.getFileName().toString());
+                }
+            }
             for (Path f : gpuFiles) {
                 generator.register(read(f), f.getFileName().toString());
             }

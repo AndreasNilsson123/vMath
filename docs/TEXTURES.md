@@ -39,7 +39,7 @@ tests build their files; the tests use hand-built files, not files from a real e
 
 ## Tested against generated files
 
-`src/test/resources/assets/ktx2` holds four files written by `AssetFactory` with the layout the specification prescribes (header, level index, a basic data format
+`vmath-core/src/test/resources/assets/ktx2` holds four files written by `AssetFactory` with the layout the specification prescribes (header, level index, a basic data format
 descriptor, sorted key/value data, levels stored smallest first at 16-byte boundaries): a 64 x 64 BC1 sRGB texture with 7 levels (encoded by a small block encoder, decoded
 back by a decoder in the tests, every level within the RGB565 quantisation of the source), a 16 x 16 RGBA8 cube map with 5 levels, an 8 x 8 R8 array of 3 layers with 4
 levels, and a 4 x 4 file that declares 0 levels. The tests check every field of the container (alignment, ordering, that each level is where `TextureLayout` says and has the

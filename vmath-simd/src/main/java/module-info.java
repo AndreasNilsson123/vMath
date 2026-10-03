@@ -3,7 +3,7 @@
  * {@code --add-modules jdk.incubator.vector}; without it vmath falls back to its scalar kernels.
  */
 module vmath.simd {
-    requires transitive vmath;
+    requires transitive vmath.scene;
     requires jdk.incubator.vector;
 
     exports vmath.simd;

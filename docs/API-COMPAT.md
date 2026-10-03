@@ -1,6 +1,6 @@
 # API compatibility (japicmp)
 
-`./gradlew check` (and so `build`) compares the public API of the `vmath` jar with a **baseline jar built from a git tag**
+`./gradlew check` (and so `build`) compares the public API of the library with a **baseline jar built from a git tag**
 and fails on binary- or source-incompatible changes. The tool is the japicmp CLI, run by the `japicmp` task.
 
 ```
@@ -40,3 +40,5 @@ break. Consequences:
   report, and say so in the commit message. Types marked `@Experimental` are excluded from the check; the full policy is in `docs/VERSIONING.md`.
 
 The generated double twins and the float types share one jar, so a change to a template shows up twice in the report.
+
+**Since the module split (INF-6)** the baseline is still one jar (`v0.1.0` had a single module), and the new side is the jars of the four parts together (`vmath-core`, `vmath-geo`, `vmath-scene`, `vmath-render`; japicmp takes several archives for `--new`), so a class that moved between the jars does not count as removed: only a class that is in no part any more does. The aggregate jar has no classes and is not compared.

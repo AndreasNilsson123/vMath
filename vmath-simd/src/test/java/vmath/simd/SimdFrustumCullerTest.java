@@ -172,7 +172,7 @@ class SimdFrustumCullerTest {
         ModuleDescriptor d = ModuleFinder.of(Path.of(p)).find("vmath.simd").orElseThrow().descriptor();
         assertEquals(Set.of("vmath.simd"), d.exports().stream().map(ModuleDescriptor.Exports::source).collect(Collectors.toSet()));
         Set<String> requires = d.requires().stream().map(ModuleDescriptor.Requires::name).collect(Collectors.toSet());
-        assertTrue(requires.contains("vmath") && requires.contains("jdk.incubator.vector"), "requires " + requires);
+        assertTrue(requires.contains("vmath.scene") && requires.contains("jdk.incubator.vector"), "requires " + requires);
         assertFalse(d.requires().stream().filter(x -> x.name().equals("jdk.incubator.vector"))
                 .anyMatch(x -> x.modifiers().contains(ModuleDescriptor.Requires.Modifier.STATIC)));
         assertEquals(Set.of("vmath.simd.SimdFrustumKernelProvider"),

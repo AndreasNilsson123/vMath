@@ -112,4 +112,4 @@ mean anything, and writing outside what you own corrupts the object silently. `M
 
 1. Write it in the float template (`src/template/java/...`); mark float-only or double-only members with `@FloatOnly` / `@DoubleOnly`.
 2. If siblings could have it, add it to all of them and to the list above (`ApiParityTest.FAMILIES`); if it makes sense for some only, add it to `ApiParityTest.EXCEPTIONS` with the reason.
-3. Add a case to the matching test template (`src/testTemplate/java/...`): it is generated for both precisions.
+3. Add a case to the matching test template (`<module>/src/testTemplate/java/...`, in the module of the type): it is generated for both precisions.

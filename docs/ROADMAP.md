@@ -22,19 +22,20 @@ to answer, are in `docs/history.md`.
 
 ## 2. Architecture and rules
 
-Planned modules (INF-6, open; today the `core`, `geo`, `bulk`, `spatial`, `gl`, `mesh`, ... packages are all in the one module `vmath`, and only `vmath-annotations`, `vmath-codegen`, `vmath-validator`, `vmath-simd` and `vmath-bench` are separate):
+Modules (INF-6, done 2026-10-03: the library is four modules and an aggregate, built from `gradle/vmath-module.gradle.kts`; the tests span the parts and stay in the root project):
 
-| Module | Contents |
-|---|---|
-| `vmath-annotations` | `@GenerateDouble`, `@FloatOnly`, `@DoubleOnly`, `@ValueType`, `@Eps`, … (source retention, zero runtime cost) |
-| `vmath-codegen` | Generator tool, run as a Gradle plugin/task (not shipped) |
-| `vmath-core` | Vec/Quat/Mat, scalar utils, packed formats |
-| `vmath-geo` | Shapes, intersection tests, curves |
-| `vmath-bulk` | SoA/`MemorySegment` containers and transform/cull kernels |
-| `vmath-spatial` | BVH, octree, grid, culling framework |
-| `vmath-gl` | GPU layouts (std140/std430), indirect-draw structs, camera/render math |
-| `vmath-mesh` | Mesh processing, meshlets, tangents, LOD |
-| `vmath-bench` | JMH suite (not published) |
+| Module (Gradle project) | Packages | Needs |
+|---|---|---|
+| `vmath-annotations` | `@GenerateDouble`, `@FloatOnly`, `@DoubleOnly`, `@ValueType`, `@Experimental`, ... (build-time markers, `requires static`) | |
+| `vmath-codegen` | the generator tool (not published) | |
+| `vmath-validator` | the value-type validating annotation processor (not published) | |
+| `vmath-core` | `core`, `mem`, `color`, `tex` | |
+| `vmath-geo` | `geo`, `pack`, `physics` | core |
+| `vmath-scene` | `bulk`, `spatial`, `occlusion`, `anim`, `gl`, `util` | core, geo |
+| `vmath-render` | `camera`, `mesh`, `gltf`, `gpucull` | core, geo, scene |
+| `vmath` | no packages: the aggregate module, `requires transitive` all four | all |
+| `vmath-simd` | optional Vector API kernels (needs `--add-modules jdk.incubator.vector`) | scene |
+| `vmath-bench` | JMH suite (not published) | all |
 
 **Performance and memory contract** (write it in `docs/PERFORMANCE.md`, enforce in tests):
 1. Single objects → immutable values (JIT escape analysis today, Valhalla later).
@@ -110,8 +111,8 @@ Tasks:
       *Partial: JPMS done for `vmath`, `vmath.annotations` and `vmath.codegen` (`vmath` requires the annotations `static`, so
       it needs only `java.base` at run time), verified against the built jar by `ModuleDescriptorTest`. `vmath-bench` stays
       non-modular (JMH's generated code is not). `japicmp` is done (`docs/API-COMPAT.md`, baseline tag `v0.1.0`). Javadoc is linted by `check` (`-Xdoclint:all,-missing` with warnings as errors: broken references, bad HTML, malformed tags); checking for *missing* comments and record `@param` tags is open, and the LICENSE is MIT (added 2026-10, the owner's decision).*
-- [ ] **INF-6 (P1, M)** Restructure into multi-project Gradle build per the module table. → AF-2  
-      *Partial, decided 2026-10-03 not to split the root project yet: annotations, codegen, validator, simd and bench are modules; the 17 packages of the library are one JPMS module `vmath`. The dependencies between the packages are measured and acyclic (the table in `PackageLayeringTest`: `core` and `mem` at the bottom, then `geo`, `color`, `tex`; `bulk`, `pack`, `physics`; `anim`, `gl`, `spatial`; `occlusion`, `util`, `camera`, `mesh`; `gltf` and `gpucull` on top), so a split along these layers is possible, and the test now fails on any new edge or cycle, so the split stays mechanical while it waits. What the split costs, which is why it is not a side effect of other work: (1) per-module `src/template` and `src/testTemplate` directories and a generator run per module that knows the family renames of the modules below it (`Vec3f` to `Vec3d` is used by `geo` templates); (2) the compatibility baseline `v0.1.0` is one jar called `vmath`: classes that move to `vmath-core` or `vmath-geo` are seen as removed unless japicmp compares against the union of the new jars, and consumers of the module `vmath` need an aggregate module that `requires transitive` the parts; (3) one publication and one staging check per module; (4) the tests that span packages (`AllocationContractTest`, `ApiParityTest`, `DegenerateInputSweepTest`, the cookbook) need a home that depends on all modules; (5) JaCoCo floors, the Valhalla build and `ModuleDescriptorTest` per module. Estimated at XL in `docs/technical-debt.md` TD-11; the benefit (a consumer that needs only `core` and `geo` depends on less) is real but nothing in the library is blocked on it.*
+- [x] **INF-6 (P1, M)** Restructure into multi-project Gradle build per the module table. → AF-2  
+      *Done 2026-10-03: `vmath-core`, `vmath-geo`, `vmath-scene`, `vmath-render` and the aggregate `vmath` (table in section 2). The code generator runs per module, told where the templates and `@GpuStruct` records of the modules below are (`--family-templates`, `--gpu-register`); the japicmp baseline stays the one jar of `v0.1.0`, compared with the jars of the four parts together; each part is published, and the aggregate publishes a POM that depends on all four. The grouping is the layering measured by `PackageLayeringTest` (which also checks that no package uses a package of a module above it). Choices: the tests moved with the code (done 2026-10-03, nothing is left under the root `src/`): each test or test template lives in the lowest module that has everything it uses, worked out from its imports and the test classes it uses, and sees the test classes of the modules below (the helpers `Rnd`, `Alloc`, `Report` are in `vmath-core`); the tests that look at the whole library (allocation contract, API parity, module descriptors, layering, doc references, cookbook, the glTF tests) are in `vmath-render`, and the test assets are in `vmath-core`, next to `AssetFactory`. The aggregate is the project `vmath-all` published as `vmath`; the root project has no sources and holds the merged coverage, the mutation tests and the compatibility check; `scene` is a wide module of six packages: they form a chain (`bulk` below `spatial`, `anim` and `gl`; `occlusion` above `spatial`; `util` above `anim`), so a finer split is possible, but it gives modules of one or two packages for little gain. No class was renamed and no package was split between modules, so `import` lines in consumer code are unchanged; consumers that wrote `requires vmath` still get everything. Open: nothing in the library is blocked on a finer split of `scene`.*
 - [x] **INF-7 (P2, M)** Fuzzing/degenerate suite: zero vectors, denormals, NaN/Inf, huge magnitudes, near-singular
       matrices. Explicit expected behavior per op.  
       *Done for the 14 core types: `DegenerateInputSweepTest` (257 200 reflective calls, fails on unexpected exceptions or hidden NaN), `DegenerateContractfTest` (explicit cases, both precisions), `docs/ROBUSTNESS.md`. Found and fixed `normalize` of huge and tiny vectors. Shapes, meshes and bulk arrays are not covered.*

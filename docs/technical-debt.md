@@ -32,7 +32,7 @@ Index (tick when fixed):
 - [x] **TD-08** Medium: copy-pasted container boilerplate
 - [x] **TD-09** Medium: duplicated traversal and kernel code
 - [x] **TD-10** Medium: oversized classes and methods
-- [ ] **TD-11** Medium: package layering and a single 17-package module
+- [x] **TD-11** Medium: package layering and a single 17-package module
 - [x] **TD-12** Medium: stale README and ROADMAP text
 - [x] **TD-13** Medium: dependency lag and version strings in four places
 - [x] **TD-14** Medium: build logic complexity and hard-coded toolchains
@@ -220,7 +220,7 @@ None found. The closest calls are listed as High (TD-01, TD-04) with the reason 
 - **Estimated scope:** M for the moves, XL for the module split (templates and the generator need per-module directories).
 - **Testing required:** `ModuleDescriptorTest` per module, japicmp (the moves of stable classes need deprecation forwarders), the full build and the Valhalla build.
 - **Depends on:** TD-02 (coordinates), TD-05 (experimental classes move freely before promotion).
-- **Status:** Partly done 2026-10-02: `CascadeCasters` moved to `camera` (`spatial` no longer imports `camera`; `camera` now imports `spatial` and `bulk` for that one class) and the cone maths are `geo.NormalCone` (`mesh` uses it instead of `spatial`, though `Meshlets.addTo(ConeCull.Clusters)` still ties `mesh` to `spatial`); neither class was in the baseline, so nothing needed a forwarder. **Open, a decision for the owner:** whether `gpucull` stays in the core module, and the module split (INF-6), which is XL and changes the published artifacts. **Update 2026-10-03:** `PackageLayeringTest` measures the dependencies between the packages with `jdeps` and holds them to a table (no cycle, no edge the table does not list, no listed edge that the code does not use), so the layering cannot drift while the decision about the split is open; the split itself (INF-6) was assessed and not done, with the costs in `docs/ROADMAP.md`.
+- **Status:** Partly done 2026-10-02: `CascadeCasters` moved to `camera` (`spatial` no longer imports `camera`; `camera` now imports `spatial` and `bulk` for that one class) and the cone maths are `geo.NormalCone` (`mesh` uses it instead of `spatial`, though `Meshlets.addTo(ConeCull.Clusters)` still ties `mesh` to `spatial`); neither class was in the baseline, so nothing needed a forwarder. **Open, a decision for the owner:** whether `gpucull` stays in the core module, and the module split (INF-6), which is XL and changes the published artifacts. **Update 2026-10-03, the split is done:** the library is four modules and an aggregate (`docs/ROADMAP.md` INF-6), each package in one module, the modules acyclic by construction (a module cannot see the ones above it) and the packages inside them held to a table by `PackageLayeringTest` (no cycle, no edge the table does not list, no listed edge the code does not use, no edge pointing up a module). What is still open from the recommended fix: whether `gpucull` should be a module of its own (it stays in `vmath-render`, the widest consumer), and the finer split of `vmath-scene`.
 
 ### TD-12 — Stale README and ROADMAP text
 

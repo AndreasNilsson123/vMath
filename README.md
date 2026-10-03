@@ -4,25 +4,32 @@ Immutable 3D math for a Java/LWJGL engine, built so every type can become a Valh
 `value record` by flipping a build flag.
 
 ```
-src/template/java         float templates: Vec2/3/4, Quat, Mat3/4, Mat4x3, Transform, the geo shapes and intersections, Camera: the single source of truth for the f and d types
-src/testTemplate/java     float test templates (JOML-oracle property tests, generated for both precisions)
-src/main/java/vmath/
-  core        hand-written core types: integer vectors, Morton and Hilbert codes, SpatialHash, ClipSpace
+vmath-core/src/main/java/vmath/        module vmath.core: the value types and what needs nothing above them
+  core        hand-written core types: integer vectors, Morton and Hilbert codes, SpatialHash, ClipSpace (the float templates for Vec2/3/4, Quat, Mat2/3/4, Mat4x3, Transform are in src/template/java)
+  mem         allocators: arena, slab, free list, ring, persistently mapped upload ring
+  color       sRGB, HSV/HSL/Oklab, tone mapping, premultiplied alpha
+  tex         KTX2 and texture layouts
+vmath-geo/src/main/java/vmath/         module vmath.geo (needs core): shapes and queries
+  geo         the shapes, intersections, convex geometry (SAT, GJK/EPA, hulls), polygons, curves, SDFs (the float templates are in src/template/java)
+  pack        compact formats: half, unorm/snorm, RGB10A2, R11G11B10F, RGB9E5, octahedral, quaternions, quantizers
+  physics     rigid-body math: mass properties, integrators, contact manifolds and solver
+vmath-scene/src/main/java/vmath/       module vmath.scene (needs core, geo): data and structures
   bulk        SoA containers (Vec3/Vec4/Quat/Mat4/Transform/Bounds arrays, off-heap SegmentFloatArray), kernels, radix sort, prefix sums, DirtyRanges, HandleRegistry, VisibilitySet
   spatial     culling framework: FrustumCuller, CullPipeline, StaticBvh, DynamicAabbTree, UniformGrid, LooseOctree, LOD, light and cascade culling
   occlusion   software Hi-Z occlusion culling (conservative depth buffer, pipeline stage, GPU Hi-Z sizing)
-  camera      Jitter, Cascades, CubeFaces, PlanarViews, Stereo, DualParaboloid, clustered lighting (ClusterGrid, ClusterLights)
-  mesh        indexed meshes, primitives, normals/tangents, simplification, meshlets, cluster LOD, UV atlas, optimisation, GPU export
-  anim        skeletons, clips, poses, skinning, transform hierarchy
-  gltf        glTF 2.0 loader     tex   KTX2 and texture layouts
-  pack        compact formats: half, unorm/snorm, RGB10A2, R11G11B10F, RGB9E5, octahedral, quaternions, quantizers
+  anim        skeletons, clips, poses, skinning, transform hierarchy, IK, morph targets, root motion, clip compression
   gl          GPU layouts (std140/std430/scalar), @GpuStruct writers, indirect draws, vertex formats, shader headers, layout validation
+  util        random numbers, noise, springs, easing, spherical harmonics, IBL, debug lines
+vmath-render/src/main/java/vmath/      module vmath.render (needs core, geo, scene): what draws
+  camera      Cameraf (a float template), Jitter, Cascades, CubeFaces, PlanarViews, Stereo, DualParaboloid, clustered lighting (ClusterGrid, ClusterLights)
+  mesh        indexed meshes, primitives, normals/tangents, simplification, meshlets, cluster LOD, UV atlas, optimisation, GPU export
+  gltf        glTF 2.0 loader
   gpucull     GPU-driven culling: layouts and CPU reference passes, Hi-Z model, compute shader text
-  mem         allocators: arena, slab, free list, ring, persistently mapped upload ring
-  color       sRGB, HSV/HSL/Oklab, tone mapping, premultiplied alpha
-src/test/java             oracle helpers, contract tests (allocation, API parity, equality, module), cookbook tests
+each module also has src/testTemplate/java (float test templates: JOML-oracle property tests, generated for both precisions) and src/test/java (its tests: a test lives in the lowest module that has everything it uses, and sees the test classes of the modules below; the contract tests that span the library are in vmath-render: allocation, API parity, module descriptors, layering, doc references, cookbook)
+vmath-all                 the aggregate module `vmath`: no packages, it requires the four parts (a consumer that wants everything writes `requires vmath`)
 vmath-annotations         @GenerateDouble, @FloatOnly, @DoubleOnly, @Eps, @ValueType, @GpuStruct, @Experimental
 vmath-codegen             build-time generator (float template -> float + double types, @GpuStruct writers)
+vmath-validator           javac annotation processor: the identity rules of the value types, checked on the typed syntax tree
 vmath-simd                optional Vector API kernels (needs --add-modules jdk.incubator.vector)
 vmath-bench               JMH benchmarks and a headless sample
 ```
@@ -54,7 +61,7 @@ vmath-bench               JMH benchmarks and a headless sample
 
 ## Float is the source of truth
 
-Edit only the templates under `src/template/java` and `src/testTemplate/java`. `./gradlew build` generates both the
+Edit only the templates under `vmath-core/src/template/java`, `vmath-geo/src/template/java`, `vmath-render/src/template/java` and the `src/testTemplate/java` of each module. `./gradlew build` generates both the
 float and the double types into `build/generated/`: nothing generated is checked in. Precision differences are
 declared with annotations (`@FloatOnly`, `@DoubleOnly`, `@Eps`), not comments. See [docs/CODEGEN.md](docs/CODEGEN.md).
 
@@ -128,7 +135,7 @@ What the library does not do (yet), in one place; each row names the document th
 | Formats | No entropy-coded vertex and index buffer compression (the quantization it needs is built) | `docs/FORMATS.md` |
 | Geometry and maths | No NURBS, dual quaternions; the convex queries (`Gjk`) only converge to about 1e-3 of the radius in penetration depth for nearly concentric smooth shapes; `SurfaceNets` rounds sharp edges of a signed distance field by about a cell and samples the whole box | `docs/GEOMETRY.md` |
 | Utilities | No blue-noise tables, scrambled or higher-dimensional Sobol sequences, 4D simplex noise | `docs/ROADMAP.md` |
-| Modularity | One JPMS module exports all packages; a consumer cannot depend on a subset | `docs/technical-debt.md` TD-11 |
+| Modularity | Four JPMS modules (core, geo, scene, render) and the aggregate `vmath`; a consumer of only `vmath.core` or `vmath.geo` depends on less, but `scene` is one module of six packages (bulk, spatial, occlusion, anim, gl, util) | `docs/ROADMAP.md` INF-6 |
 
 ## Build and benchmarks
 

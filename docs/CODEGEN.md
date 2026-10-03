@@ -1,18 +1,20 @@
 # Code generation
 
 vmath is written once, in float, and the build generates everything else. There are no checked-in generated
-files: `./gradlew build` runs the `generateSources` task, which writes to `build/generated/sources/vmath/`.
+files: `./gradlew build` runs the `generateSources` task of each module (`vmath-core`, `vmath-geo`, `vmath-scene`, `vmath-render`) and of the root project, which write to `build/generated/sources/vmath/` of their own project.
+
+**Several modules.** A template of a module uses the twins of the types of the modules below it (the `geo` shapes use `Vec3f`, `Cameraf` uses both), so each run is told where to look: `--family-templates DIR` (repeatable) names the template directory of a module below, read only to learn which types have a double twin, and `--gpu-register DIR` names its hand-written sources, read only so that a `@GpuStruct` can refer to the structs there. Nothing of the modules below is generated again. The shared build logic is `gradle/vmath-module.gradle.kts`; each module also generates its test templates (and the test `@GpuStruct` records) with the families of its own templates, of the templates and test templates of the modules below, and the structs below. `CodegenModulesTest` covers both options.
 
 ```
-src/template/java      float templates for main   ─┐
-src/testTemplate/java  float templates for tests   ├─► vmath-codegen ─► build/generated/sources/vmath/{main,test}
-src/main/java          hand-written code           ┘     (float twin + double twin, both emitted)
+<module>/src/template/java   float templates of a module (core, geo, render) ─┐
+<module>/src/main/java       its hand-written code                            ├─► vmath-codegen ─► <module>/build/generated/sources/vmath/main
+<module>/src/testTemplate/java    float templates for tests                       ┘   (float twin + double twin, both emitted)
 codegen-renames.properties   extra renames for the double output (the JOML oracle types)
 ```
 
 ## Annotations
 
-They live in `vmath-annotations` and have source retention. The generator removes them from the generated output, except `@ValueType`, which stays so that the validating processor (below) can tell a value type by its declaration.
+They live in `vmath-annotations` and have source retention, except `@ValueType` and `@Experimental`, which have class retention. The generator removes them from the generated output, except `@ValueType`, which stays so that the validating processor (below) can tell a value type by its declaration.
 
 | Annotation | On | Effect |
 |---|---|---|
@@ -52,14 +54,14 @@ Mistakes fail the build with `Template.java:LINE: message`:
 ## Valhalla profile
 
 `./gradlew build -Pvalhalla` passes `--valhalla` to the generator, which emits `public value record`
-for every `@ValueType` type. In that profile the hand-written `src/main/java` sources go through the generator
+for every `@ValueType` type. In that profile the hand-written `src/main/java` sources of each module go through the generator
 as well (only annotation stripping and `@ValueType`), so hand-written value types work the same way.
 Requires a JDK 28 EA build with JEP 401.
 
 ## The validating processor: `vmath-validator`
 
 `vmath-validator` is a javac annotation processor (a tool, like the generator: not published) that the `vmath` build runs on every compile of the main sources. It checks the identity rules of the value
-types on the attributed syntax tree, so it sees what the compiler resolved rather than what the text says: a type is a value type when its declaration carries `@ValueType`, whatever the variable is called, whether it
+types on the attributed syntax tree, so it sees what the compiler resolved rather than what the text says: a type is a value type when its declaration carries `@ValueType` (class retention, so it is visible on the types of the other modules and in the tests), whatever the variable is called, whether it
 is a method result, a field of another class, a lambda parameter or `var`. It reports through the compiler's own diagnostics (an error at the line, the build fails):
 
 | Rule | Rejected | Allowed |
@@ -70,17 +72,15 @@ is a method result, a field of another class, a lambda parameter or `var`. It re
 | identity collections | IdentityHashMap, WeakHashMap, WeakReference, SoftReference, PhantomReference with a value type argument (explicit or inferred by the diamond) | the same with other types |
 | declaration | a `@ValueType` that is not a record, a `synchronized` method or a `finalize()` in one | |
 
-`-Avmath.validator=warn` turns the errors into warnings and `-Avmath.validator=off` turns the processor off. **What it cannot see:** the marker has source retention, so a type is only known to be a value type
-when it is compiled together with the code that uses it. That is the case for the library's own sources (the generated float and double twins keep the annotation) and not for code that uses `vmath` from a jar, so the
-test sources are not checked (the earlier text-based ValueTypeChecker, which scanned names in the sources, is gone; the sources it scanned are the ones the processor now sees with types). ValueTypeProcessorTest compiles
+`-Avmath.validator=warn` turns the errors into warnings and `-Avmath.validator=off` turns the processor off. **What it sees:** the library's own types (the generated float and double twins keep the annotation) in every module and in the tests; the marker has class retention, so it is read from the class files of the modules below. Code that uses `vmath` from a jar is not checked unless it runs the processor too (the earlier text-based ValueTypeChecker, which scanned names in the sources, is gone). ValueTypeProcessorTest compiles
 a violating program for each rule, one that passes, and checks the line number, the message and the options. The processor claims no annotations, so the build turns off javac's `-Xlint:processing` warning about that.
 
 ## Adding a type
 
-1. Create `src/template/java/vmath/<pkg>/Aabbf.java` (name ending in `f`) annotated `@GenerateDouble`
+1. Create `<module>/src/template/java/vmath/<pkg>/Aabbf.java` in the module that owns the package (name ending in `f`) annotated `@GenerateDouble`
    (and `@ValueType` for value records).
 2. Put float-vs-double differences behind `@FloatOnly` / `@DoubleOnly` / `@Eps`.
-3. Create the matching `src/testTemplate/java/.../AabbfTest.java` with `@GenerateDouble`.
+3. Create the matching `<module>/src/testTemplate/java/.../AabbfTest.java` with `@GenerateDouble`.
 4. `./gradlew build`. Look at the generated files if something surprises you.
 
 ## Tests of the generator

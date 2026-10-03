@@ -11,6 +11,8 @@ The setup is in `gradle/publishing.gradle.kts`.
 ./gradlew publishAllPublicationsToStagingRepository verifyPublication
 ```
 
+The artifacts are `vmath-annotations`, `vmath-core`, `vmath-geo`, `vmath-scene`, `vmath-render`, `vmath-simd` and the aggregate `vmath`, whose jar holds only the module descriptor and whose POM depends on the four parts (so `io.github.andreasnilsson123:vmath` still gives the whole library, and `vmath-core` or `vmath-geo` alone give less). The code generator, the validator and the benchmarks are not published.
+
 This writes `build/staging-repo/` (a Maven repository layout) and checks, per module, that the jar, sources jar, javadoc jar, POM and module metadata exist, that the POM carries the
 fields Maven Central requires (name, description, url, licence, developer, SCM), that each jar contains the licence, that the library jar has its `module-info.class`, and that the
 javadoc jar has documentation. Nothing leaves the machine.

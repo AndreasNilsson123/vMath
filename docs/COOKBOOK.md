@@ -1,8 +1,8 @@
 # Cookbook
 
 Four recipes, each short enough to read in a few minutes and each **compiled and run by the test suite**: the code blocks below are cut out of
-`src/test/java/vmath/cookbook/CookbookTest.java` by `CookbookDocTest`, which fails when this file and that one disagree. To change a recipe, edit the test and regenerate this
-file with `./gradlew :test --tests "vmath.cookbook.CookbookDocTest" -Dvmath.writeDocs=true` (edit `docs/COOKBOOK.template.md` for the prose).
+`vmath-render/src/test/java/vmath/cookbook/CookbookTest.java` by `CookbookDocTest`, which fails when this file and that one disagree. To change a recipe, edit the test and regenerate this
+file with `./gradlew :vmath-render:test --tests "vmath.cookbook.CookbookDocTest" -Dvmath.writeDocs=true` (edit `docs/COOKBOOK.template.md` for the prose).
 
 The recipes use the experimental layers (`vmath.gpucull`, `vmath.mem`) and the stable ones side by side; what the shaders do is the part this library does not run (see `docs/GPU.md`).
 

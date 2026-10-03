@@ -12,6 +12,8 @@ apply(plugin = "maven-publish")
 
 val valhallaBuild = providers.gradleProperty("valhalla").isPresent
 val publishDescription = project.extra["publishDescription"] as String
+// the aggregate lives in the project vmath-all and is published as `vmath`
+val publishedName = if (project.extra.has("publishArtifactId")) project.extra["publishArtifactId"] as String else project.name
 val repoUrl = "https://github.com/AndreasNilsson123/vMath"
 
 extensions.configure<JavaPluginExtension> {
@@ -27,8 +29,9 @@ extensions.configure<PublishingExtension> {
     publications {
         create<MavenPublication>("maven") {
             from(components["java"])
+            artifactId = publishedName
             pom {
-                name.set(project.name)
+                name.set(publishedName)
                 description.set(publishDescription)
                 url.set(repoUrl)
                 inceptionYear.set("2026")
@@ -78,7 +81,7 @@ tasks.withType<PublishToMavenRepository>().configureEach { enabled = !valhallaBu
 
 // Snapshot publications get a timestamp in their file names, so a second staging run would leave two sets of files side by side: clear this module's staged files first.
 val cleanStaging = tasks.register<Delete>("cleanStaging") {
-    delete(rootProject.layout.buildDirectory.dir("staging-repo/${project.group.toString().replace('.', '/')}/${project.name}"))
+    delete(rootProject.layout.buildDirectory.dir("staging-repo/${project.group.toString().replace('.', '/')}/$publishedName"))
 }
 tasks.withType<PublishToMavenRepository>().configureEach {
     if (repository.name == "staging") {
@@ -102,7 +105,7 @@ tasks.register("verifyPublication") {
     description = "Checks the staged artifacts of this module: jars, POM metadata required by Maven Central, licence and module descriptor in the jars."
     dependsOn("publishMavenPublicationToStagingRepository")
     val staging = rootProject.layout.buildDirectory.dir("staging-repo")
-    val artifactId = project.name
+    val artifactId = publishedName
     val groupPath = project.group.toString().replace('.', '/')
     val moduleVersion = project.version.toString()
     doLast {

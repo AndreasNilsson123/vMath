@@ -12,7 +12,7 @@ the mutants that survive point at those lines.
 ./gradlew jacocoTestCoverageVerification   # part of `check`: fails when a package drops under its floor
 ```
 
-Measured on the full test suite on 2026-10-03 (JDK 25, generated float and double types included in the counts; not produced on the `-Pvalhalla` build, whose JDK 28 class files the JaCoCo release in use cannot read):
+Measured on the full test suite on 2026-10-03 (JDK 25; since the module split the classes measured are those of the four parts and the tests that cover them are all in the root project, generated float and double types included in the counts; not produced on the `-Pvalhalla` build, whose JDK 28 class files the JaCoCo release in use cannot read):
 
 | Package | Lines | Branches |
 |---|---|---|
@@ -35,7 +35,7 @@ Measured on the full test suite on 2026-10-03 (JDK 25, generated float and doubl
 | `vmath.spatial` | 96.5% (2886 of 2992) | 88.1% |
 | **all** | **98.2%** (20 936 of 21 327) | **92.1%** (10 407 of 11 305) |
 
-**The other modules** (`./gradlew :vmath-simd:test :vmath-codegen:test :vmath-validator:test` writes a report under each module's `build/reports/jacoco`; measured 2026-10-02): `vmath-simd` 95.6% of lines (86 of 90) and 94.4% of branches, floor 92% / 90%; `vmath-validator` (the annotation processor; measured 2026-10-03) 98.7% of lines (78 of 79) and 86.9% of branches (73 of 84), floor 96% / 84%; `vmath-codegen` 79.2% of lines (595 of 751) and 66.4% of branches, floor 76% / 62%, wired into each module's `check`. The code generator's own tests cover less than the root project's tests do indirectly: every generated `d` type and `XxxGpu` writer is exercised by the root test suite, which this figure does not count. `vmath-bench` has no tests and no figure.
+**The other modules** (`./gradlew test` runs the tests of every module, and the root project merges the coverage of the four parts into `build/reports/jacoco/test`; `./gradlew :vmath-simd:test :vmath-codegen:test :vmath-validator:test` writes a report under each module's `build/reports/jacoco`; measured 2026-10-02): `vmath-simd` 95.6% of lines (86 of 90) and 94.4% of branches, floor 92% / 90%; `vmath-validator` (the annotation processor; measured 2026-10-03) 98.7% of lines (78 of 79) and 86.9% of branches (73 of 84), floor 96% / 84%; `vmath-codegen` 79.2% of lines (595 of 751) and 66.4% of branches, floor 76% / 62%, wired into each module's `check`. The code generator's own tests cover less than the root project's tests do indirectly: every generated `d` type and `XxxGpu` writer is exercised by the root test suite, which this figure does not count. `vmath-bench` has no tests and no figure.
 
 **Floors.** `check` fails if a package falls under a floor set two to three points below what was measured at the time (lines first, branches second: core 96% / 93%, camera 97% / 89%, geo 95% / 90%, mesh 95% / 90%,
 spatial 92% / 82%, bulk 90% / 80%, mem 84% / 80%, and so on; the table is `coverageFloors` in `build.gradle.kts`), and below 94% of lines or 87% of branches overall. They are there so that a change that adds untested code

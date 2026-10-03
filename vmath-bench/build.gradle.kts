@@ -12,7 +12,7 @@ java {
 }
 
 dependencies {
-    implementation(project(":"))
+    implementation(project(":vmath-all"))
     compileOnly(project(":vmath-annotations")) // class-retention marker on some core types; not needed at run time
     // Optional SIMD kernels, found through FrustumKernels.best() when present and the incubator module is enabled.
     implementation(project(":vmath-simd"))

@@ -50,9 +50,9 @@ import javax.tools.Diagnostic;
  * class, a method result or a lambda parameter. The check runs after the compiler's attribution of each class ({@code ANALYZE}), through the {@code TaskListener} of the compilation, and reports
  * through the compiler's own diagnostics, so a violation is an error at its line and the build fails.
  *
- * <p><b>What it knows.</b> A type is a value type if its declaration carries {@code @ValueType}, which the annotation's source retention makes visible only for types compiled together with the
- * code (or with the annotation kept in their class files): for the types of the library the generator keeps the annotation on the float and double twins, and a project that uses the library
- * from a jar sees no marker and is not checked. The option {@code -Avmath.validator=off} turns the processor off, {@code -Avmath.validator=warn} makes violations warnings.
+ * <p><b>What it knows.</b> A type is a value type if its declaration carries {@code @ValueType}. The annotation has class retention, so the marker is read from source for the types compiled
+ * together with the code and from the class files of the modules below for the others; the generator keeps it on the float and double twins. Code that uses the library from a jar sees the marker
+ * too, if it runs the processor. The option {@code -Avmath.validator=off} turns the processor off, {@code -Avmath.validator=warn} makes violations warnings.
  *
  * <p><b>Thread safety.</b> One instance lives in one compilation; the compiler calls it from one thread.
  */

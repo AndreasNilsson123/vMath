@@ -3,11 +3,13 @@
 //   ./gradlew build                 latest JDK, plain records (default)
 //   ./gradlew build -Pvalhalla      JDK 28 (early access), real `value record`s, --enable-preview
 //
-// Float templates in src/template/java and src/testTemplate/java are the single source of truth. The
-// vmath-codegen tool turns them into the float and double types under build/generated/ at build time.
+// The library is four modules (vmath-core, vmath-geo, vmath-scene, vmath-render; each is built by gradle/vmath-module.gradle.kts) and the aggregate module `vmath` (the project vmath-all).
+// Each module has its own sources, float templates, tests and test templates; the vmath-codegen tool turns the templates into the float and double types under build/generated/ of the
+// module. This root project has no sources: it holds what spans the modules: the merged coverage, the mutation tests and the API compatibility check.
 
 plugins {
-    `java-library`
+    base
+    `java-base`
     jacoco
 }
 
@@ -15,6 +17,10 @@ plugins {
 // The next release is 0.2.0 because v0.1.0 is already tagged (docs/VERSIONING.md).
 group = "io.github.andreasnilsson123"
 version = "0.2.0-SNAPSHOT"
+
+// the parts, bottom to top (the order is the layering of docs/ROADMAP.md INF-6)
+val parts = listOf(":vmath-core", ":vmath-geo", ":vmath-scene", ":vmath-render")
+parts.forEach { evaluationDependsOn(it) }
 
 val valhalla = providers.gradleProperty("valhalla").isPresent
 val baselineJdk = property("vmath.jdk").toString().toInt()
@@ -33,87 +39,6 @@ allprojects {
     }
 }
 
-val codegen = configurations.create("codegen") {
-    isCanBeConsumed = false
-}
-
-dependencies {
-    // Source-retention annotations only: nothing from here reaches the runtime classpath.
-    compileOnly(project(":vmath-annotations"))
-    codegen(project(":vmath-codegen"))
-
-    // The test sources declare sample @GpuStruct records
-    testCompileOnly(project(":vmath-annotations"))
-
-    // Checks the identity rules of the value types on the attributed syntax tree while the main sources compile (docs/CODEGEN.md); not part of the artifact. The tests are not checked: the value
-    // types reach them as class files, which do not carry the source-retention marker the processor looks for.
-    annotationProcessor(project(":vmath-validator"))
-
-    // JOML is only the test oracle; nothing in main depends on it.
-    testImplementation(libs.joml)
-    testImplementation(platform(libs.junit.bom))
-    testImplementation(libs.junit.jupiter)
-    testRuntimeOnly(libs.junit.launcher)
-}
-
-java {
-    toolchain {
-        languageVersion.set(JavaLanguageVersion.of(if (valhalla) valhallaJdk else baselineJdk))
-    }
-    withSourcesJar()
-}
-
-tasks.withType<JavaCompile>().configureEach {
-    options.encoding = "UTF-8"
-    // -exports is off because vmath.annotations.Experimental has class retention on purpose (japicmp reads it) while the annotations module is "requires static": with the lint on,
-    // javac reports exactly one warning per @Experimental class (54 on 2026-10-02) and nothing else, so nothing real is hidden. -preview is off only for the Valhalla build,
-    // whose class files are preview class files.
-    // -Werror: the library and its tests compile without a single other warning, and it should stay that way.
-    // -processing is off because the validating processor (vmath-validator) supports every annotation without claiming any, so that javac warns once that nobody claimed the ones in vmath.annotations
-    options.compilerArgs.addAll(listOf("-Xlint:all", "-Xlint:-exports", "-Xlint:-processing", "-Werror"))
-    if (valhalla) {
-        options.compilerArgs.add("-Xlint:-preview")
-    }
-}
-
-// JOML's jar (the test oracle) is built for class-file version 46 and uses type annotations that javac reports with a [classfile] warning for every JOML class a test touches
-tasks.compileTestJava {
-    options.compilerArgs.add("-Xlint:-classfile")
-}
-
-// Javadoc is linted as part of `check`: broken references, bad HTML and malformed tags fail the build. Missing comments and missing @param tags on
-// record components are not checked yet (see docs/ROADMAP.md INF-5): "-missing" keeps the lint to what is wrong rather than what is absent.
-tasks.javadoc {
-    (options as StandardJavadocDocletOptions).apply {
-        encoding = "UTF-8"
-        addBooleanOption("Xdoclint:all,-missing", true)
-        addBooleanOption("Xwerror", true)
-        if (valhalla) {
-            addBooleanOption("-enable-preview", true)
-            addStringOption("source", valhallaJdk.toString())
-        }
-    }
-}
-
-tasks.test {
-    useJUnitPlatform()
-    // JOML's Unsafe fast path segfaults on heap buffers (Matrix3d.get(int, DoubleBuffer)); the oracle doesn't need it.
-    systemProperty("joml.nounsafe", "true")
-    // AllocationContractTest relaxes the paths that cross a non-inlined call with a value record on the -Pvalhalla build (see Alloc.assertNoAllocationPerElement)
-    if (valhalla) {
-        systemProperty("vmath.valhalla", "true")
-    }
-    // ModuleDescriptorTest inspects the real jar: the module path is what consumers use.
-    dependsOn(tasks.jar)
-    systemProperty("vmath.jar", tasks.jar.get().archiveFile.get().asFile.absolutePath)
-    // Extra JVM flags for the test JVM, e.g. -Pvmath.testJvmArgs="-XX:TieredStopAtLevel=1" to see which JIT settings the allocation contract tolerates.
-    providers.gradleProperty("vmath.testJvmArgs").orNull?.let { jvmArgs(it.trim().split(Regex("\\s+"))) }
-    // Forward -Dvmath.seed / -Dvmath.trials from the command line, e.g. a nightly job with a fresh seed.
-    listOf("vmath.seed", "vmath.trials", "vmath.writeAssets", "vmath.writeDocs", "vmath.verbose", "vmath.alloc.force", "vmath.docs.all", "vmath.glslang").forEach { key ->
-        System.getProperty(key)?.let { systemProperty(key, it) }
-    }
-}
-
 // ---------------------------------------------------------------- coverage (JaCoCo)
 //
 //   ./gradlew test jacocoTestReport     build/reports/jacoco/test/html/index.html and jacocoTestReport.xml
@@ -125,19 +50,28 @@ jacoco {
     toolVersion = libs.versions.jacoco.get()
 }
 
-tasks.jacocoTestReport {
-    dependsOn(tasks.test)
+// The classes measured are those of the four parts (this project has none of its own), and the execution data is merged over the tests of all four: a test lives in the lowest module
+// that has everything it uses, but it covers code in the modules below too.
+val partClasses = files(parts.map { project(it).the<SourceSetContainer>()["main"].output.classesDirs })
+val partSources = files(parts.map { project(it).the<SourceSetContainer>()["main"].java.srcDirs })
+val partTests = parts.map { project(it).tasks.named("test") }
+val partExecutionData = files(parts.map { project(it).layout.buildDirectory.file("jacoco/test.exec") })
+
+val jacocoTestReport = tasks.register<JacocoReport>("jacocoTestReport") {
+    group = "verification"
+    description = "Merges the coverage of the tests of all modules into build/reports/jacoco/test."
+    dependsOn(partTests)
+    executionData.setFrom(partExecutionData)
+    classDirectories.setFrom(partClasses)
+    sourceDirectories.setFrom(partSources)
     enabled = !valhalla
     reports {
         xml.required.set(true)
+        xml.outputLocation.set(layout.buildDirectory.file("reports/jacoco/test/jacocoTestReport.xml"))
         html.required.set(true)
+        html.outputLocation.set(layout.buildDirectory.dir("reports/jacoco/test/html"))
         csv.required.set(false)
     }
-}
-
-tasks.test {
-    extensions.configure<JacocoTaskExtension> { isEnabled = !valhalla }
-    finalizedBy(tasks.jacocoTestReport)
 }
 
 // Floors per package, set 2 to 3 points under what was measured (see docs/COVERAGE.md) so that untested new code is noticed without the build failing on noise.
@@ -149,8 +83,13 @@ val coverageFloors = mapOf(
     "vmath/pack" to (0.93 to 0.90), "vmath/physics" to (0.95 to 0.86), "vmath/spatial" to (0.92 to 0.82), "vmath/tex" to (0.95 to 0.85), "vmath/util" to (0.97 to 0.92)
 )
 
-tasks.jacocoTestCoverageVerification {
-    dependsOn(tasks.test)
+val jacocoTestCoverageVerification = tasks.register<JacocoCoverageVerification>("jacocoTestCoverageVerification") {
+    group = "verification"
+    description = "Fails if a package of the merged coverage falls below its floor."
+    dependsOn(partTests)
+    executionData.setFrom(partExecutionData)
+    classDirectories.setFrom(partClasses)
+    sourceDirectories.setFrom(partSources)
     enabled = !valhalla
     violationRules {
         rule {
@@ -172,7 +111,7 @@ tasks.jacocoTestCoverageVerification {
 tasks.register("coverageSummary") {
     group = "verification"
     description = "Prints line and branch coverage per package from the JaCoCo XML report (run test jacocoTestReport first)."
-    dependsOn(tasks.jacocoTestReport)
+    dependsOn(jacocoTestReport)
     val xml = layout.buildDirectory.file("reports/jacoco/test/jacocoTestReport.xml")
     doLast {
         val file = xml.get().asFile
@@ -226,7 +165,7 @@ dependencies {
 tasks.register<JavaExec>("mutationTest") {
     group = "verification"
     description = "Runs PIT mutation testing on the classes given by -Pmutation.classes with the tests given by -Pmutation.tests."
-    dependsOn(tasks.testClasses, tasks.jar)
+    dependsOn(parts.map { project(it).tasks.named("testClasses") })
     enabled = !valhalla
     javaLauncher.set(javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(baselineJdk)) })
     classpath = pitest
@@ -235,12 +174,12 @@ tasks.register<JavaExec>("mutationTest") {
     val tests = providers.gradleProperty("mutation.tests").orElse("vmath.*")
     val threads = providers.gradleProperty("mutation.threads").orElse("4")
     val report = layout.buildDirectory.dir("reports/pitest")
-    val testClasspath = sourceSets.test.get().runtimeClasspath
-    val mainClasses = sourceSets.main.get().output.classesDirs
-    val jarFile = tasks.jar.flatMap { it.archiveFile }
+    val testClasspath = files(parts.map { project(it).the<SourceSetContainer>()["test"].runtimeClasspath })
+    val mainClasses = partClasses
+    val partJars = parts.map { project(it).tasks.named<Jar>("jar").flatMap { jar -> jar.archiveFile } }
     val projectDir = layout.projectDirectory
-    val sourceDirs = listOf(projectDir.dir("src/main/java").asFile, projectDir.dir("src/test/java").asFile)
-    val generatedDirs = listOf(generatedMain, generatedTest)
+    val sourceDirs = partSources.files + parts.map { project(it).layout.projectDirectory.dir("src/test/java").asFile }
+    val generatedDirs = parts.flatMap { listOf(project(it).layout.buildDirectory.dir("generated/sources/vmath/main"), project(it).layout.buildDirectory.dir("generated/sources/vmath/test")) }
     doFirst {
         if (!classes.isPresent) {
             throw GradleException("pass the classes to mutate, for example -Pmutation.classes=vmath.core.Morton")
@@ -258,89 +197,9 @@ tasks.register<JavaExec>("mutationTest") {
             "--threads", threads.get(),
             "--outputFormats", "HTML,XML",
             "--timestampedReports", "false",
-            "--jvmArgs", "-Djoml.nounsafe=true,-Dvmath.jar=" + jarFile.get().asFile.absolutePath
+            "--jvmArgs", "-Djoml.nounsafe=true"
         )
     })
-}
-
-// ---------------------------------------------------------------- code generation
-
-val generatedMain = layout.buildDirectory.dir("generated/sources/vmath/main")
-val generatedTest = layout.buildDirectory.dir("generated/sources/vmath/test")
-
-// local values only (no script-level members inside the lambdas), so that the configuration cache can store the task
-val generateSources = run {
-    val isValhalla = valhalla
-    val jdk = baselineJdk
-    val templates = layout.projectDirectory.dir("src/template/java")
-    val testTemplates = layout.projectDirectory.dir("src/testTemplate/java")
-    val handWritten = layout.projectDirectory.dir("src/main/java")
-    val handWrittenTests = layout.projectDirectory.dir("src/test/java")
-    val renames = layout.projectDirectory.file("codegen-renames.properties")
-    val outMain = generatedMain
-    val outTest = generatedTest
-    val launcher = javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(jdk)) }
-    tasks.register<JavaExec>("generateSources") {
-        group = "build"
-        description = "Generates the float and double types (and their tests) from the templates."
-        javaLauncher.set(launcher)
-        classpath = codegen
-        mainClass.set("vmath.codegen.Codegen")
-
-        inputs.dir(templates)
-        inputs.dir(testTemplates)
-        inputs.file(renames)
-        inputs.property("valhalla", isValhalla)
-        // @GpuStruct records are found by scanning the hand-written sources (main and test)
-        inputs.dir(handWritten)
-        inputs.dir(handWrittenTests)
-        outputs.dir(outMain)
-        outputs.dir(outTest)
-
-        argumentProviders.add(CommandLineArgumentProvider {
-            buildList {
-                addAll(listOf("--templates", templates.asFile.path, "--test-templates", testTemplates.asFile.path))
-                addAll(listOf("--out", outMain.get().asFile.path, "--test-out", outTest.get().asFile.path))
-                addAll(listOf("--renames", renames.asFile.path))
-                addAll(listOf("--gpu", handWritten.asFile.path + "=" + outMain.get().asFile.path))
-                addAll(listOf("--gpu", handWrittenTests.asFile.path + "=" + outTest.get().asFile.path))
-                if (isValhalla) {
-                    addAll(listOf("--sources", handWritten.asFile.path, "--valhalla"))
-                }
-            }
-        })
-    }
-}
-
-sourceSets {
-    main {
-        if (valhalla) {
-            // Hand-written sources pass through the generator too, so @ValueType becomes `value` there as well.
-            java.setSrcDirs(listOf(files(generatedMain).builtBy(generateSources)))
-        } else {
-            java.srcDir(files(generatedMain).builtBy(generateSources))
-        }
-    }
-    test {
-        java.srcDir(files(generatedTest).builtBy(generateSources))
-    }
-}
-
-// ---------------------------------------------------------------- Valhalla mode
-
-if (valhalla) {
-    tasks.withType<JavaCompile>().configureEach {
-        options.release.set(valhallaJdk)
-        options.compilerArgs.add("--enable-preview")
-    }
-    tasks.withType<Test>().configureEach {
-        jvmArgs("--enable-preview")
-    }
-    tasks.withType<JavaExec>().configureEach {
-        if (name != "generateSources") {
-            jvmArgs("--enable-preview")
-        }
-    }
 }
 
 // ---------------------------------------------------------------- API compatibility (japicmp)
@@ -449,12 +308,14 @@ run {
     tasks.register<JavaExec>("japicmp") {
         group = "verification"
         description = "Fails on binary-incompatible changes to the public API since the baseline."
-        dependsOn(tasks.jar)
+        // the baseline is one jar of the whole library; the new version is the jars of the four parts together
+        val partJars = parts.map { project(it).tasks.named<Jar>("jar") }
+        dependsOn(partJars)
         dependsOn(stage) // a no-op unless the baseline is built from the tag
         classpath = configurations["japicmpCli"]
         mainClass.set("japicmp.JApiCmp")
         val report = layout.buildDirectory.dir("reports/japicmp")
-        val jarFile = tasks.jar.flatMap { it.archiveFile }
+        val jarFiles = partJars.map { jar -> jar.flatMap { it.archiveFile } }
         val baselinePath = baselineOverride.map { layout.projectDirectory.file(it) }.orElse(baselineDir.map { it.file("vmath-baseline.jar") })
         val tagName = tag
         onlyIf {
@@ -469,7 +330,7 @@ run {
         argumentProviders.add(CommandLineArgumentProvider {
             buildList {
                 addAll(listOf("--old", baselinePath.get().asFile.absolutePath))
-                addAll(listOf("--new", jarFile.get().asFile.absolutePath))
+                addAll(listOf("--new", jarFiles.joinToString(";") { it.get().asFile.absolutePath }))
                 addAll(listOf("--only-modified", "-a", "public"))
                 addAll(listOf("--exclude", "@vmath.annotations.Experimental")) // docs/VERSIONING.md
                 addAll(listOf("--html-file", report.get().file("index.html").asFile.absolutePath))
@@ -483,11 +344,5 @@ run {
 
 tasks.check {
     dependsOn("japicmp")
-    dependsOn(tasks.javadoc)
-    dependsOn(tasks.jacocoTestCoverageVerification)
+    dependsOn(jacocoTestCoverageVerification)
 }
-
-// ---------------------------------------------------------------- publishing (docs/PUBLISHING.md)
-
-extra["publishDescription"] = "Immutable, Valhalla-ready 3D math and graphics foundation for Java: vectors, matrices, geometry, culling, cameras, meshes, animation and GPU data layouts."
-apply(from = "gradle/publishing.gradle.kts")

@@ -16,7 +16,7 @@ java {
 }
 
 dependencies {
-    api(project(":"))
+    api(project(":vmath-scene"))
     // class-retention marker on the SPI types of the core library; not needed at run time
     compileOnly(project(":vmath-annotations"))
     testCompileOnly(project(":vmath-annotations"))
