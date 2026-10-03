@@ -144,7 +144,8 @@ Consistency first, then features. All new features are written once in float and
 - [x] **CORE-6 (P1, M)** *(done: `Vec2i`, `Vec3i` and `Vec4i`; long variants were judged unnecessary, `pack()` gives a `long` key)* `Vec2i/3i/4i` (+ long variants if needed): grid coordinates, hashing, min/max, conversions.  
       *Partial: `Vec2i` and `Vec3i` (hand-written, `IntVecTest`); `Vec4i` and long variants are open.*
 - [x] **CORE-7 (P2, M)** `Mat2`, `Mat2x3`/`Mat3x2` (2D transforms), 2D helpers (rotate, perp-dot, winding). *Done: `Mat2f` and `Mat3x2f` (with double twins), `Vec2f.perpDot`, `signedAngle`, `rotateAround`, `orient`; winding is `Polygons.winding`; see `docs/API.md`.*
-- [ ] **CORE-8 (P2, M)** Dual quaternions, `Pose` (Quat + Vec3, rigid-only, 28 B), rigid inverse/compose fast paths.
+- [x] **CORE-8 (P2, M)** Dual quaternions, `Pose` (Quat + Vec3, rigid-only, 28 B), rigid inverse/compose fast paths.
+      *Done: `DualQuatf` (composition, inverse, normalise, linear blending `nlerp`, screw interpolation `sclerp` and `pow`) and `RigidTransformf` (rotation and translation, 28 bytes, exact inverse and product without a division; named so because `Pose` is the skeleton pose of `vmath.anim`), with double twins, and dual quaternion skinning in `Skinning`. Tested against the matrices and a known screw motion; skinning 2.6 times the cost of linear blending, measured. See `docs/API.md` and `docs/ANIMATION.md`.*
 - [x] **CORE-9 (P2, M)** Fast math: polynomial `sin/cos/atan2/acos/exp/log`, fast `invSqrt`, documented max error each,
       with tests against `Math`. Opt-in `FastMath` class, never silently substituted.  
       *Done (experimental): `FastMath` with `sin`, `cos`, `atan`, `atan2`, `acos`, `asin`, `exp`, `log` (documented and tested bounds, 1.25 to 2.5 times faster than `Math`); `invSqrt` was built, measured twice as slow as `1f / (float) Math.sqrt(x)` and removed. See `docs/FASTMATH.md`.*
@@ -154,8 +155,9 @@ Consistency first, then features. All new features are written once in float and
 - [x] **CORE-11 (P2, S)** Consistent `hashCode`/`equals` semantics doc (`-0.0`, NaN) and epsilon-hash helpers for spatial hashing.  
       *Done: `docs/EQUALITY.md` and `EqualityContractTest` (record `equals`/`hashCode` on every type and component, both precisions: -0.0 differs from 0.0, every NaN equals every NaN), and `SpatialHash` (cell indices, hashes, exact packed keys, epsilon-neighbourhood lookup with a tested guarantee, canonical float keys).*
 - [ ] **CORE-12 (P3, M)** Optional `ToString`/`fromString` formats, `Vec.parse`, debug formatter for matrices.
-- [ ] **CORE-13 (P2, M)** Transform-space utilities: frame-tagged transforms, `Geodetic/Ecef/WGS-84` (from the existing "next steps"),
+- [x] **CORE-13 (P2, M)** Transform-space utilities: frame-tagged transforms, `Geodetic/Ecef/WGS-84` (from the existing "next steps"),
       camera-relative rendering helpers beyond `relativeTo` (rebasing a whole scene, double→float model matrices).
+      *Done: `Frame` and `FrameTransformf`/`d` (a transform that knows its source and target frame, refuses composition of the wrong frames); `Geodetic` and `Wgs84` (geodetic, ECEF and local East-North-Up conversions in double, tested for round trips and against the closed form); `relativeTo` on the matrices and transforms, `Rebase` (double world data to camera-relative float arrays, and the shift of relative data) and `FloatingOrigin` (an origin that follows the camera in grid steps). Measured: 1 ns per position and 12 ns per matrix rebased, `toEcef` 62 ns, `toGeodetic` 378 ns. See `docs/LARGE_WORLDS.md`.*
 
 ### Phase D. Bulk data and memory efficiency (P1)
 
@@ -165,8 +167,9 @@ Consistency first, then features. All new features are written once in float and
 - [x] **MEM-2 (P1, L)** Kernels: batch transform points/normals, matrix multiply, TRS compose, quaternion normalize/slerp,  
       *Done: scalar kernels for transform of positions, directions and four-component vectors, normalize, quaternion multiply, slerp, nlerp, toMatrices, blend, AABB transform, `Mat4fArray.multiply`/`premultiply`. Vector API variants (`vmath-simd`, selected at startup through the `MatrixKernel` SPI) where they won, measured: matrix product 1.8 times faster, premultiply 2.4, position transform 2.1, vec4 transform 2.7, quaternion normalize 1.3. A gather-based AABB transform was slower than scalar (973 us against 825 us) and was dropped; slerp, toMatrices and quaternion multiply were not vectorised. See `docs/BULK.md`.*
       AABB transform. Scalar versions first, then Vector API (incubator) variants selected at startup. → MEM-1, INF-1
-- [ ] **MEM-3 (P1, M)** Generate the SoA container and scalar loops from the scalar ops via `@Kernel`/`@Bulk`, so
+- [x] **MEM-3 (P1, M)** Generate the SoA container and scalar loops from the scalar ops via `@Kernel`/`@Bulk`, so
       new ops don't need hand-written loops. → AF-2
+      *Done: `@Bulk` (with `name` and `uniform`) on a method of a template record generates `<Type>Bulk` and its double twin with an interleaved and a planar loop per method, from the body of the method, so the results are bit-identical; the vector, quaternion and matrix operations of the templates are marked. The containers over `float[]` stay hand-written (interleaved), so "the SoA container" of the task is the planar form of the loops, not a new container class. Measured: the generated interleaved loop for a matrix times 100 000 points is as fast as the hand-written scalar kernel (182 us against 206 us), the planar form is not faster for add and cross. See `docs/CODEGEN.md`.*
 - [x] **MEM-4 (P1, M)** `writeTo`/`readFrom` for `ByteBuffer` (with `ByteOrder`), `MemorySegment`, and strided/interleaved variants.  
       *Done: `FloatBuffer` writers on the containers; `MemorySegment` and `ByteBuffer` strided and byte-order writers and readers (`Strided`, container `writeTo`/`readFrom`); interleaving is a stride and an offset per container, so a vertex or instance buffer is filled attribute by attribute (`docs/BULK.md`); `MeshExport` writes named vertex layouts for meshes.*
       Interleaved vertex writers for common layouts.

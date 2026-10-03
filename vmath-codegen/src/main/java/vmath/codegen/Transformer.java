@@ -115,7 +115,7 @@ public final class Transformer {
 
     private static final String ANNOTATION_PACKAGE = "vmath.annotations";
     private static final Set<String> OUR_ANNOTATIONS =
-            Set.of("GenerateDouble", "FloatOnly", "DoubleOnly", "Eps", "ValueType", "GpuStruct", "GpuArray", "GpuUint");
+            Set.of("GenerateDouble", "FloatOnly", "DoubleOnly", "Eps", "ValueType", "GpuStruct", "GpuArray", "GpuUint", "Bulk");
     /**
      * Ours but not removed: {@code @ValueType} stays on the generated types (it has source
      * retention, so it costs nothing at run time) so that the validating annotation processor of

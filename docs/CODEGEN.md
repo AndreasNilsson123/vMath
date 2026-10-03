@@ -23,6 +23,7 @@ They live in `vmath-annotations` and have source retention, except `@ValueType` 
 | `@DoubleOnly` | member | Only in the double output (`toFloat()`, `relativeTo`). **Copied verbatim**: write it in its final double form, and name the float twin (`Vec3f`) directly. |
 | `@Eps(d = 1e-11)` | field | Float keeps its initializer, the double twin gets `d`. For tolerances in tests. |
 | `@ValueType` | record | Ordinary record normally, `value record` under `-Pvalhalla`. Kept in the generated source for the validator. |
+| `@Bulk(name, uniform)` | method | Emit batch loops of the method in `<Type>Bulk` (and its double twin): see "Batch loops". |
 
 Templates are ordinary Java, so a template with annotations reads like the float type it will become.
 They are **not** compiled directly: the generated float twin is what gets compiled.
@@ -40,6 +41,39 @@ The generator parses the template with the JDK compiler's tree API and edits rea
 - `Float*` types (`FloatBuffer`, `Float`) → `Double*`; `floatToIntBits` and friends via a table in `Renames`.
   Bit-level helpers change the integer width (`int` → `long`), so write those as `@DoubleOnly` variants
 - comments and string literals get the same word-level rename (`float` → `double`) so docs stay true
+
+## Batch loops: `@Bulk`
+
+A method of a template record marked `@Bulk` is also turned into loops over arrays, so that a new operation on many elements does not need a hand-written loop. For `Vec3f` the
+generator writes `Vec3fBulk` (and, through the usual pipeline, `Vec3dBulk` over `double[]`), into the package of the template, with two methods per marked method:
+
+- `add(float[] self, int selfOffset, float[] o, int oOffset, float[] out, int outOffset, int count)` over **interleaved** arrays: element `i` of an operand starts at `offset + i * stride`
+  (stride 3 for a `Vec3f`), the layout of the bulk containers and of vertex buffers;
+- `addPlanar(float[] selfX, selfY, selfZ, int selfOffset, ...)` over **planar** arrays (structure of arrays): one array per component, element `i` at `offset + i`.
+
+The operands are the receiver (`self`, unless the method is static) and the parameters, then the result (`out`) and the count. A scalar parameter is the same for every element. An operand named in
+`@Bulk(uniform = ...)` (`"this"` for the receiver) is one value for the whole batch, read once; a uniform record is one array with its components one after another in both layouts. That is how
+`Mat4f.transformPosition` (uniform receiver) becomes "transform N points by one matrix". `@Bulk(name = ...)` names the generated methods when two overloads would otherwise have the same parameter
+types.
+
+**How it is done.** The body of the method is copied into the loop. The components of the receiver become local variables of the same name, those of a parameter `o` become `o_x`, `o_y`, ... (read from
+the array before the body), and a `return` becomes the stores of the element: `return new Vec3f(a, b, c)`, `return this`, a parameter of the return type, or a `float` expression. A `return` that is not the last
+statement is followed by `continue`. So the results are bit-identical to the method, and an element is read completely before it is written, so the result may be written over an operand, element for element.
+The generated class and every method have Javadoc, an example and a thread-safety paragraph; the double twin is made by the transformer from the generated float class.
+
+**What is accepted.** Components and accessors of the receiver and of record parameters (parameters are records of the templates whose components are all `float`, or primitives), local variables of primitive
+type, `if`, the operators, casts, and members of `Math`, `Float` and `Double`. The return type is `float` or such a record. Everything else (loops, `switch`, `try`, lambdas, calls to other methods, other types,
+bare names that are not components or locals such as a constant of the record) is an error that names the template and line, so a method that does not fit stays hand-written. The marked methods of
+the templates are the vector operations of `Vec2f`, `Vec3f` and `Vec4f` (add, sub, mul, div, negate, fma, dot, lengthSquared, distanceSquared, lerp, min, max, abs, and cross for `Vec3f`), the product, conjugate, dot,
+lengthSquared and rotation of `Quatf`, and the transforms of `Mat3f`, `Mat4f` and `Mat4x3f`.
+
+**Tests.** `BulkGeneratorTest` (in `vmath-codegen`) covers the output (layouts, uniform operands, early returns, imports of other packages, the double twin, documentation line width) and every diagnostic.
+`BulkGeneratedfTest` (in `vmath-core`, with its double twin) runs the generated loops of the real templates against the methods, bit for bit, with offsets, over an operand, with guard values around the
+result, with an empty batch and with arrays that are too short.
+
+**Measured** (`BulkGeneratedBench`, 100 000 elements, 2 forks of 8 iterations): transforming points by one matrix takes 182 us (+-6) with the generated interleaved loop, 149 us (+-37) with the planar one
+and 206 us (+-19) with the hand-written scalar kernel of `Vec3fArray`, so the generated loop is as fast as the hand-written one. For the vector sum and the cross product the planar form is *not* faster
+(287 us +-131 against 154 us +-42, and 271 us +-117 against 144 us +-24; the error bars are wide); the planar methods are there for data that is already split, not as a speed-up.
 
 ## Diagnostics
 
@@ -90,7 +124,7 @@ a violating program for each rule, one that passes, and checks the line number, 
 
 ## Annotations the generator does not remove
 
-The generator strips its own annotations (`GenerateDouble`, `FloatOnly`, `DoubleOnly`, `Eps`, `GpuStruct`, `GpuArray`, `GpuUint`) and their imports from the
+The generator strips its own annotations (`GenerateDouble`, `FloatOnly`, `DoubleOnly`, `Eps`, `Bulk`, `GpuStruct`, `GpuArray`, `GpuUint`) and their imports from the
 output; it reads `@ValueType` to emit `value record` and leaves it in place for the validator. Other annotations of `vmath.annotations`, at the moment `@Experimental`, are passed through together with their import, which is why the main sources
 compile with `compileOnly(project(":vmath-annotations"))`. (An earlier version removed every import from that package and broke the `-Pvalhalla` build as soon as
 the first `@Experimental` class appeared; the Valhalla build is the one that runs hand-written sources through the generator.)

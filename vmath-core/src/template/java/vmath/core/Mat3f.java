@@ -1,5 +1,6 @@
 package vmath.core;
 
+import vmath.annotations.Bulk;
 import vmath.annotations.DoubleOnly;
 import vmath.annotations.FloatOnly;
 import vmath.annotations.GenerateDouble;
@@ -233,6 +234,7 @@ public record Mat3f(
      * @param v the vector; must not be {@code null}
      * @return the matrix times the vector {@code v}
      */
+    @Bulk(uniform = "this")
     public Vec3f transform(Vec3f v) {
         float x = v.x(), y = v.y(), z = v.z();
         return new Vec3f(

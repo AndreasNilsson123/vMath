@@ -95,6 +95,10 @@ Measured (JMH `MatrixKernelBench`, 2 forks of 8 iterations, 100 000 elements, JD
 faster, and nothing was kept. `slerp`, `toMatrices`, `QuatArray.multiply` and the blend have no Vector API variant and were not tried: slerp branches on the shortest arc and on nearly parallel inputs, and `TransformArray` stores ten floats
 per element, so a vector version needs shuffles per element where the kernels above keep one matrix in registers. The expected gain is unmeasured.
 
+**Generated loops.** The operations of `Vec3f` and the other templates that are marked `@Bulk` have batch loops generated from their bodies (`Vec3fBulk`, `Mat4fBulk`, ... in `vmath.core`, and the `double`
+twins), over interleaved arrays (the layout of these containers: `Vec3fBulk.add(a.data(), 0, b.data(), 0, out.data(), 0, n)`) and over planar arrays. They are plain scalar loops, with no Vector API variant,
+and are described in `docs/CODEGEN.md`; a new operation is written once as a method and marked.
+
 ## Incremental GPU upload: `DirtyRanges`
 
 `DirtyRanges` is a bitset of changed elements. `mark(i)` and `markRange(from, to)` as you write; `ranges(maxGap, out)` or `forEachRange(maxGap, visitor)` give the changed runs, with runs at most

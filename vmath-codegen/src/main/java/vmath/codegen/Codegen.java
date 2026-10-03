@@ -120,14 +120,18 @@ public final class Codegen {
             }
         }
         Renames renames = new Renames(exact, families);
+        BulkGenerator bulk = new BulkGenerator();
+        for (Path f : known) {
+            bulk.register(read(f), f.getFileName().toString());
+        }
 
         // Every generator records what it wrote per output directory, so stale files can be removed once, at the end.
         Map<Path, Set<Path>> produced = new LinkedHashMap<>();
         if (out != null && templates != null) {
-            generate(templates, mainFiles, out, valhalla, renames, sources, produced.computeIfAbsent(key(out), k -> new HashSet<>()));
+            generate(templates, mainFiles, out, valhalla, renames, sources, bulk, produced.computeIfAbsent(key(out), k -> new HashSet<>()));
         }
         if (testOut != null && testTemplates != null) {
-            generate(testTemplates, testFiles, testOut, valhalla, renames, null,
+            generate(testTemplates, testFiles, testOut, valhalla, renames, null, null,
                     produced.computeIfAbsent(key(testOut), k -> new HashSet<>()));
         }
         if (!gpu.isEmpty()) {
@@ -164,7 +168,7 @@ public final class Codegen {
     }
 
     private static void generate(Path root, List<Path> files, Path out, boolean valhalla, Renames renames,
-            Path passthrough, Set<Path> produced) throws IOException {
+            Path passthrough, BulkGenerator bulk, Set<Path> produced) throws IOException {
         for (Path f : files) {
             Path rel = root.relativize(f);
             String fileName = f.getFileName().toString();
@@ -183,6 +187,17 @@ public final class Codegen {
                     new Transformer.Options(Transformer.Mode.DOUBLE, valhalla, renames, header));
             produced.add(write(out.resolve(rel), floatOut));
             produced.add(write(out.resolve(rel.resolveSibling(twin + ".java")), doubleOut));
+            if (bulk != null) {
+                for (BulkGenerator.Output o : bulk.generate(source, fileName)) {
+                    String bulkFile = o.className() + ".java";
+                    String bulkHeader = "// GENERATED from the @Bulk methods of template " + rel.toString().replace('\\', '/')
+                            + " by vmath-codegen. Do not edit; edit the template.";
+                    produced.add(write(out.resolve(rel.resolveSibling(bulkFile)), Transformer.transform(o.source(), bulkFile,
+                            new Transformer.Options(Transformer.Mode.FLOAT, valhalla, renames, bulkHeader))));
+                    produced.add(write(out.resolve(rel.resolveSibling(renames.identifier(o.className()) + ".java")), Transformer.transform(
+                            o.source(), bulkFile, new Transformer.Options(Transformer.Mode.DOUBLE, valhalla, renames, bulkHeader))));
+                }
+            }
         }
         if (passthrough != null) {
             for (Path f : javaFiles(passthrough)) {

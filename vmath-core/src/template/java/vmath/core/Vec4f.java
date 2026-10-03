@@ -1,5 +1,6 @@
 package vmath.core;
 
+import vmath.annotations.Bulk;
 import vmath.annotations.DoubleOnly;
 import vmath.annotations.FloatOnly;
 import vmath.annotations.GenerateDouble;
@@ -80,6 +81,7 @@ public record Vec4f(float x, float y, float z, float w) {
      * @param o the other vector; must not be {@code null}
      * @return the sum {@code this + o}
      */
+    @Bulk
     public Vec4f add(Vec4f o) {
         return new Vec4f(x + o.x, y + o.y, z + o.z, w + o.w);
     }
@@ -90,6 +92,7 @@ public record Vec4f(float x, float y, float z, float w) {
      * @param o the other vector; must not be {@code null}
      * @return the difference {@code this - o}
      */
+    @Bulk
     public Vec4f sub(Vec4f o) {
         return new Vec4f(x - o.x, y - o.y, z - o.z, w - o.w);
     }
@@ -100,6 +103,7 @@ public record Vec4f(float x, float y, float z, float w) {
      * @param s the factor
      * @return every component multiplied by {@code s}
      */
+    @Bulk
     public Vec4f mul(float s) {
         return new Vec4f(x * s, y * s, z * s, w * s);
     }
@@ -110,6 +114,7 @@ public record Vec4f(float x, float y, float z, float w) {
      * @param o the other vector; must not be {@code null}
      * @return component-wise product
      */
+    @Bulk
     public Vec4f mul(Vec4f o) {
         return new Vec4f(x * o.x, y * o.y, z * o.z, w * o.w);
     }
@@ -119,6 +124,7 @@ public record Vec4f(float x, float y, float z, float w) {
      *
      * @return every component negated
      */
+    @Bulk
     public Vec4f negate() {
         return new Vec4f(-x, -y, -z, -w);
     }
@@ -129,6 +135,7 @@ public record Vec4f(float x, float y, float z, float w) {
      * @param o the other vector; must not be {@code null}
      * @return the dot product
      */
+    @Bulk
     public float dot(Vec4f o) {
         return x * o.x + y * o.y + z * o.z + w * o.w;
     }
@@ -138,6 +145,7 @@ public record Vec4f(float x, float y, float z, float w) {
      *
      * @return the squared length
      */
+    @Bulk
     public float lengthSquared() {
         return x * x + y * y + z * z + w * w;
     }
@@ -191,6 +199,7 @@ public record Vec4f(float x, float y, float z, float w) {
      * @param t the interpolation parameter, 0 for this vector and 1 for {@code o}; not clamped
      * @return the linear interpolation {@code this + (o - this) * t}; {@code t} is not clamped
      */
+    @Bulk
     public Vec4f lerp(Vec4f o, float t) {
         return new Vec4f(x + (o.x - x) * t, y + (o.y - y) * t, z + (o.z - z) * t, w + (o.w - w) * t);
     }
@@ -237,6 +246,7 @@ public record Vec4f(float x, float y, float z, float w) {
      * @return every component divided by {@code s}; a zero divisor gives infinities or NaN, as in
      *     IEEE arithmetic
      */
+    @Bulk
     public Vec4f div(float s) {
         float inv = 1f / s;
         return new Vec4f(x * inv, y * inv, z * inv, w * inv);
@@ -249,6 +259,7 @@ public record Vec4f(float x, float y, float z, float w) {
      * @param s the factor for {@code a}
      * @return {@code this + a * s}
      */
+    @Bulk
     public Vec4f fma(Vec4f a, float s) {
         return new Vec4f(x + a.x * s, y + a.y * s, z + a.z * s, w + a.w * s);
     }
@@ -260,6 +271,7 @@ public record Vec4f(float x, float y, float z, float w) {
      * @param o the other vector; must not be {@code null}
      * @return the squared distance to {@code o}; cheaper than {@link #distance}
      */
+    @Bulk
     public float distanceSquared(Vec4f o) {
         float dx = x - o.x, dy = y - o.y, dz = z - o.z, dw = w - o.w;
         return dx * dx + dy * dy + dz * dz + dw * dw;
@@ -299,6 +311,7 @@ public record Vec4f(float x, float y, float z, float w) {
      * @param o the other vector; must not be {@code null}
      * @return the component-wise minimum
      */
+    @Bulk
     public Vec4f min(Vec4f o) {
         return new Vec4f(Math.min(x, o.x), Math.min(y, o.y), Math.min(z, o.z), Math.min(w, o.w));
     }
@@ -309,6 +322,7 @@ public record Vec4f(float x, float y, float z, float w) {
      * @param o the other vector; must not be {@code null}
      * @return the component-wise maximum
      */
+    @Bulk
     public Vec4f max(Vec4f o) {
         return new Vec4f(Math.max(x, o.x), Math.max(y, o.y), Math.max(z, o.z), Math.max(w, o.w));
     }
@@ -318,6 +332,7 @@ public record Vec4f(float x, float y, float z, float w) {
      *
      * @return the absolute value of every component
      */
+    @Bulk
     public Vec4f abs() {
         return new Vec4f(Math.abs(x), Math.abs(y), Math.abs(z), Math.abs(w));
     }

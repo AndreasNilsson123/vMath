@@ -30,6 +30,7 @@ import vmath.bulk.Mat4fArray;
  *   <li>{@code jointMatrices}: pose to skinning matrices (world matrices and the inverse bind multiply)</li>
  *   <li>{@code fullCharacter}: sample, blend with a second sampled pose, and build the joint matrices: one animated character per frame</li>
  *   <li>{@code skinPositions}: the CPU reference skinning of 10 000 vertices, for scale</li>
+ *   <li>{@code jointDualQuaternions} and {@code skinPositionsDualQuat}: the same with dual quaternion blending</li>
  * </ul>
  */
 @State(Scope.Thread)
@@ -58,6 +59,7 @@ public class AnimationBench {
     private float[] skinned;
     private int[] jointIndices;
     private float[] weights;
+    private float[] dualQuaternions;
 
     @Setup
     public void setup() {
@@ -91,6 +93,10 @@ public class AnimationBench {
                 weights[v * 4 + k] = 0.25f;
             }
         }
+        samplerA.sample(0.5f, true, a);
+        Skinning.jointMatrices(skeleton, a, scratch, matrices);
+        dualQuaternions = new float[joints * 8];
+        Skinning.jointDualQuaternions(matrices.data(), joints, dualQuaternions);
     }
 
     private AnimationClip makeClip(SplittableRandom r) {
@@ -151,6 +157,18 @@ public class AnimationBench {
     @Benchmark
     public float skinPositions() {
         Skinning.skinPositions(matrices.data(), positions, jointIndices, weights, VERTICES, skinned);
+        return skinned[0];
+    }
+
+    @Benchmark
+    public float jointDualQuaternions() {
+        Skinning.jointDualQuaternions(matrices.data(), joints, dualQuaternions);
+        return dualQuaternions[0];
+    }
+
+    @Benchmark
+    public float skinPositionsDualQuat() {
+        Skinning.skinPositionsDualQuat(dualQuaternions, positions, jointIndices, weights, VERTICES, skinned);
         return skinned[0];
     }
 }

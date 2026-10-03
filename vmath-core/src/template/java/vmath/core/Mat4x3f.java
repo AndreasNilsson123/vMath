@@ -1,6 +1,7 @@
 package vmath.core;
 
 import java.nio.FloatBuffer;
+import vmath.annotations.Bulk;
 import vmath.annotations.DoubleOnly;
 import vmath.annotations.FloatOnly;
 import vmath.annotations.GenerateDouble;
@@ -218,6 +219,7 @@ public record Mat4x3f(
      * @param v the vector; must not be {@code null}
      * @return the transformed vector, never {@code null}
      */
+    @Bulk(uniform = "this")
     public Vec4f transform(Vec4f v) {
         return new Vec4f(
                 m00 * v.x() + m10 * v.y() + m20 * v.z() + m30 * v.w(),
@@ -309,6 +311,7 @@ public record Mat4x3f(
      * @param p the vector; must not be {@code null}
      * @return the point {@code p} transformed by this matrix: scaled, rotated and translated
      */
+    @Bulk(uniform = "this", name = "transformPositions")
     public Vec3f transformPosition(Vec3f p) {
         return new Vec3f(
                 m00 * p.x() + m10 * p.y() + m20 * p.z() + m30,
@@ -544,6 +547,22 @@ public record Mat4x3f(
     @FloatOnly
     public Mat4x3d toDouble() {
         return new Mat4x3d(m00, m01, m02, m10, m11, m12, m20, m21, m22, m30, m31, m32);
+    }
+
+    /**
+     * Moves the translation by a double-precision origin before narrowing the matrix to
+     * {@code float}, which is how a model matrix is made small enough for the GPU: see
+     * {@link Mat4d#relativeTo}.
+     *
+     * @param origin the new origin in the coordinates of this matrix; must not be {@code null}
+     * @return the matrix in a frame whose origin is {@code origin}, subtracted in double and
+     *     narrowed to float
+     */
+    @DoubleOnly
+    public Mat4x3f relativeTo(Vec3d origin) {
+        return new Mat4x3f((float) m00, (float) m01, (float) m02, (float) m10, (float) m11, (float) m12,
+                (float) m20, (float) m21, (float) m22, (float) (m30 - origin.x()), (float) (m31 - origin.y()),
+                (float) (m32 - origin.z()));
     }
 
     /**

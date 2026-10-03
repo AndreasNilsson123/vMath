@@ -1,5 +1,6 @@
 package vmath.core;
 
+import vmath.annotations.Bulk;
 import vmath.annotations.DoubleOnly;
 import vmath.annotations.Eps;
 import vmath.annotations.FloatOnly;
@@ -117,6 +118,7 @@ public record Quatf(float x, float y, float z, float w) {
      * @param r the quaternion; must not be {@code null}
      * @return hamilton product {@code this * r}: applies {@code r} first, then {@code this}
      */
+    @Bulk
     public Quatf mul(Quatf r) {
         return new Quatf(
                 w * r.x + x * r.w + y * r.z - z * r.y,
@@ -132,6 +134,7 @@ public record Quatf(float x, float y, float z, float w) {
      * @return the conjugate {@code (-x, -y, -z, w)}; for a unit quaternion this is the inverse
      *     rotation
      */
+    @Bulk
     public Quatf conjugate() {
         return new Quatf(-x, -y, -z, w);
     }
@@ -156,6 +159,7 @@ public record Quatf(float x, float y, float z, float w) {
      * @param o the other quaternion; must not be {@code null}
      * @return the dot product
      */
+    @Bulk
     public float dot(Quatf o) {
         return x * o.x + y * o.y + z * o.z + w * o.w;
     }
@@ -165,6 +169,7 @@ public record Quatf(float x, float y, float z, float w) {
      *
      * @return the squared length; cheaper than {@link #length()}
      */
+    @Bulk
     public float lengthSquared() {
         return x * x + y * y + z * z + w * w;
     }
@@ -220,6 +225,7 @@ public record Quatf(float x, float y, float z, float w) {
      * @param v the vector; must not be {@code null}
      * @return the rotated vector, never {@code null}
      */
+    @Bulk(uniform = "this")
     public Vec3f transform(Vec3f v) {
         // t = 2 * cross(q.xyz, v); v' = v + w * t + cross(q.xyz, t)
         float tx = 2f * (y * v.z() - z * v.y());

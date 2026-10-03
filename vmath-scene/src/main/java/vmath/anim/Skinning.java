@@ -23,6 +23,13 @@ import vmath.bulk.Mat4fArray;
  * uniform scale and approximate for non-uniform scale (the exact method needs the inverse
  * transpose).
  *
+ * <p><b>Dual quaternion skinning.</b> Linear blending of matrices shrinks and pinches a mesh where
+ * a joint twists (the candy-wrapper artefact). {@link #jointDualQuaternions} turns the joint
+ * matrices into dual quaternions (eight floats per joint) and {@link #skinPositionsDualQuat} and
+ * {@link #skinNormalsDualQuat} blend those instead, which keeps the volume. The joints must be
+ * rigid (a rotation and a translation, no scale); a scale or shear in a joint matrix is dropped
+ * or distorted, so use linear blending for skeletons that scale.
+ *
  * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the
  * same time. The arrays and buffers you pass in are not synchronised, so two threads must not write
  * the same one.
@@ -165,6 +172,223 @@ public final class Skinning {
                 oy += w * (jointMatrices[m + 1] * x + jointMatrices[m + 5] * y + jointMatrices[m + 9] * z);
                 oz += w * (jointMatrices[m + 2] * x + jointMatrices[m + 6] * y + jointMatrices[m + 10] * z);
             }
+            float len = (float) Math.sqrt(ox * ox + oy * oy + oz * oz);
+            if (len > 1e-20f) {
+                ox /= len;
+                oy /= len;
+                oz /= len;
+            }
+            out[v * 3] = ox;
+            out[v * 3 + 1] = oy;
+            out[v * 3 + 2] = oz;
+        }
+    }
+
+    // ---------------------------------------------------------------- dual quaternion skinning
+
+    /**
+     * Converts rigid joint matrices to dual quaternions: for each joint the rotation of the
+     * upper-left 3x3 block as a unit quaternion {@code (x, y, z, w)} and then the dual part
+     * {@code 0.5 * (t, 0) * rotation} for the translation {@code t}, eight floats in all.
+     *
+     * <p>The matrices must be rigid (a rotation and a translation): a scale or a shear changes the
+     * rotation that is read from them. The sign of a quaternion is whatever the conversion gives;
+     * {@link #skinPositionsDualQuat} aligns the signs of the joints it blends.
+     *
+     * @param jointMatrices the array of {@link #jointMatrices}, 16 floats per joint, column-major;
+     *     must not be {@code null}
+     * @param jointCount the number of joints to convert
+     * @param out receives eight floats per joint; must not be {@code null}
+     * @throws ArrayIndexOutOfBoundsException if {@code jointMatrices} holds fewer than
+     *     {@code 16 * jointCount} floats or {@code out} fewer than {@code 8 * jointCount}
+     */
+    public static void jointDualQuaternions(float[] jointMatrices, int jointCount, float[] out) {
+        for (int j = 0; j < jointCount; j++) {
+            int m = j * 16, o = j * 8;
+            float m00 = jointMatrices[m], m01 = jointMatrices[m + 1], m02 = jointMatrices[m + 2];
+            float m10 = jointMatrices[m + 4], m11 = jointMatrices[m + 5], m12 = jointMatrices[m + 6];
+            float m20 = jointMatrices[m + 8], m21 = jointMatrices[m + 9], m22 = jointMatrices[m + 10];
+            float x, y, z, w;
+            float trace = m00 + m11 + m22;
+            if (trace > 0f) {
+                float s = (float) Math.sqrt(trace + 1f) * 2f;
+                w = 0.25f * s;
+                x = (m12 - m21) / s;
+                y = (m20 - m02) / s;
+                z = (m01 - m10) / s;
+            } else if (m00 > m11 && m00 > m22) {
+                float s = (float) Math.sqrt(1f + m00 - m11 - m22) * 2f;
+                w = (m12 - m21) / s;
+                x = 0.25f * s;
+                y = (m10 + m01) / s;
+                z = (m20 + m02) / s;
+            } else if (m11 > m22) {
+                float s = (float) Math.sqrt(1f + m11 - m00 - m22) * 2f;
+                w = (m20 - m02) / s;
+                x = (m10 + m01) / s;
+                y = 0.25f * s;
+                z = (m21 + m12) / s;
+            } else {
+                float s = (float) Math.sqrt(1f + m22 - m00 - m11) * 2f;
+                w = (m01 - m10) / s;
+                x = (m20 + m02) / s;
+                y = (m21 + m12) / s;
+                z = 0.25f * s;
+            }
+            float inv = 1f / (float) Math.sqrt(x * x + y * y + z * z + w * w);
+            x *= inv;
+            y *= inv;
+            z *= inv;
+            w *= inv;
+            float tx = jointMatrices[m + 12], ty = jointMatrices[m + 13], tz = jointMatrices[m + 14];
+            out[o] = x;
+            out[o + 1] = y;
+            out[o + 2] = z;
+            out[o + 3] = w;
+            // 0.5 * (t, 0) * q
+            out[o + 4] = 0.5f * (tx * w + ty * z - tz * y);
+            out[o + 5] = 0.5f * (-tx * z + ty * w + tz * x);
+            out[o + 6] = 0.5f * (tx * y - ty * x + tz * w);
+            out[o + 7] = 0.5f * (-tx * x - ty * y - tz * z);
+        }
+    }
+
+    /**
+     * Skins {@code vertexCount} positions with dual quaternion blending: the weighted sum of the
+     * vertex's four joint dual quaternions (each taken with the sign that puts it in the same
+     * hemisphere as the first joint with a non-zero weight), normalised, applied as a rotation
+     * and a translation.
+     *
+     * <p>Where the weights mix joints that differ by a twist this keeps the volume that
+     * {@link #skinPositions} loses. Weights are used as given (they should sum to 1); a vertex
+     * whose weights are all zero is moved to the origin of nothing, that is, copied unchanged.
+     *
+     * @param dualQuaternions the array of {@link #jointDualQuaternions}, eight floats per joint;
+     *     must not be {@code null}
+     * @param positions the positions, {@code x, y, z} each; must not be {@code null}
+     * @param joints four joint indices per vertex; must not be {@code null}
+     * @param weights four weights per vertex; must not be {@code null}
+     * @param vertexCount the number of vertices
+     * @param out receives the skinned positions; may be {@code positions}; must not be
+     *     {@code null}
+     * @throws ArrayIndexOutOfBoundsException if an array is too short for the vertices or a joint
+     *     index is out of range
+     */
+    public static void skinPositionsDualQuat(float[] dualQuaternions, float[] positions, int[] joints, float[] weights, int vertexCount, float[] out) {
+        for (int v = 0; v < vertexCount; v++) {
+            float x = positions[v * 3], y = positions[v * 3 + 1], z = positions[v * 3 + 2];
+            float rx = 0f, ry = 0f, rz = 0f, rw = 0f, dx = 0f, dy = 0f, dz = 0f, dw = 0f;
+            float refX = 0f, refY = 0f, refZ = 0f, refW = 0f;
+            boolean haveReference = false;
+            for (int k = 0; k < 4; k++) {
+                float w = weights[v * 4 + k];
+                if (w == 0f) {
+                    continue;
+                }
+                int q = joints[v * 4 + k] * 8;
+                float qx = dualQuaternions[q], qy = dualQuaternions[q + 1], qz = dualQuaternions[q + 2], qw = dualQuaternions[q + 3];
+                if (!haveReference) {
+                    refX = qx;
+                    refY = qy;
+                    refZ = qz;
+                    refW = qw;
+                    haveReference = true;
+                }
+                float s = qx * refX + qy * refY + qz * refZ + qw * refW < 0f ? -w : w;
+                rx += s * qx;
+                ry += s * qy;
+                rz += s * qz;
+                rw += s * qw;
+                dx += s * dualQuaternions[q + 4];
+                dy += s * dualQuaternions[q + 5];
+                dz += s * dualQuaternions[q + 6];
+                dw += s * dualQuaternions[q + 7];
+            }
+            if (!haveReference) {
+                out[v * 3] = x;
+                out[v * 3 + 1] = y;
+                out[v * 3 + 2] = z;
+                continue;
+            }
+            float inv = 1f / (float) Math.sqrt(rx * rx + ry * ry + rz * rz + rw * rw);
+            rx *= inv;
+            ry *= inv;
+            rz *= inv;
+            rw *= inv;
+            dx *= inv;
+            dy *= inv;
+            dz *= inv;
+            dw *= inv;
+            // rotate: p + 2 r.xyz x (r.xyz x p + r.w p)
+            float cx = ry * z - rz * y + rw * x, cy = rz * x - rx * z + rw * y, cz = rx * y - ry * x + rw * z;
+            float ox = x + 2f * (ry * cz - rz * cy);
+            float oy = y + 2f * (rz * cx - rx * cz);
+            float oz = z + 2f * (rx * cy - ry * cx);
+            // translate: 2 * (r.w d.xyz - d.w r.xyz + r.xyz x d.xyz)
+            ox += 2f * (rw * dx - dw * rx + ry * dz - rz * dy);
+            oy += 2f * (rw * dy - dw * ry + rz * dx - rx * dz);
+            oz += 2f * (rw * dz - dw * rz + rx * dy - ry * dx);
+            out[v * 3] = ox;
+            out[v * 3 + 1] = oy;
+            out[v * 3 + 2] = oz;
+        }
+    }
+
+    /**
+     * Skins {@code vertexCount} unit normals with the rotation of the blended dual quaternion (the
+     * same blend as {@link #skinPositionsDualQuat}) and renormalises the result.
+     *
+     * @param dualQuaternions the array of {@link #jointDualQuaternions}, eight floats per joint;
+     *     must not be {@code null}
+     * @param normals the normals, {@code x, y, z} each; must not be {@code null}
+     * @param joints four joint indices per vertex; must not be {@code null}
+     * @param weights four weights per vertex; must not be {@code null}
+     * @param vertexCount the number of vertices
+     * @param out receives the skinned normals; may be {@code normals}; must not be {@code null}
+     * @throws ArrayIndexOutOfBoundsException if an array is too short for the vertices or a joint
+     *     index is out of range
+     */
+    public static void skinNormalsDualQuat(float[] dualQuaternions, float[] normals, int[] joints, float[] weights, int vertexCount, float[] out) {
+        for (int v = 0; v < vertexCount; v++) {
+            float x = normals[v * 3], y = normals[v * 3 + 1], z = normals[v * 3 + 2];
+            float rx = 0f, ry = 0f, rz = 0f, rw = 0f;
+            float refX = 0f, refY = 0f, refZ = 0f, refW = 0f;
+            boolean haveReference = false;
+            for (int k = 0; k < 4; k++) {
+                float w = weights[v * 4 + k];
+                if (w == 0f) {
+                    continue;
+                }
+                int q = joints[v * 4 + k] * 8;
+                float qx = dualQuaternions[q], qy = dualQuaternions[q + 1], qz = dualQuaternions[q + 2], qw = dualQuaternions[q + 3];
+                if (!haveReference) {
+                    refX = qx;
+                    refY = qy;
+                    refZ = qz;
+                    refW = qw;
+                    haveReference = true;
+                }
+                float s = qx * refX + qy * refY + qz * refZ + qw * refW < 0f ? -w : w;
+                rx += s * qx;
+                ry += s * qy;
+                rz += s * qz;
+                rw += s * qw;
+            }
+            if (!haveReference) {
+                out[v * 3] = x;
+                out[v * 3 + 1] = y;
+                out[v * 3 + 2] = z;
+                continue;
+            }
+            float inv = 1f / (float) Math.sqrt(rx * rx + ry * ry + rz * rz + rw * rw);
+            rx *= inv;
+            ry *= inv;
+            rz *= inv;
+            rw *= inv;
+            float cx = ry * z - rz * y + rw * x, cy = rz * x - rx * z + rw * y, cz = rx * y - ry * x + rw * z;
+            float ox = x + 2f * (ry * cz - rz * cy);
+            float oy = y + 2f * (rz * cx - rx * cz);
+            float oz = z + 2f * (rx * cy - ry * cx);
             float len = (float) Math.sqrt(ox * ox + oy * oy + oz * oz);
             if (len > 1e-20f) {
                 ox /= len;

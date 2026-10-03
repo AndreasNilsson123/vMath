@@ -56,8 +56,10 @@ tasks.withType<JavaCompile>().configureEach {
     options.encoding = "UTF-8"
     // -exports is off because vmath.annotations.Experimental has class retention on purpose (japicmp reads it) while the annotations module is "requires static": with the lint on,
     // javac reports one warning per @Experimental class and nothing else. -processing is off because the validating processor supports every annotation without claiming any.
+    // -implicit:class: Gradle's incremental compilation hands javac only the changed files, and the others it reads as sources are then "implicitly compiled", which javac reports
+    // with a warning that -Werror turned into a failed build after a change in a module below (the class files are produced either way; the policy only names that).
     // -Werror: the library compiles without a single other warning, and it should stay that way.
-    options.compilerArgs.addAll(listOf("-Xlint:all", "-Xlint:-exports", "-Xlint:-processing", "-Werror"))
+    options.compilerArgs.addAll(listOf("-Xlint:all", "-Xlint:-exports", "-Xlint:-processing", "-implicit:class", "-Werror"))
     if (valhalla) {
         options.compilerArgs.add("-Xlint:-preview")
         options.release.set(valhallaJdk)

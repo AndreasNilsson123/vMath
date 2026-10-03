@@ -1,5 +1,6 @@
 package vmath.core;
 
+import vmath.annotations.Bulk;
 import vmath.annotations.DoubleOnly;
 import vmath.annotations.FloatOnly;
 import vmath.annotations.GenerateDouble;
@@ -758,6 +759,7 @@ public record Mat4f(
      * @param v the vector; must not be {@code null}
      * @return the matrix times the vector {@code v}
      */
+    @Bulk(uniform = "this")
     public Vec4f transform(Vec4f v) {
         float x = v.x(), y = v.y(), z = v.z(), w = v.w();
         return new Vec4f(
@@ -775,6 +777,7 @@ public record Mat4f(
      * @param p the vector; must not be {@code null}
      * @return the transformed point, never {@code null}
      */
+    @Bulk(uniform = "this", name = "transformPositions")
     public Vec3f transformPosition(Vec3f p) {
         float x = p.x(), y = p.y(), z = p.z();
         return new Vec3f(
@@ -789,6 +792,7 @@ public record Mat4f(
      * @param d the vector; must not be {@code null}
      * @return the transformed direction, never {@code null}
      */
+    @Bulk(uniform = "this", name = "transformDirections")
     public Vec3f transformDirection(Vec3f d) {
         float x = d.x(), y = d.y(), z = d.z();
         return new Vec3f(
@@ -1107,6 +1111,27 @@ public record Mat4f(
                 m10, m11, m12, m13,
                 m20, m21, m22, m23,
                 m30, m31, m32, m33);
+    }
+
+    /**
+     * Moves the translation by a double-precision origin before narrowing the matrix to
+     * {@code float}: the matrix of an object in world coordinates becomes its matrix in a frame
+     * whose origin is {@code origin}, which is how a model matrix is made small enough for the GPU.
+     *
+     * <p>The subtraction is done in double, so the result keeps its precision however far the
+     * object is from the world origin; only the rotation and scale are rounded. The origin is
+     * usually the camera position, or a {@link FloatingOrigin}.
+     *
+     * @param origin the new origin in the coordinates of this matrix; must not be {@code null}
+     * @return {@code translation(-origin) * this}, subtracted in double and narrowed to float
+     */
+    @DoubleOnly
+    public Mat4f relativeTo(Vec3d origin) {
+        return new Mat4f(
+                (float) m00, (float) m01, (float) m02, (float) m03,
+                (float) m10, (float) m11, (float) m12, (float) m13,
+                (float) m20, (float) m21, (float) m22, (float) m23,
+                (float) (m30 - origin.x()), (float) (m31 - origin.y()), (float) (m32 - origin.z()), (float) m33);
     }
 
     /**

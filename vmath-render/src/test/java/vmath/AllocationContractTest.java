@@ -563,6 +563,10 @@ class AllocationContractTest {
         }
         assertNoAllocation("Skinning.skinPositions", WARM_BIG, CALLS_BIG, () -> Skinning.skinPositions(matrices.data(), pos, ji, w, vc, skinned));
         assertNoAllocation("Skinning.skinNormals", WARM_BIG, CALLS_BIG, () -> Skinning.skinNormals(matrices.data(), normals, ji, w, vc, skinned));
+        float[] dualQuaternions = new float[joints * 8];
+        assertNoAllocation("Skinning.jointDualQuaternions", WARM, CALLS, () -> Skinning.jointDualQuaternions(matrices.data(), joints, dualQuaternions));
+        assertNoAllocation("Skinning.skinPositionsDualQuat", WARM_BIG, CALLS_BIG, () -> Skinning.skinPositionsDualQuat(dualQuaternions, pos, ji, w, vc, skinned));
+        assertNoAllocation("Skinning.skinNormalsDualQuat", WARM_BIG, CALLS_BIG, () -> Skinning.skinNormalsDualQuat(dualQuaternions, normals, ji, w, vc, skinned));
     }
 
     // ------------------------------------------------------------ the helper itself

@@ -30,7 +30,16 @@ Measured (`AnimationBench`, JDK 25, ~0 B/op): for 64 / 128 joints with 30-key tr
 1.2 / 2.2 us, joint matrices 2.1 / 4.3 us, a full character (two samples, a blend, joint matrices) 21.9 / 42.4 us. CPU skinning of 10 000 vertices
 takes about 150 us. Sampling dominates; a faster sampler is the obvious next step.
 
-Not built: dual-quaternion skinning, step/cubic interpolation inside `AnimationClip` (the glTF loader converts STEP and CUBICSPLINE curves to linear keys).
+**Dual quaternion skinning.** Linear blending of matrices shrinks and pinches a mesh where a joint twists (the candy wrapper). `Skinning.jointDualQuaternions` turns the joint matrices into dual
+quaternions (eight floats per joint: the rotation, then `0.5 * (t, 0) * rotation`), and `skinPositionsDualQuat` / `skinNormalsDualQuat` blend those: the four joint dual quaternions of a vertex are
+brought into the hemisphere of the first one with a weight (so `q` and `-q` do not matter), summed with the weights, normalised, and applied as a rotation and a translation. The joints must be rigid
+(a rotation and a translation): a scale in a joint matrix is dropped or distorts the rotation, so use linear blending for skeletons that scale. Tested: a vertex with one joint skins like linear
+blending (positions and normals, random poses), two joints twisted by half a turn and weighted one half each keep their distance from the axis where linear blending collapses the vertex onto it, the
+sign of a joint dual quaternion does not change the result, the conversion from matrices is checked on all four branches and against `RigidTransformf.fromMat4(...).toDualQuat()`, and the new methods
+allocate nothing. Measured (`AnimationBench`, 10 000 vertices with four joints each): 342 us against 134 us for linear blending, about 2.6 times the cost (34 ns per vertex against 13 ns); converting
+the joints takes 1.1 us for 64 joints and 2.1 us for 128, against 1.9 us and 3.9 us for the joint matrices themselves.
+
+Not built: step/cubic interpolation inside `AnimationClip` (the glTF loader converts STEP and CUBICSPLINE curves to linear keys).
 
 ## Inverse kinematics: `IkSolver`
 

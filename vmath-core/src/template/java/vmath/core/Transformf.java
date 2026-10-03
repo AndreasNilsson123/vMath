@@ -222,6 +222,19 @@ public record Transformf(Vec3f translation, Quatf rotation, Vec3f scale) {
     }
 
     /**
+     * Moves the translation by a double-precision origin before narrowing the transform to
+     * {@code float}, so that an object far from the world origin keeps its precision on the GPU.
+     *
+     * @param origin the new origin in the coordinates of this transform; must not be {@code null}
+     * @return the transform in a frame whose origin is {@code origin}, subtracted in double and
+     *     narrowed to float
+     */
+    @DoubleOnly
+    public Transformf relativeTo(Vec3d origin) {
+        return new Transformf(translation.relativeTo(origin), rotation.toFloat(), scale.toFloat());
+    }
+
+    /**
      * Converts the components to {@code float}, which rounds values that need more precision.
      *
      * @return the same value with float components (rounded to the nearest float for double types)

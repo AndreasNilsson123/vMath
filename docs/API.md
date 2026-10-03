@@ -64,6 +64,19 @@ checks the row, like the new matrices.
 `length`, `lengthSquared`, `log`, `lookRotation`, `mul`, `nlerp`, `normalize`, `pow`, `slerp`, `squad`, `swing`, `toDouble`, `toEuler`, `toMat3`, `toMat4`, `toString`,
 `transform`, `twist`.
 
+## Rigid transforms: `RigidTransformf`, `DualQuatf`
+
+`RigidTransformf(translation, rotation)` is a rotation followed by a translation, 28 bytes, without a scale (it is not called `Pose`, which is the skeleton pose of `vmath.anim`):
+`IDENTITY`, `ofTranslation`, `ofRotation`, `fromMat4` (a rigid matrix), `fromTransform` (drops the scale), `transformPosition`, `transformDirection`, `inverseTransformPosition`,
+`inverseTransformDirection` (no inverse is built), `mul` (the right operand acts first), `inverse` (the conjugate rotation: exact, no division), `blend` (linear translation, shortest-arc
+slerp), `normalize` (repairs the rotation after many products), `toMat4`, `toMat4x3`, `toTransform`, `toDualQuat`, `approxEquals`, `isFinite`, `toDouble`.
+
+`DualQuatf(real, dual)` is the same transform as eight numbers that blend well: `of(rotation, translation)`, `ofRotation`, `ofTranslation`, `mul` (composition), `mul(float)` and `add` (weighted
+sums), `negate`, `conjugate` (the inverse of a unit one), `inverse` (exact, also for a non-unit one), `dot`, `normalize`, `nlerp` (dual quaternion linear blending along the shorter rotation), `pow` and
+`sclerp` (the screw motion, constant speed), `rotation`, `translation`, `transformPosition`, `transformDirection`, `toRigid`, `toMat4`, `approxEquals`, `sameTransform` (a dual quaternion and its
+negative are the same transform), `isFinite`, `toDouble`. They are tested against the matrices of the same transforms and against a known screw motion (a rotation about `z` with a lift along `z`,
+which `sclerp` must reproduce at every parameter). Dual quaternion skinning is in `vmath.anim.Skinning` (`docs/ANIMATION.md`).
+
 ## Shapes: `Aabbf`, `Spheref`, `Planef`, `Rayf`, `Trianglef`, `Obbf`, `Frustumf`, `Segmentf`, `Capsulef`
 
 All: `equals`, `hashCode`, `toDouble`, `toString`. With a nearest point (`closestPoint`): every shape except `Frustumf`. That can be transformed by a matrix (`transform`):
@@ -83,7 +96,7 @@ same name, parameter count and staticness, and the double type converts back wit
 | Only on the double type | Why |
 |---|---|
 | `toFloat` | narrowing conversion |
-| `relativeTo(origin)` (`Vec3d`, `Aabbd`, `Sphered`) | camera-relative rendering: subtract in double, then narrow to float |
+| `relativeTo(origin)` (`Vec3d`, `Aabbd`, `Sphered`, `Mat4d`, `Mat4x3d`, `Transformd`, `RigidTransformd`, `FrameTransformd`) | camera-relative rendering: subtract in double, then narrow to float (`docs/LARGE_WORLDS.md`) |
 
 ## Conventions that apply everywhere
 

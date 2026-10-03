@@ -1,5 +1,6 @@
 package vmath.core;
 
+import vmath.annotations.Bulk;
 import vmath.annotations.DoubleOnly;
 import vmath.annotations.FloatOnly;
 import vmath.annotations.GenerateDouble;
@@ -83,6 +84,7 @@ public record Vec3f(float x, float y, float z) {
      * @param o the other vector; must not be {@code null}
      * @return the sum {@code this + o}
      */
+    @Bulk
     public Vec3f add(Vec3f o) {
         return new Vec3f(x + o.x, y + o.y, z + o.z);
     }
@@ -105,6 +107,7 @@ public record Vec3f(float x, float y, float z) {
      * @param o the other vector; must not be {@code null}
      * @return the difference {@code this - o}
      */
+    @Bulk
     public Vec3f sub(Vec3f o) {
         return new Vec3f(x - o.x, y - o.y, z - o.z);
     }
@@ -115,6 +118,7 @@ public record Vec3f(float x, float y, float z) {
      * @param s the factor
      * @return every component multiplied by {@code s}
      */
+    @Bulk
     public Vec3f mul(float s) {
         return new Vec3f(x * s, y * s, z * s);
     }
@@ -125,6 +129,7 @@ public record Vec3f(float x, float y, float z) {
      * @param o the other vector; must not be {@code null}
      * @return component-wise product
      */
+    @Bulk
     public Vec3f mul(Vec3f o) {
         return new Vec3f(x * o.x, y * o.y, z * o.z);
     }
@@ -137,6 +142,7 @@ public record Vec3f(float x, float y, float z) {
      * @return every component divided by {@code s}; a zero divisor gives infinities or NaN, as in
      *     IEEE arithmetic
      */
+    @Bulk
     public Vec3f div(float s) {
         float inv = 1f / s;
         return new Vec3f(x * inv, y * inv, z * inv);
@@ -147,6 +153,7 @@ public record Vec3f(float x, float y, float z) {
      *
      * @return every component negated
      */
+    @Bulk
     public Vec3f negate() {
         return new Vec3f(-x, -y, -z);
     }
@@ -158,6 +165,7 @@ public record Vec3f(float x, float y, float z) {
      * @param s the factor for {@code a}
      * @return {@code this + a * s}
      */
+    @Bulk
     public Vec3f fma(Vec3f a, float s) {
         return new Vec3f(x + a.x * s, y + a.y * s, z + a.z * s);
     }
@@ -169,6 +177,7 @@ public record Vec3f(float x, float y, float z) {
      * @param o the other vector; must not be {@code null}
      * @return the dot product
      */
+    @Bulk
     public float dot(Vec3f o) {
         return x * o.x + y * o.y + z * o.z;
     }
@@ -180,6 +189,7 @@ public record Vec3f(float x, float y, float z) {
      * @param o the other vector; must not be {@code null}
      * @return right-handed cross product
      */
+    @Bulk
     public Vec3f cross(Vec3f o) {
         return new Vec3f(
                 y * o.z - z * o.y,
@@ -192,6 +202,7 @@ public record Vec3f(float x, float y, float z) {
      *
      * @return the squared length
      */
+    @Bulk
     public float lengthSquared() {
         return x * x + y * y + z * z;
     }
@@ -212,6 +223,7 @@ public record Vec3f(float x, float y, float z) {
      * @param o the other vector; must not be {@code null}
      * @return the squared distance to {@code o}; cheaper than {@link #distance}
      */
+    @Bulk
     public float distanceSquared(Vec3f o) {
         float dx = x - o.x, dy = y - o.y, dz = z - o.z;
         return dx * dx + dy * dy + dz * dz;
@@ -285,6 +297,7 @@ public record Vec3f(float x, float y, float z) {
      * @param t the interpolation parameter, 0 for this vector and 1 for {@code o}; not clamped
      * @return the linear interpolation {@code this + (o - this) * t}; {@code t} is not clamped
      */
+    @Bulk
     public Vec3f lerp(Vec3f o, float t) {
         return new Vec3f(x + (o.x - x) * t, y + (o.y - y) * t, z + (o.z - z) * t);
     }
@@ -306,6 +319,7 @@ public record Vec3f(float x, float y, float z) {
      * @param o the other vector; must not be {@code null}
      * @return the component-wise minimum
      */
+    @Bulk
     public Vec3f min(Vec3f o) {
         return new Vec3f(Math.min(x, o.x), Math.min(y, o.y), Math.min(z, o.z));
     }
@@ -316,6 +330,7 @@ public record Vec3f(float x, float y, float z) {
      * @param o the other vector; must not be {@code null}
      * @return the component-wise maximum
      */
+    @Bulk
     public Vec3f max(Vec3f o) {
         return new Vec3f(Math.max(x, o.x), Math.max(y, o.y), Math.max(z, o.z));
     }
@@ -325,6 +340,7 @@ public record Vec3f(float x, float y, float z) {
      *
      * @return the absolute value of every component
      */
+    @Bulk
     public Vec3f abs() {
         return new Vec3f(Math.abs(x), Math.abs(y), Math.abs(z));
     }

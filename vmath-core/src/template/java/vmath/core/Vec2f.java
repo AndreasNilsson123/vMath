@@ -1,5 +1,6 @@
 package vmath.core;
 
+import vmath.annotations.Bulk;
 import vmath.annotations.DoubleOnly;
 import vmath.annotations.FloatOnly;
 import vmath.annotations.GenerateDouble;
@@ -65,6 +66,7 @@ public record Vec2f(float x, float y) {
      * @param o the other vector; must not be {@code null}
      * @return the sum {@code this + o}
      */
+    @Bulk
     public Vec2f add(Vec2f o) {
         return new Vec2f(x + o.x, y + o.y);
     }
@@ -75,6 +77,7 @@ public record Vec2f(float x, float y) {
      * @param o the other vector; must not be {@code null}
      * @return the difference {@code this - o}
      */
+    @Bulk
     public Vec2f sub(Vec2f o) {
         return new Vec2f(x - o.x, y - o.y);
     }
@@ -85,6 +88,7 @@ public record Vec2f(float x, float y) {
      * @param s the factor
      * @return every component multiplied by {@code s}
      */
+    @Bulk
     public Vec2f mul(float s) {
         return new Vec2f(x * s, y * s);
     }
@@ -95,6 +99,7 @@ public record Vec2f(float x, float y) {
      * @param o the other vector; must not be {@code null}
      * @return component-wise product
      */
+    @Bulk
     public Vec2f mul(Vec2f o) {
         return new Vec2f(x * o.x, y * o.y);
     }
@@ -107,6 +112,7 @@ public record Vec2f(float x, float y) {
      * @return every component divided by {@code s}; a zero divisor gives infinities or NaN, as in
      *     IEEE arithmetic
      */
+    @Bulk
     public Vec2f div(float s) {
         float inv = 1f / s;
         return new Vec2f(x * inv, y * inv);
@@ -117,6 +123,7 @@ public record Vec2f(float x, float y) {
      *
      * @return every component negated
      */
+    @Bulk
     public Vec2f negate() {
         return new Vec2f(-x, -y);
     }
@@ -128,6 +135,7 @@ public record Vec2f(float x, float y) {
      * @param s the factor for {@code a}
      * @return {@code this + a * s}
      */
+    @Bulk
     public Vec2f fma(Vec2f a, float s) {
         return new Vec2f(x + a.x * s, y + a.y * s);
     }
@@ -139,6 +147,7 @@ public record Vec2f(float x, float y) {
      * @param o the other vector; must not be {@code null}
      * @return the dot product
      */
+    @Bulk
     public float dot(Vec2f o) {
         return x * o.x + y * o.y;
     }
@@ -169,6 +178,7 @@ public record Vec2f(float x, float y) {
      *
      * @return the squared length
      */
+    @Bulk
     public float lengthSquared() {
         return x * x + y * y;
     }
@@ -233,6 +243,7 @@ public record Vec2f(float x, float y) {
      * @param t the interpolation parameter, 0 for this vector and 1 for {@code o}; not clamped
      * @return the linear interpolation {@code this + (o - this) * t}; {@code t} is not clamped
      */
+    @Bulk
     public Vec2f lerp(Vec2f o, float t) {
         return new Vec2f(x + (o.x - x) * t, y + (o.y - y) * t);
     }
@@ -243,6 +254,7 @@ public record Vec2f(float x, float y) {
      * @param o the other vector; must not be {@code null}
      * @return the component-wise minimum
      */
+    @Bulk
     public Vec2f min(Vec2f o) {
         return new Vec2f(Math.min(x, o.x), Math.min(y, o.y));
     }
@@ -253,6 +265,7 @@ public record Vec2f(float x, float y) {
      * @param o the other vector; must not be {@code null}
      * @return the component-wise maximum
      */
+    @Bulk
     public Vec2f max(Vec2f o) {
         return new Vec2f(Math.max(x, o.x), Math.max(y, o.y));
     }
@@ -275,6 +288,7 @@ public record Vec2f(float x, float y) {
      * @param o the other vector; must not be {@code null}
      * @return the squared distance to {@code o}; cheaper than {@link #distance}
      */
+    @Bulk
     public float distanceSquared(Vec2f o) {
         float dx = x - o.x, dy = y - o.y;
         return dx * dx + dy * dy;
@@ -313,6 +327,7 @@ public record Vec2f(float x, float y) {
      *
      * @return the absolute value of every component
      */
+    @Bulk
     public Vec2f abs() {
         return new Vec2f(Math.abs(x), Math.abs(y));
     }
