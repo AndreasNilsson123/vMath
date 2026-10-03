@@ -18,7 +18,7 @@ jobs:
         with:
           distribution: temurin
           java-version: 25
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
       - name: Previous result
         uses: actions/download-artifact@v4
         continue-on-error: true
