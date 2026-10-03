@@ -947,6 +947,91 @@ class AllocationContractTest {
         });
     }
 
+    // ------------------------------------------------------------ debug lines, k-DOPs, spherical harmonics
+
+    @Test
+    void debugLineGenerators() {
+        var lines = new vmath.util.DebugLines(4096);
+        var box = new vmath.geo.Aabbf(-1, -2, -3, 4, 5, 6);
+        var obb = vmath.geo.Obbf.of(new Vec3f(1, 2, 3), new Vec3f(1, 2, 3), vmath.core.Quatf.fromAxisAngle(0.7f, new Vec3f(0, 1, 0)));
+        var capsule = vmath.geo.Capsulef.of(new Vec3f(0, 0, 0), new Vec3f(1, 2, 0), 0.5f);
+        int[] parents = {-1, 0, 1, 1};
+        float[] bind = new float[40];
+        for (int j = 0; j < 4; j++) {
+            bind[10 * j + 6] = 1f;
+            bind[10 * j + 7] = bind[10 * j + 8] = bind[10 * j + 9] = 1f;
+        }
+        var skeleton = new vmath.anim.Skeleton(parents, bind);
+        float[] world = new float[64];
+        for (int j = 0; j < 4; j++) {
+            world[16 * j] = world[16 * j + 5] = world[16 * j + 10] = world[16 * j + 15] = 1f;
+            world[16 * j + 12] = j;
+        }
+        assertNoAllocation("DebugLines", WARM, CALLS, () -> {
+            lines.clear();
+            lines.setColor(vmath.util.DebugLines.GREEN);
+            lines.box(box).obb(obb).sphere(1, 2, 3, 2, 24).capsule(capsule, 16).circle(0, 0, 0, 0, 1, 0, 1, 32);
+            lines.cone(0, 0, 0, 0, 0, -1, 3f, 0.5f, 16).axes(0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 2f).grid(0, 0, 0, 10f, 10);
+            lines.skeleton(skeleton, world, 0.1f).cross(1, 1, 1, 0.5f);
+        });
+    }
+
+    @Test
+    void kDopQueries() {
+        float[] a = new float[3 * 30], b = new float[3 * 30];
+        SplittableRandom r = new SplittableRandom(11);
+        for (int i = 0; i < a.length; i++) {
+            a[i] = (float) r.nextDouble();
+            b[i] = (float) (r.nextDouble() + 0.5);
+        }
+        var da = vmath.geo.KDop.of(26, a, 30);
+        var db = vmath.geo.KDop.of(26, b, 30);
+        assertNoAllocation("KDop", WARM, CALLS, () -> {
+            da.overlaps(db);
+            da.contains(db);
+            da.contains(0.5f, 0.5f, 0.5f);
+        });
+    }
+
+    @Test
+    void sphericalHarmonicsEvaluation() {
+        float[] c = new float[27];
+        for (int i = 0; i < 27; i++) {
+            c[i] = (float) Math.sin(i);
+        }
+        double[] out = new double[3];
+        double[] x = {0.1};
+        assertNoAllocation("SphericalHarmonics", WARM, CALLS, () -> {
+            x[0] += 0.001;
+            vmath.util.SphericalHarmonics.evaluate(c, x[0], 0.5, 0.3, out);
+            vmath.util.SphericalHarmonics.irradiance(c, 0.2, x[0], 0.9, out);
+        });
+    }
+
+    @Test
+    void cameraAndSunHelpers() {
+        var cam = vmath.camera.PhysicalCamera.fullFrame(50, 2.8, 1.0 / 125, 100, 4);
+        double[] rgb = new double[3];
+        var sky = new vmath.camera.PreethamSky(3, 0.8);
+        double[] t = {0.0};
+        assertNoAllocation("PhysicalCamera and Atmosphere", WARM, CALLS, () -> {
+            t[0] += 0.0001;
+            cam.ev100();
+            cam.exposure();
+            cam.horizontalFov();
+            cam.hyperfocalDistance();
+            cam.nearFocusLimit();
+            cam.farFocusLimit();
+            cam.circleOfConfusion(10 + t[0]);
+            vmath.camera.Atmosphere.airMass(0.2 + t[0]);
+            vmath.camera.Atmosphere.sunTransmittanceRgb(0.3 + t[0], 0.05, 1.3, 0.0, rgb);
+        });
+        assertNoAllocation("PreethamSky", WARM, CALLS, () -> {
+            t[0] += 0.0001;
+            sky.rgb(0.3, 0.8 + t[0], 0.2, 0.5, 0.7, 0.1, rgb);
+        });
+    }
+
     // ------------------------------------------------------------ inverse kinematics
 
     @Test

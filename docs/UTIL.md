@@ -44,10 +44,11 @@ lattice values come from an integer hash (uniform: chi-square test on 64 buckets
 
 - **Perlin** uses the `+-1` diagonal gradients and is scaled by 2 / dimension, which makes `[-1, 1]` a proven bound (the largest possible value of the construction is dimension / 2). The price is a
   modest typical amplitude: the root mean square of the values over 2e7 random samples was 0.305 (2D), 0.221 (3D) and 0.169 (4D). Anisotropy of the diagonal gradient set was not measured.
-- **Simplex** is scaled so that the largest value found in 2e7 samples was 0.998 (2D) and 0.978 (3D); this is a measurement, not a proof of the bound, and the root mean square was 0.538 and 0.425.
-  There is no 4D simplex.
+- **Simplex** is scaled so that the largest value found in 3e7 samples was 0.998 (2D) and 0.975 (3D); this is a measurement, not a proof of the bound, and the root mean square was 0.538 and 0.383.
+  The 3D kernel has the radius squared 0.5. The value 0.6 that many implementations use makes the function **jump** by about 0.003 at the faces between simplices (the continuity test
+  found it: the measured slope grew in proportion to 1 / step, 8.5 at a step of 1e-3 and 3 442 at 1e-6); with 0.5 the slope is the same at every step (6.66). There is no 4D simplex.
 - **Value noise** reached 0.99994 in 2e7 samples (the bound 1 is exact: it interpolates values in [-1, 1]).
-- **Continuity**: with a step of 1e-4 no noise changed faster than 14 units per unit of coordinate (simplex 2D is the steepest); a jump would show as thousands.
+- **Continuity**: the slope does not grow as the step shrinks (steps from 1e-3 to 1e-7, 3e7 samples): the steepest slopes are 2.7 (Perlin 2D and 3D; 0.5 in 4D), 7.03 (simplex 2D), 6.66 (simplex 3D) and 3.7 (value noise).
 - **Worley**: the nearest distance is exact. The second nearest distance is searched among the 9 (27 in 3D) cells around the sample, which is not always enough: measured against a search of 81 (343)
   cells, with fully random feature positions it was wrong in 272 of 2e6 samples in 2D (0.014%) and 11 of 3e5 in 3D (0.004%), and never wrong in the same samples when the feature positions were
   limited to half the cell (`jitter` 0.5).
@@ -87,3 +88,37 @@ families are tested to be monotonic and the in-out forms symmetric.
 | `Spring.update`, underdamped or overdamped (varying damping) | 62.7 ns ± 2.4 ns |
 
 Not included: springs on quaternions and angles (use `Smoothing.angleDelta` for angles), blue-noise tables, scrambled Sobol and more than two Sobol dimensions, 4D simplex noise.
+
+## `SphericalHarmonics`, `Ibl`, `DebugLines`
+
+**`SphericalHarmonics`** holds an environment in the first two bands (nine real coefficients per colour channel, 27 floats, the layout a shader uniform array of `vec3` wants): `project` integrates a
+function on the sphere with a Gauss-Legendre product quadrature, `evaluate` reconstructs it, `irradiance` gives the diffuse irradiance at a normal with the clamped-cosine factors (`pi`,
+`2 pi / 3`, `pi / 4`), `convolveWithCosine` precomputes them, `rotate` turns the environment without going back to the function, and `addConstant` and `addDirectionalLight` build one from lights.
+Tests: the basis is orthonormal; the clamped cosine has the published coefficients (`sqrt(pi) / 2`, `sqrt(pi / 3)`, `sqrt(5 pi) / 8`); the irradiance of a band-limited environment equals a direct
+numerical integration (within 3e-3); the rotation equals projecting the rotated function (within 3e-4), composes, and keeps the norm. Two bands represent only smooth environments: a directional light
+facing the surface gives 1.0625 (the exact value is 1) and a surface facing away still sees a small negative value of at most 0.1 (a measured artefact of the truncation); do not use these coefficients for specular reflection.
+
+**`Ibl`** has the GGX terms (the distribution, the height-correlated Smith visibility, the Schlick-GGX geometry term of image-based lighting), importance sampling of the lobe, the scale and bias
+of the split-sum specular term (`dfg`) and its lookup table (`brdfLut`), and the GGX-prefiltered environment (`prefilterGgx`). Checks that do not rely on the code under test: the distribution
+integrates to 1 over the projected hemisphere (within 2e-3); for a nearly perfect mirror the table is exactly `1 - (1 - n.v)^5` and `(1 - n.v)^5`; at roughness 1 and normal incidence the
+table equals `1 - ln 2` (the closed form of the integral); `A + B` never exceeds 1; the sampled values agree with a 40 000-sample reference to 0.01; the prefiltered environment converges to a
+direct integration of the lobe (within 0.02 at 8 192 samples). An analytic fit of the table (the "mobile" approximation of Karis) was tried from memory and **not included**: it differed from the
+sampled table by up to 0.18, and the constants could not be verified against a source.
+
+**`DebugLines`** generates line lists for drawing: boxes, oriented boxes, circles, spheres (three great circles), capsules, cones (spot-light gizmos), axes, grids, arrows, frusta (from a
+view-projection matrix in any depth convention, also reversed and infinite), skeletons (from world matrices) and meshes' wireframes, with a packed colour per line. The shape generators allocate
+nothing once the buffer has reached its size (`AllocationContractTest`); `frustum` creates the inverse matrix. The tests check the geometry itself: the box edges and corners, the circle radius and
+plane, every capsule point at exactly the radius from the axis, the frustum corners at the corners of the NDC cube in every clip space.
+
+| Call | Time |
+|---|---|
+| `SphericalHarmonics.evaluate` | 25.0 ns ± 2.3 ns |
+| `SphericalHarmonics.irradiance` | 27.1 ns ± 3.2 ns |
+| `SphericalHarmonics.rotate` | 819 ns ± 91 ns |
+| `SphericalHarmonics.project`, 16 x 32 quadrature points | 32.2 µs ± 14.3 µs |
+| `Ibl.dfg`, 256 samples | 21.8 µs ± 1.1 µs |
+| `Ibl.brdfLut`, 32 x 32 texels of 128 samples | 11.2 ms ± 1.6 ms |
+| `Ibl.prefilterGgx`, 1 024 samples | 60.4 µs ± 24.1 µs |
+| `DebugLines`: a box, a sphere and a capsule (12 + 72 + 52 lines) | 4.87 µs ± 0.29 µs |
+
+JMH `RoadmapBench`, JDK 25, single thread, 2026-10-03. The `project` and `prefilterGgx` figures include the cost of the environment lambda and have wide intervals.

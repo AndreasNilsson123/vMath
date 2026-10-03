@@ -169,6 +169,39 @@ public record Vec2f(float x, float y) {
         return new Vec2f(Math.abs(x), Math.abs(y));
     }
 
+    /** The unit vector at {@code angle} radians counter-clockwise from +X: {@code (cos angle, sin angle)}. */
+    public static Vec2f fromAngle(float angle) {
+        return new Vec2f((float) Math.cos(angle), (float) Math.sin(angle));
+    }
+
+    /** The polar angle of this vector in radians, counter-clockwise from +X, in {@code (-PI, PI]}; 0 for the zero vector. */
+    public float polarAngle() {
+        return (float) Math.atan2(y, x);
+    }
+
+    /** The signed angle in radians that rotates this vector onto {@code o}, counter-clockwise positive, in {@code [-PI, PI]}: {@code atan2(perpDot, dot)}. */
+    public float signedAngle(Vec2f o) {
+        return (float) Math.atan2(cross(o), dot(o));
+    }
+
+    /** The perp-dot product {@code x * o.y - y * o.x}, the 2D cross product: positive when {@code o} is counter-clockwise from this vector. The same as {@link #cross}. */
+    public float perpDot(Vec2f o) {
+        return x * o.y - y * o.x;
+    }
+
+    /** Rotates counter-clockwise by {@code angle} radians about the point {@code pivot}. */
+    public Vec2f rotateAround(Vec2f pivot, float angle) {
+        return sub(pivot).rotate(angle).add(pivot);
+    }
+
+    /**
+     * Twice the signed area of the triangle {@code a, b, c}: positive when the three points run counter-clockwise, negative when clockwise, zero when collinear. The orientation
+     * test of 2D geometry ({@code vmath.core.Predicates.orient2d} is the exact version for the decision alone).
+     */
+    public static float orient(Vec2f a, Vec2f b, Vec2f c) {
+        return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+    }
+
     /** Rotates counter-clockwise by {@code angle} radians. */
     public Vec2f rotate(float angle) {
         float c = (float) Math.cos(angle), s = (float) Math.sin(angle);

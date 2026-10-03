@@ -200,6 +200,9 @@ public record Mat3f(
 
     /** The element at {@code column} and {@code row}. */
     public float get(int column, int row) {
+        if (row < 0 || row > 2) {
+            throw new IndexOutOfBoundsException(column + "," + row);
+        }
         return switch (column * 3 + row) {
             case 0 -> m00; case 1 -> m01; case 2 -> m02;
             case 3 -> m10; case 4 -> m11; case 5 -> m12;

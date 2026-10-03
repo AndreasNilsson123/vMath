@@ -111,25 +111,33 @@ class NoiseTest {
             s3 += b * b;
         }
         assertEquals(0.538, Math.sqrt(s2 / samples), 0.03);
-        assertEquals(0.425, Math.sqrt(s3 / samples), 0.03);
+        assertEquals(0.383, Math.sqrt(s3 / samples), 0.03);
     }
 
     @Test
     void noisesAreContinuous() {
-        double h = 1e-4;
-        double worst = 0;
-        for (int i = 0; i < 20_000; i++) {
+        // the slope of a continuous function does not grow as the step shrinks; a jump of height j shows as a slope of j / h, a thousand times larger for a thousand times smaller step
+        double[] steps = {1e-3, 1e-6};
+        double[][] worst = new double[2][7];
+        for (int i = 0; i < 30_000; i++) {
             double x = coordinate(), y = coordinate(), z = coordinate();
-            worst = Math.max(worst, Math.abs(Noise.perlin2(x + h, y, 1) - Noise.perlin2(x, y, 1)) / h);
-            worst = Math.max(worst, Math.abs(Noise.perlin3(x, y + h, z, 1) - Noise.perlin3(x, y, z, 1)) / h);
-            worst = Math.max(worst, Math.abs(Noise.perlin4(x, y, z, 5 + h, 1) - Noise.perlin4(x, y, z, 5, 1)) / h);
-            worst = Math.max(worst, Math.abs(Noise.simplex2(x, y + h, 1) - Noise.simplex2(x, y, 1)) / h);
-            worst = Math.max(worst, Math.abs(Noise.simplex3(x + h, y, z, 1) - Noise.simplex3(x, y, z, 1)) / h);
-            worst = Math.max(worst, Math.abs(Noise.value2(x + h, y, 1) - Noise.value2(x, y, 1)) / h);
-            worst = Math.max(worst, Math.abs(Noise.value3(x, y, z + h, 1) - Noise.value3(x, y, z, 1)) / h);
+            for (int k = 0; k < 2; k++) {
+                double h = steps[k];
+                worst[k][0] = Math.max(worst[k][0], Math.abs(Noise.perlin2(x + h, y, 1) - Noise.perlin2(x, y, 1)) / h);
+                worst[k][1] = Math.max(worst[k][1], Math.abs(Noise.perlin3(x, y + h, z, 1) - Noise.perlin3(x, y, z, 1)) / h);
+                worst[k][2] = Math.max(worst[k][2], Math.abs(Noise.perlin4(x, y, z, 5 + h, 1) - Noise.perlin4(x, y, z, 5, 1)) / h);
+                worst[k][3] = Math.max(worst[k][3], Math.abs(Noise.simplex2(x, y + h, 1) - Noise.simplex2(x, y, 1)) / h);
+                worst[k][4] = Math.max(worst[k][4], Math.abs(Noise.simplex3(x + h, y, z, 1) - Noise.simplex3(x, y, z, 1)) / h);
+                worst[k][5] = Math.max(worst[k][5], Math.abs(Noise.value2(x + h, y, 1) - Noise.value2(x, y, 1)) / h);
+                worst[k][6] = Math.max(worst[k][6], Math.abs(Noise.value3(x, y, z + h, 1) - Noise.value3(x, y, z, 1)) / h);
+            }
         }
-        // a jump would show as a slope of at least 1e4 / 4 here (h = 1e-4); the smooth noises measure about 14 at most (simplex noise is the steepest)
-        assertTrue(worst < 25, "steepest slope " + worst);
+        String[] names = {"perlin2", "perlin3", "perlin4", "simplex2", "simplex3", "value2", "value3"};
+        for (int n = 0; n < 7; n++) {
+            assertTrue(worst[1][n] < worst[0][n] * 1.5 + 0.05, names[n] + ": the slope grows as the step shrinks (a jump): " + worst[0][n] + " at 1e-3, " + worst[1][n] + " at 1e-6");
+            // the steepest slopes measured over 3e7 samples were 2.75 (Perlin), 7.03 (simplex 2D), 6.7 (simplex 3D) and 3.7 (value noise)
+            assertTrue(worst[1][n] < 10, names[n] + ": steepest slope " + worst[1][n]);
+        }
         // and the noise does change: it is not constant
         assertNotEquals(Noise.simplex2(0.3, 0.4, 1), Noise.simplex2(0.8, 0.1, 1));
     }

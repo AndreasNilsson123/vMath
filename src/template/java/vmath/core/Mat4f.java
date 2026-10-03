@@ -178,6 +178,25 @@ public record Mat4f(
         return space.yDown() ? m.flipY() : m;
     }
 
+    /**
+     * Orthographic projection with reversed depth: the near plane maps to depth 1 and the far plane to 0, which together with a floating-point depth buffer spreads precision evenly.
+     * Needs a clip space with a {@code [0, 1]} depth range ({@link ClipSpace#D3D} or {@link ClipSpace#VULKAN}); {@link IllegalArgumentException} otherwise, as for
+     * {@link #perspectiveReversedZ(float, float, float, ClipSpace)}.
+     */
+    public static Mat4f orthoReversedZ(float left, float right, float bottom, float top, float near, float far, ClipSpace space) {
+        if (!space.zeroToOne()) {
+            throw new IllegalArgumentException("reversed-Z needs a [0, 1] depth range; use ClipSpace.D3D with glClipControl in OpenGL");
+        }
+        Mat4f m = ortho(left, right, bottom, top, near, far, ClipSpace.D3D);
+        // depth z' = w - z: the same projection with the depth row replaced by the w row minus the depth row
+        Mat4f r = new Mat4f(
+                m.m00, m.m01, m.m03 - m.m02, m.m03,
+                m.m10, m.m11, m.m13 - m.m12, m.m13,
+                m.m20, m.m21, m.m23 - m.m22, m.m23,
+                m.m30, m.m31, m.m33 - m.m32, m.m33);
+        return space.yDown() ? r.flipY() : r;
+    }
+
     /** Asymmetric perspective frustum for a {@link ClipSpace}. */
     public static Mat4f frustum(float left, float right, float bottom, float top, float near, float far, ClipSpace space) {
         Mat4f m = frustum(left, right, bottom, top, near, far, space.zeroToOne());
@@ -346,6 +365,50 @@ public record Mat4f(
     }
 
     /**
+     * A shear matrix: {@code x' = x + xy y + xz z}, {@code y' = y + yx x + yz z}, {@code z' = z + zx x + zy y}. For example {@code xy} slides every point along X in proportion to its
+     * Y. The determinant is 1 when only one of the six factors is non-zero.
+     */
+    public static Mat4f shear(float xy, float xz, float yx, float yz, float zx, float zy) {
+        return new Mat4f(
+                1f, yx, zx, 0f,
+                xy, 1f, zy, 0f,
+                xz, yz, 1f, 0f,
+                0f, 0f, 0f, 1f);
+    }
+
+    /**
+     * Inverse of a perspective, orthographic or off-centre frustum projection of the kind this class builds ({@link #perspective}, {@link #perspectiveInfinite},
+     * {@link #perspectiveReversedZ}, {@link #ortho}, {@link #frustum}, in any {@link ClipSpace}): a matrix in which clip x and y depend on eye x (or y) and z only, and clip z and w
+     * on eye z only. It is much cheaper than the general {@link #invert()} (2.5 times faster in the benchmark of {@code docs/API.md}) and unprojects clip-space points to eye space. The result is meaningless for any
+     * other matrix (check with {@link #isProjection}); a degenerate projection yields non-finite components.
+     */
+    public Mat4f invertProjection() {
+        float a = m00, b = m11, c = m20, d = m21, tx = m30, ty = m31, e = m22, f = m23, g = m32, h = m33;
+        float det = 1f / (e * h - g * f);
+        return new Mat4f(
+                1f / a, 0f, 0f, 0f,
+                0f, 1f / b, 0f, 0f,
+                (tx * f - c * h) * det / a, (ty * f - d * h) * det / b, h * det, -f * det,
+                (c * g - tx * e) * det / a, (d * g - ty * e) * det / b, -g * det, e * det);
+    }
+
+    /** True when the matrix has the structure {@link #invertProjection()} requires, within {@code eps}: the six entries that must be zero are zero and the x and y scales are not. */
+    public boolean isProjection(float eps) {
+        return Math.abs(m01) <= eps && Math.abs(m02) <= eps && Math.abs(m03) <= eps && Math.abs(m10) <= eps && Math.abs(m12) <= eps && Math.abs(m13) <= eps
+                && Math.abs(m00) > eps && Math.abs(m11) > eps;
+    }
+
+    /**
+     * True when the upper-left 3x3 part is orthonormal within {@code eps}: its columns have length 1 and are perpendicular, so it is a rotation or a rotation with a reflection
+     * (check the determinant to tell them apart). Translation and the bottom row are ignored; combine with {@link #isAffine} for a rigid transform.
+     */
+    public boolean isOrthonormal(float eps) {
+        float d00 = m00 * m00 + m01 * m01 + m02 * m02 - 1f, d11 = m10 * m10 + m11 * m11 + m12 * m12 - 1f, d22 = m20 * m20 + m21 * m21 + m22 * m22 - 1f;
+        float d01 = m00 * m10 + m01 * m11 + m02 * m12, d02 = m00 * m20 + m01 * m21 + m02 * m22, d12 = m10 * m20 + m11 * m21 + m12 * m22;
+        return Math.abs(d00) <= eps && Math.abs(d11) <= eps && Math.abs(d22) <= eps && Math.abs(d01) <= eps && Math.abs(d02) <= eps && Math.abs(d12) <= eps;
+    }
+
+    /**
      * Fast inverse for affine matrices (last row {@code 0 0 0 1}): model and view matrices.
      * Do not use on projection matrices.
      */
@@ -480,6 +543,57 @@ public record Mat4f(
                 m10 * iy, m11 * iy, m12 * iy,
                 m20 * iz, m21 * iz, m22 * iz);
         return new Trs(getTranslation(), Quatf.fromMat3(rot), new Vec3f(sx, sy, sz));
+    }
+
+    /** Result of {@link #decomposeWithShear()}. {@code shear} holds the factors {@code (xy, xz, yz)} of {@link #translationRotateShearScale}. */
+    @ValueType
+    public record ShearDecomposition(Vec3f translation, Quatf rotation, Vec3f scale, Vec3f shear) {
+    }
+
+    /**
+     * Splits an affine matrix into translation, rotation, shear and scale such that {@code T * R * Sh * S} recomposes to it ({@link #translationRotateShearScale}), where
+     * {@code Sh} is the upper-triangular unit shear with factors {@code (xy, xz, yz)}: {@code Sh = [[1, xy, xz], [0, 1, yz], [0, 0, 1]]} and {@code S} the diagonal scale. This is
+     * the Gram-Schmidt (QR) factorisation of the 3x3 part, so unlike {@link #decompose()} it is exact for sheared matrices, such as a non-uniform scale below a rotation. A
+     * mirrored matrix is folded into a negative x scale as in {@code decompose()}. A zero-scale axis yields NaN.
+     */
+    public ShearDecomposition decomposeWithShear() {
+        float sx = (float) Math.sqrt(m00 * m00 + m01 * m01 + m02 * m02);
+        float r0x = m00 / sx, r0y = m01 / sx, r0z = m02 / sx;
+        float u01 = r0x * m10 + r0y * m11 + r0z * m12;
+        float c1x = m10 - r0x * u01, c1y = m11 - r0y * u01, c1z = m12 - r0z * u01;
+        float sy = (float) Math.sqrt(c1x * c1x + c1y * c1y + c1z * c1z);
+        float r1x = c1x / sy, r1y = c1y / sy, r1z = c1z / sy;
+        float u02 = r0x * m20 + r0y * m21 + r0z * m22;
+        float u12 = r1x * m20 + r1y * m21 + r1z * m22;
+        float c2x = m20 - r0x * u02 - r1x * u12, c2y = m21 - r0y * u02 - r1y * u12, c2z = m22 - r0z * u02 - r1z * u12;
+        float sz = (float) Math.sqrt(c2x * c2x + c2y * c2y + c2z * c2z);
+        float r2x = c2x / sz, r2y = c2y / sz, r2z = c2z / sz;
+        // a left-handed frame (r0 x r1 pointing against r2) is a reflection: fold it into a negative x scale
+        float cx = r0y * r1z - r0z * r1y, cy = r0z * r1x - r0x * r1z, cz = r0x * r1y - r0y * r1x;
+        if (cx * r2x + cy * r2y + cz * r2z < 0f) {
+            sx = -sx;
+            r0x = -r0x;
+            r0y = -r0y;
+            r0z = -r0z;
+            u01 = -u01;
+            u02 = -u02;
+        }
+        Mat3f rot = new Mat3f(r0x, r0y, r0z, r1x, r1y, r1z, r2x, r2y, r2z);
+        return new ShearDecomposition(getTranslation(), Quatf.fromMat3(rot), new Vec3f(sx, sy, sz), new Vec3f(u01 / sy, u02 / sz, u12 / sz));
+    }
+
+    /**
+     * The matrix {@code T * R * Sh * S}: scale, then shear with the factors {@code shear = (xy, xz, yz)} (see {@link #decomposeWithShear()}), then rotate, then translate. With zero
+     * shear it equals {@link #translationRotateScale}.
+     */
+    public static Mat4f translationRotateShearScale(Vec3f t, Quatf q, Vec3f shear, Vec3f s) {
+        Mat3f r = Mat3f.rotation(q);
+        float u01 = shear.x() * s.y(), u02 = shear.y() * s.z(), u12 = shear.z() * s.z();
+        return new Mat4f(
+                r.m00() * s.x(), r.m01() * s.x(), r.m02() * s.x(), 0f,
+                r.m00() * u01 + r.m10() * s.y(), r.m01() * u01 + r.m11() * s.y(), r.m02() * u01 + r.m12() * s.y(), 0f,
+                r.m00() * u02 + r.m10() * u12 + r.m20() * s.z(), r.m01() * u02 + r.m11() * u12 + r.m21() * s.z(), r.m02() * u02 + r.m12() * u12 + r.m22() * s.z(), 0f,
+                t.x(), t.y(), t.z(), 1f);
     }
 
     /** True when the bottom row is {@code (0, 0, 0, 1)} within {@code eps}: no projection component. */

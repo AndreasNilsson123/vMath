@@ -26,6 +26,38 @@ Square matrices (`Mat3f`, `Mat4f`): `row`, `transpose`. Affine matrices (`Mat4f`
 On purpose only on some: `Mat4f.isAffine`, `lookAt`, `lookTo`, `perspective*`, `ortho`, `frustum` (4x4 builders), `Mat3f.skew`, `basisFromNormal`, `normal`,
 `Mat3f.decompose` (a 3x3 has no translation; use `Quatf.fromMat3`), and no `transpose` or `row` on `Mat4x3f` (not square).
 
+### 2D matrices: `Mat2f`, `Mat3x2f`
+
+`Mat2f` is the 2x2 linear map (rotation, scale, shear, reflection, `outer`, `adjugate`, `trace`, `rotationAngle`, `isOrthonormal`); `Mat3x2f` is the 2D affine transform (three columns of two
+rows, the 2D counterpart of `Mat4x3f`): `translation`, `rotation`, `rotationAround`, `scaling`, `translationRotateScale`, `translationRotateShearScale`, `mul`, `transformPosition`,
+`transformDirection`, `invert`, `linear`, `toMat3` / `fromMat3`, `decompose` and `decomposeWithShear`. They share the common names above (`approxEquals`, `column`, `determinant`, `get`,
+`invert`, `isFinite`, `mul`, `row`, `writeTo`, `toDouble`). Both are tested against JOML's `Matrix2f` and `Matrix3x2f` where it has the operation, and against the algebra otherwise. The 2D
+vector helpers added with them: `Vec2f.fromAngle`, `polarAngle`, `signedAngle`, `perpDot`, `rotateAround` and `orient` (twice the signed area of a triangle).
+
+### Additions to `Mat4f`
+
+`Mat4f.shear`, `orthoReversedZ`, `isOrthonormal`, `isProjection`, `invertProjection` (the inverse of a perspective, orthographic or off-centre projection of any clip space, without the
+general 4x4 inversion), `decomposeWithShear` (exact for sheared matrices; `decompose` documents that it is not) and `translationRotateShearScale`. `Vec4i` completes the integer vectors
+(`Vec2i`, `Vec3i`, `Vec4i`); long variants were not added, because `pack()` already gives a `long` key and nothing needed 64-bit components.
+
+Measured (JMH `RoadmapBench`, 1 fork of 5 one-second iterations after 3 warm-up iterations, JDK 25, single thread, 2026-10-03; a call returns a value record):
+
+| Call | Time |
+|---|---|
+| `Mat4f.invert` of a perspective matrix | 31.8 ns ± 2.7 ns |
+| `Mat4f.invertProjection` of the same | 12.8 ns ± 3.5 ns |
+| `Mat4f.decompose` | 51.9 ns ± 2.1 ns |
+| `Mat4f.decomposeWithShear` | 92.4 ns ± 5.9 ns |
+| `Mat2f.invert` | 5.1 ns ± 0.2 ns |
+| `Mat3x2f.mul` | 6.0 ns ± 0.6 ns |
+| `Mat3x2f.transformPosition` | 4.4 ns ± 0.6 ns |
+| `Mat3x2f.invert` | 6.8 ns ± 0.7 ns |
+
+The 2D numbers are small enough that the JIT probably removed the allocation of the result; do not read them as the cost of a call that stores its result.
+
+A defect found on the way: `Mat3f.get(column, row)` accepted a row out of range when the column compensated for it (`get(0, 3)` returned a different element instead of throwing); it now
+checks the row, like the new matrices.
+
 ## Rotations: `Quatf`
 
 `angle`, `approxEquals`, `axis`, `conjugate`, `dot`, `equals`, `exp`, `fromAxisAngle`, `fromEuler`, `fromMat3`, `fromTo`, `hashCode`, `integrate`, `invert`, `isFinite`,

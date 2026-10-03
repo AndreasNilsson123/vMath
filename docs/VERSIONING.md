@@ -37,7 +37,7 @@ The annotation has class retention: it is in the class file for tools, absent at
 
 ## What is experimental today, and what promotion needs
 
-Status of 2026-10-02: 54 of the 154 classes of the library (35%) are `@Experimental`, so a third of the API surface is outside the japicmp check. The rule for promoting a class: **one release in which it did not change, tests with an oracle
+Status of 2026-10-03: 73 of the 200 public top-level types of the library (37%; counted as the files of `src/main/java` plus two per float template) are `@Experimental`, so over a third of the API surface is outside the japicmp check (on 2026-10-02 the same kind of count gave 54 of 154). The types added on 2026-10-03 for the roadmap items CORE-4, 6 and 7, GEO-4, CAM-7 and 10, and UTIL-5 and 6 (`Vec4i`, `Mat2f`, `Mat3x2f`, `BoundingVolumes`, `KDop`, `PhysicalCamera`, `SolarPosition`, `Atmosphere`, `PreethamSky`, `SphericalHarmonics`, `Ibl`, `DebugLines`) are deliberately **not** experimental: they are under the compatibility check from the first release. The rule for promoting a class: **one release in which it did not change, tests with an oracle
 that is not the class itself, documentation of every public member, and the evidence in the last column.** Review this table at each release; a class whose last column is empty is a candidate.
 
 | Package: classes | Evidence still missing before promotion |

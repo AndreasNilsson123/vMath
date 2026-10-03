@@ -114,7 +114,7 @@ Tasks:
 - [x] **INF-7 (P2, M)** Fuzzing/degenerate suite: zero vectors, denormals, NaN/Inf, huge magnitudes, near-singular
       matrices. Explicit expected behavior per op.  
       *Done for the 14 core types: `DegenerateInputSweepTest` (257 200 reflective calls, fails on unexpected exceptions or hidden NaN), `DegenerateContractfTest` (explicit cases, both precisions), `docs/ROBUSTNESS.md`. Found and fixed `normalize` of huge and tiny vectors. Shapes, meshes and bulk arrays are not covered.*
-- [ ] **INF-8 (P2, M)** Oracle strategy for features JOML lacks (BVH, culling): brute-force reference implementations
+- [x] **INF-8 (P2, M)** *(done: the BVH, dynamic tree, grids, octree and culling stages are tested against brute-force references in `BvhTest`, `DynamicAabbTreeTest`, `UniformGridTest`, `LooseOctreeTest`, `CullingTest`, the hull, GJK and bounding volumes against independent oracles, and every float template has its generated double twin as a cross-precision check)* Oracle strategy for features JOML lacks (BVH, culling): brute-force reference implementations
       in tests, analytic cases, cross-precision (f vs d) comparison.
 - [x] **INF-9 (P2, S)** Code coverage (JaCoCo) and mutation testing (PIT) on `core`.
       *Done: JaCoCo in the build (`jacocoTestReport`, `coverageSummary`, per-package floors in `check`; 96.6% of lines and 90.5% of branches measured), and PIT as `mutationTest` on any classes. PIT on `vmath.core` killed 95.3% of 4,758 production mutants on the first run and 98.4% of 4,845 after the tests it pointed to were added. See `docs/COVERAGE.md`.*
@@ -133,15 +133,15 @@ Consistency first, then features. All new features are written once in float and
 - [x] **CORE-3 (P1, M)** `Quat`: from matrix, from-to (shortest arc), euler (all 12 orders), look rotation, swing-twist,  
       *Done: `fromMat3`, `fromTo`, `fromEuler`/`toEuler` for all 12 orders (`EulerOrder`), `lookRotation`, swing/twist, `log/exp/pow`, `squad`, `integrate`, `axis`.*
       `log/exp/pow`, `squad`, angular-velocity integration, `toEuler`.
-- [ ] **CORE-4 (P1, M)** `Mat4`: `ortho`, `orthoReversedZ`, `frustum`, `perspectiveInfinite`, inverse projection,  
+- [x] **CORE-4 (P1, M)** *(done: `ortho`, `orthoReversedZ`, `frustum`, `perspectiveInfinite`, `invertProjection`, `lookTo`, `rotationAxis`, `shear`, `decomposeWithShear`, `isAffine`, `isOrthonormal`, `isProjection`; see `docs/API.md`)* `Mat4`: `ortho`, `orthoReversedZ`, `frustum`, `perspectiveInfinite`, inverse projection,  
       *Partial: `frustum`, `perspectiveInfinite`, `lookTo`, `rotationX/Y/Z/Axis`, `decompose`, `isAffine` done; inverse projection and shear open.*
       `lookTo`, `rotationAxis`, `shear`, TRS decomposition (with negative-scale and shear handling), `isAffine`, `isOrthonormal`.
 - [x] **CORE-5 (P1, L)** `Transform` (TRS) and `Mat4x3` affine (48 B instead of 64 B, ~25% less bandwidth, cheaper multiply/invert).  
       *Done: `Transformf`/`Transformd` (composition without matrices, non-uniform scale limits documented in its class comment) and `Mat4x3f`/`Mat4x3d` (`mul`, `invert`, `writeTo`).*
       Transform composition without matrices. Non-uniform scale semantics documented.
-- [ ] **CORE-6 (P1, M)** `Vec2i/3i/4i` (+ long variants if needed): grid coordinates, hashing, min/max, conversions.  
+- [x] **CORE-6 (P1, M)** *(done: `Vec2i`, `Vec3i` and `Vec4i`; long variants were judged unnecessary, `pack()` gives a `long` key)* `Vec2i/3i/4i` (+ long variants if needed): grid coordinates, hashing, min/max, conversions.  
       *Partial: `Vec2i` and `Vec3i` (hand-written, `IntVecTest`); `Vec4i` and long variants are open.*
-- [ ] **CORE-7 (P2, M)** `Mat2`, `Mat2x3`/`Mat3x2` (2D transforms), 2D helpers (rotate, perp-dot, winding).
+- [x] **CORE-7 (P2, M)** `Mat2`, `Mat2x3`/`Mat3x2` (2D transforms), 2D helpers (rotate, perp-dot, winding). *Done: `Mat2f` and `Mat3x2f` (with double twins), `Vec2f.perpDot`, `signedAngle`, `rotateAround`, `orient`; winding is `Polygons.winding`; see `docs/API.md`.*
 - [ ] **CORE-8 (P2, M)** Dual quaternions, `Pose` (Quat + Vec3, rigid-only, 28 B), rigid inverse/compose fast paths.
 - [x] **CORE-9 (P2, M)** Fast math: polynomial `sin/cos/atan2/acos/exp/log`, fast `invSqrt`, documented max error each,
       with tests against `Math`. Opt-in `FastMath` class, never silently substituted.  
@@ -227,7 +227,7 @@ Value records for single shapes; SoA storage in `vmath-bulk` for large sets.
       tri, obb}, sphere×{sphere, plane, tri}, sweep tests, and distance queries. Each with conservative/exact variants documented.
 - [x] **GEO-3 (P1, M)** Robust ray-triangle (watertight, Woop et al.), slab test with correct NaN/0-direction handling.  
       *Done: watertight ray-triangle.*
-- [ ] **GEO-4 (P2, M)** Bounding-volume fitting: min sphere (Welzl), PCA OBB, k-DOP, bounding-volume from transformed AABB
+- [x] **GEO-4 (P2, M)** *(done: `BoundingVolumes`, `KDop`; see `docs/GEOMETRY.md`)* Bounding-volume fitting: min sphere (Welzl), PCA OBB, k-DOP, bounding-volume from transformed AABB
       (Arvo, exact for affine).
 - [x] **GEO-5 (P2, M)** Convex hull (3D quickhull), convex polytope intersection, GJK/EPA distance + penetration, SAT helpers. `ConvexHull`, `ConvexPolytope`, `Sat`, `Gjk`; see `docs/GEOMETRY.md` (with measured speeds).
 - [x] **GEO-6 (P2, M)** Curves and interpolation: Bézier, Hermite, Catmull-Rom, B-spline, arc-length parameterization, easing. `Curves`, `ArcLengthTable` (`docs/CURVES.md`); easing is `vmath.util.Easing`. No NURBS.
@@ -243,7 +243,7 @@ can be chained and composed, and they run on SoA bounds.
       *Done: `CullContext`, `CullStage`, `CullPipeline`, `VisibilitySet`, stages: frustum, distance, small-feature.*
       `VisibilitySet` (bitset + compaction to index list), `CullStage` chain (frustum → distance → occlusion → small-feature).
       Zero-allocation per frame. → MEM-1
-- [ ] **CULL-2 (P1, M)** Frustum extraction (Gribb–Hartmann, both clip conventions, reversed-Z, infinite far), plane normalization,  
+- [x] **CULL-2 (P1, M)** *(done; the plane-coherency variant was measured and dropped, see `docs/PERFORMANCE.md`)* Frustum extraction (Gribb–Hartmann, both clip conventions, reversed-Z, infinite far), plane normalization,  
       *Partial: extraction for all three depth conventions incl. reversed-Z infinite far, p-vertex tests. Plane coherency was tried in the dynamic-tree traversal and dropped: no gain once nodes are ordered (`docs/PERFORMANCE.md`).*
       AABB/sphere/OBB tests with p-vertex/n-vertex, and the fast "plane-coherency" variant using the previous frame's failing plane.
 - [x] **CULL-3 (P1, L)** Batch frustum culling kernel over SoA (scalar + Vector API), with benchmarks at 10k / 100k / 1M objects.  
@@ -291,12 +291,12 @@ can be chained and composed, and they run on SoA bounds.
       *Done (experimental): `CubeFaces` plus `DualParaboloid` (mapping, inverse, hemisphere views and half-spaces, GLSL). See `docs/CAMERA.md`.*
 - [x] **CAM-6 (P2, M)** Oblique near-plane clipping (planar reflections), portal camera transforms, stereo/VR projection.
       *Done (experimental): `PlanarViews` (reflection, oblique near plane for all depth conventions, portal views) and `Stereo` (eye views, asymmetric and off-axis projections). A single culling frustum for both eyes is not built. See `docs/CAMERA.md`.*
-- [ ] **CAM-7 (P2, S)** Physical camera model: exposure (EV100), FOV↔focal length, depth-of-field parameters.
+- [x] **CAM-7 (P2, S)** Physical camera model: exposure (EV100), FOV↔focal length, depth-of-field parameters. *Done: `PhysicalCamera`; see `docs/CAMERA.md`.*
 - [x] **CAM-8 (P2, M)** Depth utilities: linearize depth for all conventions, depth reconstruction of view position, Z-slice for clustered lighting.  
       *Done: `linearizeDepth`, `viewPositionFromDepth`, `worldPositionFromDepth`, and the Z-slice of an NDC depth (`ClusterGrid.sliceOfNdcDepth`). See `docs/CAMERA.md`.*
 - [x] **CAM-9 (P2, M)** Clustered/tiled light assignment math (froxel bounds, light-vs-cluster tests) with CPU reference.  
       *Done (experimental): `ClusterGrid` (exponential slices, froxel bounds, shader-matching lookup, all depth conventions), `ClusterLights` (point and spot assignment, tiled variant, GPU buffers), `gl.ClusterLight`; tested against an exact oracle (0 missing, 0.5% extra for points). The GLSL is text that is not compiled here. See `docs/CAMERA.md`.*
-- [ ] **CAM-10 (P3, M)** Sun/sky, atmosphere and time-of-day helpers (solar position).
+- [x] **CAM-10 (P3, M)** Sun/sky, atmosphere and time-of-day helpers (solar position). *Done: `SolarPosition`, `Atmosphere`, `PreethamSky`; see `docs/CAMERA.md`.*
 
 ### Phase J. Mesh and asset support (P2)
 
@@ -338,8 +338,8 @@ can be chained and composed, and they run on SoA bounds.
 - [x] **UTIL-2 (P2, M)** *(done, simplex only in 2D and 3D: `Noise`, `docs/UTIL.md`)* Noise: value/Perlin/simplex/Worley/curl, fBm, domain warping, 2D/3D/4D, batch fill APIs into `float[]`.
 - [x] **UTIL-3 (P2, S)** *(done: `Spring`, `Smoothing`, `Easing`)* Interpolators and smoothing: critically-damped spring, exponential smoothing (frame-rate independent), easing set.
 - [ ] **UTIL-4 (P3, M)** Frame-timing/statistics helpers (rolling percentiles) for the bench/diagnostic layer.
-- [ ] **UTIL-5 (P3, M)** SH (spherical harmonics) L1/L2 projection/evaluation, IBL prefilter math, BRDF LUT generator.
-- [ ] **UTIL-6 (P3, M)** Debug draw geometry generators (lines for frustum/AABB/OBB/skeleton) into `float[]`.
+- [x] **UTIL-5 (P3, M)** SH (spherical harmonics) L1/L2 projection/evaluation, IBL prefilter math, BRDF LUT generator. *Done: `SphericalHarmonics`, `Ibl`; see `docs/UTIL.md`.*
+- [x] **UTIL-6 (P3, M)** Debug draw geometry generators (lines for frustum/AABB/OBB/skeleton) into `float[]`. *Done: `DebugLines`; see `docs/UTIL.md`.*
 
 ### Phase M. Documentation and release (P1/P2)
 

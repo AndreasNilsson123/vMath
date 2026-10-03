@@ -6,6 +6,15 @@ Nothing has been released yet; the baseline for the compatibility check is the t
 ## Unreleased
 
 ### Added
+- Core: `Mat2f` and `Mat3x2f` (2D linear and affine transforms, with double twins), `Vec4i`, 2D helpers on `Vec2f` (`fromAngle`, `polarAngle`, `signedAngle`, `perpDot`, `rotateAround`, `orient`);
+  `Mat4f.shear`, `orthoReversedZ`, `isOrthonormal`, `isProjection`, `invertProjection`, `decomposeWithShear`, `translationRotateShearScale`. These are not `@Experimental`: they are covered by the compatibility check from the start.
+- Geometry: `BoundingVolumes` (minimum enclosing sphere, PCA box, boxes and spheres of transformed boxes) and `KDop` (6, 14, 18 and 26 directions).
+- Camera: `PhysicalCamera` (exposure value, field of view, depth of field), `SolarPosition`, `Atmosphere`, `PreethamSky`.
+- Utilities: `SphericalHarmonics` (two bands: projection, evaluation, irradiance, rotation), `Ibl` (GGX terms, importance sampling, split-sum table and prefiltering), `DebugLines`.
+- `RoadmapBench` and the measured speeds in `docs/API.md`, `docs/GEOMETRY.md`, `docs/CAMERA.md` and `docs/UTIL.md`.
+
+### Fixed
+- `Mat3f.get(column, row)` no longer returns an element for a row out of range when the column makes the combined index valid; it throws `IndexOutOfBoundsException`.
 - New package `vmath.util` (experimental): `Rng` (xoshiro256++ with sphere, disk and hemisphere sampling), `Sequences` (Halton, Sobol, R2, Hammersley, Poisson disk), `Noise` (value, Perlin, simplex, Worley, curl, fBm, warping, batch fill), `Spring`, `Smoothing`, `Easing`; `docs/UTIL.md`.
 - Curves (experimental): `Curves` (Bezier, Hermite, Catmull-Rom, B-spline) and `ArcLengthTable`; `docs/CURVES.md`.
 - `GeometryBench` and `UtilBench`: measured speeds in `docs/GEOMETRY.md`, `docs/ANIMATION.md`, `docs/UTIL.md` and `docs/CURVES.md`.

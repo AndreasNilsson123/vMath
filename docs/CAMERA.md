@@ -96,7 +96,7 @@ text that is not compiled here.
 
 ## Not covered yet
 
-Orthographic and off-center cameras (use `Mat4f.ortho`/`frustum` directly), the physical camera model (exposure, focal length), a single culling frustum for both
+Orthographic and off-center cameras (use `Mat4f.ortho`/`frustum` directly), a single culling frustum for both
 eyes, and the quality of a dual-paraboloid shadow map compared with a cube map (not measured). All are in `docs/ROADMAP.md`.
 
 ## Clip-space conventions (`ClipSpace`)
@@ -167,3 +167,44 @@ for (uint l = 0u; l < lightCount; ++l) {
     if (dot(d, d) <= pr.w * pr.w) { clusterLightIndices[base + n++] = l; }   // plus the cone test for spots
 }
 ```
+
+## Physical camera (`PhysicalCamera`)
+
+An immutable record of a real camera: focal length and sensor size in millimetres, f-number, shutter time, ISO and focus distance in metres. It derives the exposure value
+(`ev100 = log2(N^2 / t) - log2(S / 100)`, one step per stop), the exposure factor that maps scene luminance to the sensor value 1 (`1 / (1.2 * 2^EV100)`, the saturation-based exposure), the
+fields of view (`2 atan(size / (2 f))` horizontally, vertically and on the diagonal), the crop factor and equivalent focal length, and the depth of field from the thin-lens equation
+(hyperfocal distance, near and far limits, the blur disc of a point at any distance, in millimetres or pixels). Static helpers go from an average scene luminance to an EV100
+(`log2(L * 100 / 12.5)`) and solve for the shutter time, ISO or f-number that give a target EV.
+
+Checked against: the sunny-16 rule (f/16 at 1/125 s and ISO 100 is EV 14.97), the stop arithmetic (each stop is exactly 1), the classic fields of view of a 50 mm lens on full frame (39.6 degrees
+horizontally, 27.0 vertically, 46.8 on the diagonal), and, for the blur, an independent evaluation of the lens equation with image distances; the near and far limits are shown to be exactly
+where that blur reaches the acceptable disc (300 random lenses). The worked example 50 mm at f/8 focused at 5 m gives a hyperfocal distance of 10.88 m and a sharp zone from 3.43 m to 9.21 m
+(computed independently in Python). Not modelled: lens breathing, vignetting, bokeh shape, rolling shutter.
+
+## The sun (`SolarPosition`), the atmosphere (`Atmosphere`) and the sky (`PreethamSky`)
+
+`SolarPosition` computes the position of the sun from the Julian day and a place by the low-precision series of Meeus (chapter 25), the same one the NOAA solar calculator uses. It gives azimuth
+(from north through east) and elevation, declination, right ascension, hour angle and distance; the equation of time; solar noon, sunrise and sunset for any altitude (the standard -0.833
+degrees, civil, nautical and astronomical twilight), with polar day and night reported as such; the direction vector for lighting (y up, north is -z); and the refraction of the air. The tests use
+facts that do not come from the code: the worked example of Meeus (1992-10-13: right ascension 198.38083 degrees and declination -7.78507 degrees, matched within 0.02 degree, and the distance
+0.99766 AU), the equinoxes and solstices of the year 2000 (declination 0 and +-23.44 degrees within 0.02), the extremes and zero crossings of the equation of time (-14.2, +3.6, -6.5 and +16.4 minutes
+within half a minute), London at the 2000 solstice (sunrise 03:43 and sunset 20:21 UT within 4 minutes, 16 h 38 min of daylight), the equator at an equinox (12 h 07 min), polar day and night at
+Tromso, and the elevation at the computed sunrise and sunset (-0.833 degrees within 0.02 over 7 places and 12 months).
+
+`Atmosphere` has the closed forms of real-time atmospheric lighting: the relative air mass of Kasten and Young (1 at the zenith, about 38 at the horizon), the Rayleigh optical depth of the air
+(0.0973 at 550 nm, falling as the inverse fourth power of the wavelength), the Angstrom law for haze, and the transmittance of direct sunlight, also in the three colour channels (red passes best, so
+the low sun is red). Absorption by ozone and water vapour is not included.
+
+`PreethamSky` is the analytic clear-sky model of Preetham, Shirley and Smits (1999): sky luminance and chromaticity in every direction from the turbidity and the sun position, evaluated as xyY or as
+linear sRGB in cd/m^2. The formulas and all coefficients were checked against two sources (the paper's tables as reproduced in the open-source implementation `diharaw/sky-models`, and an independent
+Python evaluation, whose values the tests use). The model is valid for turbidities from 2 to 6 and a sun above the horizon; a sun below it is clamped to the horizon. It is a model of the sky
+alone: no ground, no clouds, no sun disc.
+
+| Call | Time |
+|---|---|
+| `SolarPosition.position` | 379 ns ± 13 ns |
+| `SolarPosition.day` (sunrise, noon and sunset) | 6.5 µs ± 3.8 µs |
+| `PreethamSky.rgb`, one direction | 177 ns ± 28 ns |
+| `PhysicalCamera` near limit + far limit + blur disc | 42 ns ± 3 ns |
+
+JMH `RoadmapBench`, JDK 25, single thread, 2026-10-03.

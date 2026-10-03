@@ -37,7 +37,7 @@ public final class Noise {
 
     private static final double F2 = 0.5 * (Math.sqrt(3.0) - 1.0), G2 = (3.0 - Math.sqrt(3.0)) / 6.0;
     private static final double F3 = 1.0 / 3.0, G3 = 1.0 / 6.0;
-    private static final double SIMPLEX2_SCALE = 99.0, SIMPLEX3_SCALE = 32.0;
+    private static final double SIMPLEX2_SCALE = 99.0, SIMPLEX3_SCALE = 75.0;
     private static final double[] GRAD2 = new double[16];
 
     static {
@@ -222,7 +222,7 @@ public final class Noise {
     }
 
     private static double corner3(int h, double x, double y, double z) {
-        double t = 0.6 - x * x - y * y - z * z;
+        double t = 0.5 - x * x - y * y - z * z;
         if (t <= 0) {
             return 0;
         }

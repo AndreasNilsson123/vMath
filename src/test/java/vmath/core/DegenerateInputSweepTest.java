@@ -24,7 +24,7 @@ import org.junit.jupiter.api.Test;
 class DegenerateInputSweepTest {
 
     private static final Class<?>[] TYPES = {Vec2f.class, Vec3f.class, Vec4f.class, Quatf.class, Mat3f.class, Mat4f.class, Mat4x3f.class,
-            Vec2d.class, Vec3d.class, Vec4d.class, Quatd.class, Mat3d.class, Mat4d.class, Mat4x3d.class};
+            Mat2f.class, Mat3x2f.class, Vec2d.class, Vec3d.class, Vec4d.class, Quatd.class, Mat3d.class, Mat4d.class, Mat4x3d.class, Mat2d.class, Mat3x2d.class};
 
     private static final double[] SPECIAL = {0.0, -0.0, 1.0, -1.0, 0.5, 1e-3, 1e3, Double.NaN, Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY, 1e-44, -1e-44, 3.0e38, -3.0e38, 1e-20, 1e20};
 
@@ -79,9 +79,11 @@ class DegenerateInputSweepTest {
             raw.add(new double[] {0, 0, 0, -1});
             raw.add(new double[] {1e-30, 0, 0, 1e-30});
         } else if (name.startsWith("Mat")) {
-            int dim = n == 9 ? 3 : n == 16 ? 4 : 4; // Mat4x3 is stored as 12
+            int dim = n == 4 ? 2 : n == 6 ? 2 : n == 9 ? 3 : 4; // Mat4x3 is stored as 12 and Mat3x2 as 6
             double[] id = new double[n];
-            if (n == 12) {
+            if (n == 6) {
+                id[0] = id[3] = 1; // the linear part is the identity, the translation is zero
+            } else if (n == 12) {
                 id[0] = id[4] = id[8] = 1; // 3 columns of 3 plus translation: rows are not needed for the pool, any consistent record works
             } else {
                 for (int i = 0; i < dim; i++) {
@@ -311,10 +313,13 @@ class DegenerateInputSweepTest {
      */
     private static final java.util.Set<String> NAN_MAY_BE_IGNORED = java.util.Set.of(
             // reading one component or a part of the value
-            "x", "y", "z", "w", "xyz", "get", "column", "row", "upperLeft3x3", "getTranslation", "m00", "m01", "m02", "m03", "m10", "m11", "m12", "m13", "m20", "m21", "m22",
+            "x", "y", "z", "w", "xyz", "get", "column", "row", "upperLeft3x3", "getTranslation", "linear" /* Mat3x2: the 2x2 part */, "trace" /* the diagonal */,
+            "rotationAngle" /* the first column */, "fromMat3" /* Mat3x2: the last row of the 3x3 is ignored */, "m00", "m01", "m02", "m03", "m10", "m11", "m12", "m13", "m20", "m21", "m22",
             "m23", "m30", "m31", "m32", "m33", "withTranslation", "determinant" /* Mat4x3: the 3x3 part only */,
             // affine matrices are assumed to have the bottom row 0, 0, 0, 1 and never read it
-            "transformPosition", "transformDirection", "normalMatrix", "invertAffine", "decompose", "fromMat4",
+            "transformPosition", "transformDirection", "normalMatrix", "invertAffine", "decompose", "decomposeWithShear", "fromMat4",
+            // a projection matrix is assumed to have the structure of the matrices the library builds: the six entries that must be zero are never read
+            "invertProjection",
             // defined by a comparison or a guard for a zero or unit input, see docs/ROBUSTNESS.md
             "step", "faceForward", "project", "angle", "axis", "pow", "integrate");
 

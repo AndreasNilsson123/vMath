@@ -63,3 +63,29 @@ What the numbers say:
 - `Sat` is slow for polytopes with many edges (it tries every pair of edge directions, and each projection scans all vertices, about 5 000 axes here). For anything beyond boxes and
   small polytopes use `Gjk`, which was 460 ns for the same yes/no question.
 - GJK and EPA allocate nothing per query (`AllocationContractTest`).
+
+## Bounding volumes: `BoundingVolumes`, `KDop`
+
+- `BoundingVolumes.minimumSphere`: the **smallest** enclosing sphere (Welzl's algorithm in the move-to-front form with at most four support points, run in a fixed pseudo-random order so that
+  sorted or adversarial input does not make it slow). The test compares the radius with a brute force over every sphere through 2, 3 or 4 of the points for 300 random sets of up to
+  10 points, and checks cubes, rings, collinear and duplicate points, and 200 000 points in sorted order. The result is rounded outward: every input point is inside as float arithmetic sees it.
+- `BoundingVolumes.pcaBox`: an oriented box in the frame of the principal axes of the points (the eigenvectors of their covariance, by Jacobi rotations). For 3 000 points filling a rotated box
+  with distinct side lengths its volume was within 25% above the true box in every one of 100 trials (the test's limit; it is not the minimum-volume oriented box, and a dense cluster pulls the
+  axes towards itself).
+- `BoundingVolumes.transformedBox` and `sphereOfTransformedBox`: the box and sphere around an axis-aligned box after an affine transform. For a transform without shear the oriented box is
+  exactly the transformed box (volume equal to the determinant times the volume, tested for 300 random transforms including mirrors); with shear it is the tightest box in the rotation's frame.
+  `Aabbf.transform` (Arvo's method, exact for the axis-aligned result) already existed.
+- `KDop` (6, 14, 18 or 26 directions): slab intervals along the axes and the diagonals, built from points or a box, with `contains`, `overlaps`, `union`, `expand` and `aabb`. Overlap is the
+  separating-axis test over those directions: conservative (never misses touching volumes), cheaper than testing the shapes themselves, and tighter than boxes for diagonal shapes (a 14-DOP of
+  two diagonal squares separates them where their boxes overlap, a test).
+
+| Call | Time |
+|---|---|
+| `minimumSphere`, 1 000 points in a ball | 112 µs ± 11 µs |
+| `minimumSphere`, 10 000 points | 1.01 ms ± 0.06 ms |
+| `pcaBox`, 1 000 points | 18.6 µs ± 0.9 µs |
+| `KDop.of(14, ...)`, 1 000 points | 29.6 µs ± 2.5 µs |
+| `KDop.overlaps`, 14-DOP against 14-DOP | 13.6 ns ± 1.1 ns |
+| `transformedBox` | 108 ns ± 7 ns |
+
+`minimumSphere` grows linearly with the point count (10 times the points took 9 times as long). All measured with `RoadmapBench`, JDK 25, single thread, 2026-10-03.
