@@ -45,6 +45,10 @@ dependencies {
     // The test sources declare sample @GpuStruct records
     testCompileOnly(project(":vmath-annotations"))
 
+    // Checks the identity rules of the value types on the attributed syntax tree while the main sources compile (docs/CODEGEN.md); not part of the artifact. The tests are not checked: the value
+    // types reach them as class files, which do not carry the source-retention marker the processor looks for.
+    annotationProcessor(project(":vmath-validator"))
+
     // JOML is only the test oracle; nothing in main depends on it.
     testImplementation(libs.joml)
     testImplementation(platform(libs.junit.bom))
@@ -65,7 +69,8 @@ tasks.withType<JavaCompile>().configureEach {
     // javac reports exactly one warning per @Experimental class (54 on 2026-10-02) and nothing else, so nothing real is hidden. -preview is off only for the Valhalla build,
     // whose class files are preview class files.
     // -Werror: the library and its tests compile without a single other warning, and it should stay that way.
-    options.compilerArgs.addAll(listOf("-Xlint:all", "-Xlint:-exports", "-Werror"))
+    // -processing is off because the validating processor (vmath-validator) supports every annotation without claiming any, so that javac warns once that nobody claimed the ones in vmath.annotations
+    options.compilerArgs.addAll(listOf("-Xlint:all", "-Xlint:-exports", "-Xlint:-processing", "-Werror"))
     if (valhalla) {
         options.compilerArgs.add("-Xlint:-preview")
     }
@@ -141,7 +146,7 @@ val coverageFloors = mapOf(
     "vmath/anim" to (0.94 to 0.90), "vmath/bulk" to (0.90 to 0.80), "vmath/camera" to (0.97 to 0.89), "vmath/color" to (0.94 to 0.85),
     "vmath/core" to (0.96 to 0.93), "vmath/geo" to (0.95 to 0.90), "vmath/gl" to (0.90 to 0.85), "vmath/gltf" to (0.94 to 0.88),
     "vmath/gpucull" to (0.93 to 0.89), "vmath/mem" to (0.84 to 0.80), "vmath/mesh" to (0.95 to 0.90), "vmath/occlusion" to (0.95 to 0.85),
-    "vmath/pack" to (0.93 to 0.90), "vmath/spatial" to (0.92 to 0.82), "vmath/tex" to (0.95 to 0.85), "vmath/util" to (0.97 to 0.92)
+    "vmath/pack" to (0.93 to 0.90), "vmath/physics" to (0.95 to 0.86), "vmath/spatial" to (0.92 to 0.82), "vmath/tex" to (0.95 to 0.85), "vmath/util" to (0.97 to 0.92)
 )
 
 tasks.jacocoTestCoverageVerification {

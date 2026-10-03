@@ -72,6 +72,11 @@ public final class Transformer {
     private static final String ANNOTATION_PACKAGE = "vmath.annotations";
     private static final Set<String> OUR_ANNOTATIONS =
             Set.of("GenerateDouble", "FloatOnly", "DoubleOnly", "Eps", "ValueType", "GpuStruct", "GpuArray", "GpuUint");
+    /**
+     * Ours but not removed: {@code @ValueType} stays on the generated types (it has source retention, so it costs nothing at run time) so that the validating annotation processor of
+     * {@code vmath-validator} can tell a value type by its declaration instead of by its name. The generator still reads it to emit {@code value record}.
+     */
+    private static final Set<String> RETAINED = Set.of("ValueType");
 
     private Transformer() {
     }
@@ -164,6 +169,11 @@ public final class Transformer {
         String s = a.getAnnotationType().toString();
         int dot = s.lastIndexOf('.');
         return dot < 0 ? s : s.substring(dot + 1);
+    }
+
+    /** Whether the generator removes this annotation from its output: ours, and not one that stays. */
+    private static boolean isStripped(AnnotationTree a) {
+        return isOurs(a) && !RETAINED.contains(annotationName(a));
     }
 
     private static boolean isOurs(AnnotationTree a) {
@@ -330,7 +340,8 @@ public final class Transformer {
             public Void visitImport(ImportTree imp, Void v) {
                 String imported = imp.getQualifiedIdentifier().toString();
                 // only the annotations this generator removes lose their import: others (such as Experimental) stay in the output and need theirs
-                if (imported.startsWith(ANNOTATION_PACKAGE + ".") && OUR_ANNOTATIONS.contains(imported.substring(ANNOTATION_PACKAGE.length() + 1))) {
+                if (imported.startsWith(ANNOTATION_PACKAGE + ".") && OUR_ANNOTATIONS.contains(imported.substring(ANNOTATION_PACKAGE.length() + 1))
+                        && !RETAINED.contains(imported.substring(ANNOTATION_PACKAGE.length() + 1))) {
                     removeLines(imp);
                     importRemovals.add(edits.get(edits.size() - 1));
                     return null;
@@ -340,7 +351,7 @@ public final class Transformer {
 
             @Override
             public Void visitAnnotation(AnnotationTree a, Void v) {
-                return isOurs(a) ? null : super.visitAnnotation(a, v);
+                return isStripped(a) ? null : super.visitAnnotation(a, v);
             }
 
             @Override
@@ -545,7 +556,7 @@ public final class Transformer {
                 throw error(member, "a member cannot be both @FloatOnly and @DoubleOnly");
             }
             for (AnnotationTree a : mods.getAnnotations()) {
-                if (isOurs(a)) {
+                if (isStripped(a)) {
                     removeLines(a);
                 }
             }

@@ -89,3 +89,43 @@ What the numbers say:
 | `transformedBox` | 108 ns ± 7 ns |
 
 `minimumSphere` grows linearly with the point count (10 times the points took 9 times as long). All measured with `RoadmapBench`, JDK 25, single thread, 2026-10-03.
+
+## Signed distance fields: `Sdf`, `Sdfs`, `SurfaceNets`
+
+An `Sdf` is a function `float distance(x, y, z)`: negative inside a solid, zero on its surface. `Sdfs` makes them and combines them, on the CPU, for picking and for generating meshes (the shader side is not covered).
+
+- **Primitives**: `sphere`, `box`, `roundBox`, `plane`, `capsule`, `cylinder` (axis y, flat caps), `torus` (axis y). All are exact distances.
+- **CSG**: `union` (also over any number), `intersection`, `subtract`, the smooth versions with a blend width `k` (`smoothUnion`, `smoothIntersection`, `smoothSubtract`: polynomial smooth minimum, never more than `k / 4`
+  from the hard result), and `invert`, `onion` (a shell), `round` (offset). **Moving**: `translate`, `rotate`, uniform `scale`, `repeat` (domain repetition; exact only for solids that fit their cell).
+- **Honesty about what a field is.** The union of two exact distances is exact outside both solids and only a *bound* inside them; the same holds for the other operations. What always holds is that the zero set and the sign
+  are exact and that every function made here is 1-Lipschitz (never changes faster than the distance between the points), and that is all sphere tracing and meshing need. `SdfsTest` checks the Lipschitz bound on random
+  point pairs for every primitive and every operation, the unit gradient of the exact primitives, the sign of each CSG operation against the inside tests of its operands, and the primitives against independent
+  references (a clamped-point box distance, a ternary search on the capsule's segment, a dense sample of the torus and cylinder surface).
+- **Queries**: `normal` (four-sample tetrahedron gradient, no allocation), `project` (Newton steps onto the surface; one step for an exact distance), and `raycast`, sphere tracing with a reusable `Hit` (point, normal,
+  step count, `inside` when the ray starts in the solid). A miss because the step budget ran out is reported as a miss; grazing rays are the usual cause, and the test `raycastLimitsInsideStartsAndAlternativeSolids`
+  shows it with a thin plate. Against the analytic ray-sphere intersection (5000 random rays, most of them aimed at the sphere) the hit distance agrees to within `epsilon / cos(angle of incidence)`, which is the
+  accuracy the stopping criterion allows.
+- **Meshing**: `SurfaceNets` (Naive Surface Nets). The field is sampled on a grid, each cell the surface crosses gets one vertex (the mean of the edge crossings), each crossed edge a quad (split along the shorter
+  diagonal). The mesh is closed, 2-manifold and wound counter-clockwise from outside when the solid lies inside the box with a cell to spare: tested for a sphere (Euler characteristic 2, volume within 4% of 4/3 pi at
+  32 cells per 3.2 units, checked through `MassProperties.ofMesh`, which rejects inside-out meshes), a torus (Euler 0, volume within 5%), a cube with a cavity and a bore (Euler 0, volume against a random estimate)
+  and two smoothly blended spheres (Euler 2). `projection(n)` moves each vertex onto the surface by `n` Newton steps within its cell: on the sphere with 16 cells the largest distance of a vertex from the surface fell
+  by more than a factor of five and below 1e-3 with two steps. `normals(true)` gives gradient normals; `isoLevel` meshes an offset surface. Surfaces that leave the box give an open mesh at the border.
+  **Sharp edges and corners are rounded off by about a cell**: this is the smoothed average of surface nets, not dual contouring's quadric error minimisation, which is not built.
+
+Measured (`SdfBench`, JMH, JDK 25, one thread; the scene is two smoothly blended spheres united with a box that has a spherical cavity, all behind a rotation):
+
+| Operation | Time | Allocation |
+|---|---|---|
+| one evaluation, sphere | 3.8 ns | 0 |
+| one evaluation, the scene | 28.4 ns | 0 |
+| `normal` on the scene (4 evaluations) | 109 ns | 0 |
+| `raycast` through the scene (budget 128 steps) | about 320 ns | 0 |
+| `SurfaceNets.mesh` of the scene, 32 x 32 x 32 cells | 1.59 ms | 0 after the first call |
+| the same, 64 x 64 x 64 cells | 11.5 ms | 0 after the first call |
+| mesh with `projection(1)` and normals, 32 / 64 cells | 2.45 ms / 15.4 ms | 0 after the first call |
+
+The mesher costs about 42 ns per grid sample at 64 cells (the evaluation itself is 28 ns of that); doubling the resolution multiplies the number of vertices by about 4, not 8 (a surface, not a volume), and the time by 7.2 because the
+sampling of the field is cubic. The allocation contract is enforced in `AnimPhysicsAllocationTest`. Not built: a sparse or adaptive grid (the field is sampled everywhere in the box; a narrow-band or octree version would
+cut that), dual contouring or marching cubes variants that keep sharp features, a bounding-volume hierarchy of fields, texture-based fields, and displacement or twist warps (a warp must be scaled by its Lipschitz constant to stay
+safe to trace).
+

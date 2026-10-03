@@ -12,34 +12,34 @@ the mutants that survive point at those lines.
 ./gradlew jacocoTestCoverageVerification   # part of `check`: fails when a package drops under its floor
 ```
 
-Measured on the full test suite (JDK 25, generated float and double types included in the counts; not produced on the `-Pvalhalla` build, whose JDK 28 class files the JaCoCo release in use cannot read):
+Measured on the full test suite on 2026-10-03 (JDK 25, generated float and double types included in the counts; not produced on the `-Pvalhalla` build, whose JDK 28 class files the JaCoCo release in use cannot read):
 
 | Package | Lines | Branches |
 |---|---|---|
-| `vmath.core` | 100.0% (2006 of 2006) | 98.1% |
-| `vmath.camera` | 100.0% | 92.4% |
-| `vmath.geo` | 96.7% | 90.5% |
-| `vmath.tex` | 98.1% | 88.1% |
-| `vmath.mesh` | 97.9% | 92.8% |
-| `vmath.occlusion` | 97.8% | 88.6% |
-| `vmath.color` | 97.4% | 89.3% |
-| `vmath.gltf` | 97.1% | 91.1% |
-| `vmath.anim` | 98.2% | 93.0% |
-| `vmath.util` | 99.6% | 97.0% |
-| `vmath.gpucull` | 96.5% | 92.7% |
-| `vmath.pack` | 96.4% | 93.1% |
-| `vmath.spatial` | 95.3% | 85.5% |
-| `vmath.gl` | 93.9% | 89.3% |
-| `vmath.bulk` | 93.1% | 83.6% |
-| `vmath.mem` | 87.2% | 83.3% |
-| **all** | **96.8%** (13 686 of 14 144) | **90.7%** (6 737 of 7 428) |
+| `vmath.core` | 99.8% (2875 of 2882) | 96.9% |
+| `vmath.camera` | 100.0% (868 of 868) | 92.1% |
+| `vmath.util` | 99.7% (1017 of 1020) | 97.5% |
+| `vmath.occlusion` | 99.3% (265 of 267) | 89.8% |
+| `vmath.anim` | 98.8% (1619 of 1639) | 94.0% |
+| `vmath.tex` | 98.7% (231 of 234) | 90.8% |
+| `vmath.pack` | 98.6% (361 of 366) | 97.8% |
+| `vmath.mesh` | 98.5% (2490 of 2528) | 93.1% |
+| `vmath.physics` | 98.4% (997 of 1013) | 89.8% |
+| `vmath.bulk` | 98.4% (1446 of 1469) | 89.9% |
+| `vmath.gltf` | 97.7% (854 of 874) | 91.6% |
+| `vmath.gpucull` | 97.4% (335 of 344) | 92.7% |
+| `vmath.color` | 97.4% (229 of 235) | 89.3% |
+| `vmath.geo` | 97.2% (3459 of 3559) | 91.2% |
+| `vmath.mem` | 97.1% (370 of 381) | 92.6% |
+| `vmath.gl` | 96.6% (634 of 656) | 89.3% |
+| `vmath.spatial` | 96.5% (2886 of 2992) | 88.1% |
+| **all** | **98.2%** (20 936 of 21 327) | **92.1%** (10 407 of 11 305) |
 
-**The other modules** (`./gradlew :vmath-simd:test :vmath-codegen:test` writes a report under each module's `build/reports/jacoco`; measured 2026-10-02): `vmath-simd` 95.6% of lines (86 of 90) and 94.4% of branches, floor 92% / 90%; `vmath-codegen` 79.2% of lines (595 of 751) and 66.4% of branches, floor 76% / 62%, wired into each module's `check`. The code generator's own tests cover less than the root project's tests do indirectly: every generated `d` type and `XxxGpu` writer is exercised by the root test suite, which this figure does not count. `vmath-bench` has no tests and no figure.
+**The other modules** (`./gradlew :vmath-simd:test :vmath-codegen:test :vmath-validator:test` writes a report under each module's `build/reports/jacoco`; measured 2026-10-02): `vmath-simd` 95.6% of lines (86 of 90) and 94.4% of branches, floor 92% / 90%; `vmath-validator` (the annotation processor; measured 2026-10-03) 98.7% of lines (78 of 79) and 86.9% of branches (73 of 84), floor 96% / 84%; `vmath-codegen` 79.2% of lines (595 of 751) and 66.4% of branches, floor 76% / 62%, wired into each module's `check`. The code generator's own tests cover less than the root project's tests do indirectly: every generated `d` type and `XxxGpu` writer is exercised by the root test suite, which this figure does not count. `vmath-bench` has no tests and no figure.
 
 **Floors.** `check` fails if a package falls under a floor set two to three points below what was measured at the time (lines first, branches second: core 96% / 93%, camera 97% / 89%, geo 95% / 90%, mesh 95% / 90%,
 spatial 92% / 82%, bulk 90% / 80%, mem 84% / 80%, and so on; the table is `coverageFloors` in `build.gradle.kts`), and below 94% of lines or 87% of branches overall. They are there so that a change that adds untested code
-is noticed, not to chase a number: raise a floor when you raise the coverage, lower one only with a reason in the commit. The least covered package is `vmath.mem`, whose misses are mostly argument checks and `slice`
-helpers; the least covered branches are in `vmath.bulk` (the strided writers' byte-order variants) and `vmath.spatial`.
+is noticed, not to chase a number: raise a floor when you raise the coverage, lower one only with a reason in the commit. The least covered package by lines is `vmath.spatial` (96.5%), and by branches `vmath.spatial` (88.1%), then `vmath.color` and `vmath.gl` (89.3%); the floors of `vmath.physics` are 95% / 86%.
 
 ## Mutation testing
 

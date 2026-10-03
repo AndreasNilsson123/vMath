@@ -43,7 +43,7 @@ Index (tick when fixed):
 - [x] **TD-19** Medium: loaders for untrusted input are not fuzzed
 - [x] **TD-20** Medium: performance is not guarded in CI
 - [x] **TD-21** Low: test hygiene (threshold oracles, JIT-dependent tests, an assertion-free test, stdout)
-- [ ] **TD-22** Low: Valhalla readiness checked by string matching; Valhalla CI job cannot fail
+- [ ] **TD-22** Low: Valhalla readiness checked by string matching (done: a type-attributed processor, `vmath-validator`); Valhalla CI job cannot fail (open)
 - [x] **TD-23** Low: compiler and javadoc warnings
 - [x] **TD-24** Low: dead and superseded code
 - [x] **TD-25** Low: inconsistent error signalling
@@ -220,7 +220,7 @@ None found. The closest calls are listed as High (TD-01, TD-04) with the reason 
 - **Estimated scope:** M for the moves, XL for the module split (templates and the generator need per-module directories).
 - **Testing required:** `ModuleDescriptorTest` per module, japicmp (the moves of stable classes need deprecation forwarders), the full build and the Valhalla build.
 - **Depends on:** TD-02 (coordinates), TD-05 (experimental classes move freely before promotion).
-- **Status:** Partly done 2026-10-02: `CascadeCasters` moved to `camera` (`spatial` no longer imports `camera`; `camera` now imports `spatial` and `bulk` for that one class) and the cone maths are `geo.NormalCone` (`mesh` uses it instead of `spatial`, though `Meshlets.addTo(ConeCull.Clusters)` still ties `mesh` to `spatial`); neither class was in the baseline, so nothing needed a forwarder. **Open, a decision for the owner:** whether `gpucull` stays in the core module, and the module split (INF-6), which is XL and changes the published artifacts.
+- **Status:** Partly done 2026-10-02: `CascadeCasters` moved to `camera` (`spatial` no longer imports `camera`; `camera` now imports `spatial` and `bulk` for that one class) and the cone maths are `geo.NormalCone` (`mesh` uses it instead of `spatial`, though `Meshlets.addTo(ConeCull.Clusters)` still ties `mesh` to `spatial`); neither class was in the baseline, so nothing needed a forwarder. **Open, a decision for the owner:** whether `gpucull` stays in the core module, and the module split (INF-6), which is XL and changes the published artifacts. **Update 2026-10-03:** `PackageLayeringTest` measures the dependencies between the packages with `jdeps` and holds them to a table (no cycle, no edge the table does not list, no listed edge that the code does not use), so the layering cannot drift while the decision about the split is open; the split itself (INF-6) was assessed and not done, with the costs in `docs/ROADMAP.md`.
 
 ### TD-12 — Stale README and ROADMAP text
 
@@ -355,7 +355,7 @@ None found. The closest calls are listed as High (TD-01, TD-04) with the reason 
 - **Estimated scope:** M for the processor, S for the CI change.
 - **Testing required:** golden tests for each rule (like `vmath-codegen`'s), a deliberately violating fixture that the processor must reject.
 - **Depends on:** TD-13 (pinning a build is a dependency decision).
-- **Status:** Partly done 2026-10-02: the string heuristics are replaced by `ValueTypeChecker`, which checks the identity rules (`==`/`!=`, `synchronized`, `identityHashCode` on value types) on the javac syntax tree of every source and template, with a golden test per rule and violating fixtures (`ValueTypeCheckerTest`); it has no type attribution, so it matches names declared with a value type in the same file. **Open:** the checker is a test, not the annotation processor of AF-9; the Valhalla CI job is still non-blocking because no stable early-access build number is pinned (that needs a decision on which build).
+- **Status:** Partly done 2026-10-02: the string heuristics are replaced by `ValueTypeChecker`, which checks the identity rules (`==`/`!=`, `synchronized`, `identityHashCode` on value types) on the javac syntax tree of every source and template, with a golden test per rule and violating fixtures (`ValueTypeCheckerTest`); it has no type attribution, so it matches names declared with a value type in the same file. **Update 2026-10-03:** that checker is replaced by the annotation processor of AF-9, `vmath-validator`, which runs in the main compile on the attributed tree (it sees types, so method results, fields of other classes, lambda parameters and `var` are checked, which the text-based checker could not do) and fails the build at the line; the generator now keeps `@ValueType` on the generated types for it (`docs/CODEGEN.md`). **Open:** the code that uses the library from a jar is not checked (the marker has source retention); the Valhalla CI job is still non-blocking because no stable early-access build number is pinned (that needs a decision on which build).
 
 ### TD-23 — Compiler and javadoc warnings
 

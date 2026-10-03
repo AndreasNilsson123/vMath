@@ -22,7 +22,7 @@ to answer, are in `docs/history.md`.
 
 ## 2. Architecture and rules
 
-Planned modules (INF-6, open; today the `core`, `geo`, `bulk`, `spatial`, `gl`, `mesh`, ... packages are all in the one module `vmath`, and only `vmath-annotations`, `vmath-codegen`, `vmath-simd` and `vmath-bench` are separate):
+Planned modules (INF-6, open; today the `core`, `geo`, `bulk`, `spatial`, `gl`, `mesh`, ... packages are all in the one module `vmath`, and only `vmath-annotations`, `vmath-codegen`, `vmath-validator`, `vmath-simd` and `vmath-bench` are separate):
 
 | Module | Contents |
 |---|---|
@@ -88,8 +88,9 @@ Tasks:
 - [x] **AF-8 (P1, M)** Generator diagnostics: unknown annotation values, a `@FloatOnly` member referenced from
       non-float-only code (would break the double build), missing `@Eps` on a tolerance constant. Errors point at the
       source line.
-- [ ] **AF-9 (P2, M)** Optional: annotation processor that *validates* (readiness rules, no `==` on value types,
-      no `synchronized`) at compile time, replacing `ValhallaReadinessTest`'s string heuristics.
+- [x] **AF-9 (P2, M)** Optional: annotation processor that *validates* (readiness rules, no `==` on value types,
+      no `synchronized`) at compile time, replacing `ValhallaReadinessTest`'s string heuristics.  
+      *Done: `vmath-validator` (`ValueTypeProcessor`) runs on the attributed tree in the main compile; the text-based checker is removed. It does not check code that uses the library from a jar (the marker has source retention); `docs/CODEGEN.md`.*
 - [x] **AF-10 (P2, S)** Document the framework in `docs/CODEGEN.md` with a "how to add a new type" walkthrough.  
       *Done: `docs/CODEGEN.md`.*
 
@@ -110,7 +111,7 @@ Tasks:
       it needs only `java.base` at run time), verified against the built jar by `ModuleDescriptorTest`. `vmath-bench` stays
       non-modular (JMH's generated code is not). `japicmp` is done (`docs/API-COMPAT.md`, baseline tag `v0.1.0`). Javadoc is linted by `check` (`-Xdoclint:all,-missing` with warnings as errors: broken references, bad HTML, malformed tags); checking for *missing* comments and record `@param` tags is open, and the LICENSE is MIT (added 2026-10, the owner's decision).*
 - [ ] **INF-6 (P1, M)** Restructure into multi-project Gradle build per the module table. → AF-2  
-      *Partial: annotations/codegen/bench are modules; core/geo/spatial still share the root project, which is one JPMS module `vmath` exporting `vmath.core`, `geo`, `bulk`, `spatial`, `gl`. Splitting it further means per-module template directories and a generator that resolves family renames across modules.*
+      *Partial, decided 2026-10-03 not to split the root project yet: annotations, codegen, validator, simd and bench are modules; the 17 packages of the library are one JPMS module `vmath`. The dependencies between the packages are measured and acyclic (the table in `PackageLayeringTest`: `core` and `mem` at the bottom, then `geo`, `color`, `tex`; `bulk`, `pack`, `physics`; `anim`, `gl`, `spatial`; `occlusion`, `util`, `camera`, `mesh`; `gltf` and `gpucull` on top), so a split along these layers is possible, and the test now fails on any new edge or cycle, so the split stays mechanical while it waits. What the split costs, which is why it is not a side effect of other work: (1) per-module `src/template` and `src/testTemplate` directories and a generator run per module that knows the family renames of the modules below it (`Vec3f` to `Vec3d` is used by `geo` templates); (2) the compatibility baseline `v0.1.0` is one jar called `vmath`: classes that move to `vmath-core` or `vmath-geo` are seen as removed unless japicmp compares against the union of the new jars, and consumers of the module `vmath` need an aggregate module that `requires transitive` the parts; (3) one publication and one staging check per module; (4) the tests that span packages (`AllocationContractTest`, `ApiParityTest`, `DegenerateInputSweepTest`, the cookbook) need a home that depends on all modules; (5) JaCoCo floors, the Valhalla build and `ModuleDescriptorTest` per module. Estimated at XL in `docs/technical-debt.md` TD-11; the benefit (a consumer that needs only `core` and `geo` depends on less) is real but nothing in the library is blocked on it.*
 - [x] **INF-7 (P2, M)** Fuzzing/degenerate suite: zero vectors, denormals, NaN/Inf, huge magnitudes, near-singular
       matrices. Explicit expected behavior per op.  
       *Done for the 14 core types: `DegenerateInputSweepTest` (257 200 reflective calls, fails on unexpected exceptions or hidden NaN), `DegenerateContractfTest` (explicit cases, both precisions), `docs/ROBUSTNESS.md`. Found and fixed `normalize` of huge and tiny vectors. Shapes, meshes and bulk arrays are not covered.*
@@ -232,7 +233,8 @@ Value records for single shapes; SoA storage in `vmath-bulk` for large sets.
 - [x] **GEO-5 (P2, M)** Convex hull (3D quickhull), convex polytope intersection, GJK/EPA distance + penetration, SAT helpers. `ConvexHull`, `ConvexPolytope`, `Sat`, `Gjk`; see `docs/GEOMETRY.md` (with measured speeds).
 - [x] **GEO-6 (P2, M)** Curves and interpolation: Bézier, Hermite, Catmull-Rom, B-spline, arc-length parameterization, easing. `Curves`, `ArcLengthTable` (`docs/CURVES.md`); easing is `vmath.util.Easing`. No NURBS.
 - [x] **GEO-7 (P2, M)** Polygon utilities: 2D/3D triangulation (ear clipping), polygon clip (Sutherland–Hodgman), winding. `Polygons`; see `docs/GEOMETRY.md`.
-- [ ] **GEO-8 (P3, L)** Signed distance function primitives and CSG combinators (CPU-side, for picking and mesh generation).
+- [x] **GEO-8 (P3, L)** Signed distance function primitives and CSG combinators (CPU-side, for picking and mesh generation).  
+      *Done: `Sdf`, `Sdfs` (primitives, CSG, smooth blends, transforms, normals, projection, sphere-traced `raycast`), `SurfaceNets` (`docs/GEOMETRY.md`). No sparse grids or sharp-feature meshing.*
 
 ### Phase H. Spatial structures and culling framework (P1)
 
@@ -327,9 +329,11 @@ can be chained and composed, and they run on SoA bounds.
       blending, GPU skinning buffer layout. Dual-quaternion skinning option.  
       *Done: `Skeleton`, `Pose`, `AnimationClip`, `ClipSampler`, `Skinning` (joint matrices, CPU reference, unorm8 weight packing, 64-byte `mat4` stride). Dual-quaternion skinning is not built.*
 - [x] **ANIM-3 (P2, M)** Inverse kinematics (two-bone, FABRIK, CCD) and look-at constraints. `IkSolver`; see `docs/ANIMATION.md` (no joint limits yet).
-- [ ] **ANIM-4 (P3, M)** Morph targets/blend shapes packing, root motion extraction, animation compression (curve fitting, quantized keys).
-- [ ] **ANIM-5 (P3, L)** Physics-adjacent math: rigid-body integrators, inertia tensors from shapes, contact manifold math
-      (only the math; the engine would be a separate project).
+- [x] **ANIM-4 (P3, M)** Morph targets/blend shapes packing, root motion extraction, animation compression (curve fitting, quantized keys).  
+      *Done: `MorphTargets`, `RootMotion`, `ClipCompression`, `QuantizedClip` (`docs/ANIMATION.md`). Reduction keeps the clip's linear keys; fitting cubic or spline keys is not built.*
+- [x] **ANIM-5 (P3, L)** Physics-adjacent math: rigid-body integrators, inertia tensors from shapes, contact manifold math
+      (only the math; the engine would be a separate project).  
+      *Done: new package `vmath.physics`: `MassProperties`, `RigidBody`, `OdeIntegrator`, `ManifoldBuilder`, `ContactManifold`, `ContactSolver` (`docs/PHYSICS.md`). No joints, islands, sleeping or continuous collision.*
 
 ### Phase L. Utilities (P2/P3)
 

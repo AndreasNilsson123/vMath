@@ -1,3 +1,3 @@
 rootProject.name = "vmath"
 
-include("vmath-annotations", "vmath-codegen", "vmath-simd", "vmath-bench")
+include("vmath-annotations", "vmath-codegen", "vmath-validator", "vmath-simd", "vmath-bench")

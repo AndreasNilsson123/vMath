@@ -27,6 +27,10 @@ public final class ConvexPolytope implements ConvexShape {
     private final double[] faceNormals; // distinct unit normals, xyz triples
     private final double[] edgeDirections; // distinct unit edge directions, xyz triples
     private final double volume;
+    private final int[] facetStart; // facet f owns the vertices facetVertex[facetStart[f] .. facetStart[f + 1] - 1], counter-clockwise seen from outside
+    private final int[] facetVertex;
+    private final double[] facetPlane; // 4 doubles per facet: the unit outward normal and d, so that n . x = d on the facet
+    private final int[] edgeVertex; // 2 vertex indices per edge, the edges between facets (not the diagonals inside a planar facet)
 
     private ConvexPolytope(float[] vertices, int[] triangles) {
         this.vertices = vertices;
@@ -84,6 +88,92 @@ public final class ConvexPolytope implements ConvexShape {
             }
         }
         this.edgeDirections = flatten(dirs);
+        // facets: the triangles of one plane form one polygon
+        int[] facetOf = new int[nf];
+        java.util.Arrays.fill(facetOf, -1);
+        List<double[]> planes = new ArrayList<>();
+        List<List<Integer>> facetTriangles = new ArrayList<>();
+        for (int f = 0; f < nf; f++) {
+            if (facetOf[f] >= 0) {
+                continue;
+            }
+            double d = faceNormal[f][0] * vertices[3 * triangles[3 * f]] + faceNormal[f][1] * vertices[3 * triangles[3 * f] + 1] + faceNormal[f][2] * vertices[3 * triangles[3 * f] + 2];
+            int id = planes.size();
+            planes.add(new double[] {faceNormal[f][0], faceNormal[f][1], faceNormal[f][2], d});
+            List<Integer> members = new ArrayList<>();
+            for (int g = f; g < nf; g++) {
+                if (facetOf[g] >= 0 || faceNormal[g][0] * faceNormal[f][0] + faceNormal[g][1] * faceNormal[f][1] + faceNormal[g][2] * faceNormal[f][2] < 1 - 1e-10) {
+                    continue;
+                }
+                double dg = faceNormal[f][0] * vertices[3 * triangles[3 * g]] + faceNormal[f][1] * vertices[3 * triangles[3 * g] + 1] + faceNormal[f][2] * vertices[3 * triangles[3 * g] + 2];
+                if (Math.abs(dg - d) <= 1e-5 * (1 + Math.abs(d))) {
+                    facetOf[g] = id;
+                    members.add(g);
+                }
+            }
+            facetTriangles.add(members);
+        }
+        int facets = planes.size();
+        facetStart = new int[facets + 1];
+        facetPlane = new double[4 * facets];
+        List<Integer> ordered = new ArrayList<>();
+        for (int f = 0; f < facets; f++) {
+            double[] pl = planes.get(f);
+            System.arraycopy(pl, 0, facetPlane, 4 * f, 4);
+            Set<Integer> verts = new java.util.LinkedHashSet<>();
+            for (int g : facetTriangles.get(f)) {
+                verts.add(triangles[3 * g]);
+                verts.add(triangles[3 * g + 1]);
+                verts.add(triangles[3 * g + 2]);
+            }
+            // order counter-clockwise about the normal: by the angle in a basis of the plane around the centroid
+            double cx = 0, cy = 0, cz = 0;
+            for (int v : verts) {
+                cx += vertices[3 * v];
+                cy += vertices[3 * v + 1];
+                cz += vertices[3 * v + 2];
+            }
+            cx /= verts.size();
+            cy /= verts.size();
+            cz /= verts.size();
+            double ax = Math.abs(pl[0]) < 0.9 ? 1 : 0, ay = Math.abs(pl[0]) < 0.9 ? 0 : 1;
+            double ux = pl[1] * 0 - pl[2] * ay, uy = pl[2] * ax - pl[0] * 0, uz = pl[0] * ay - pl[1] * ax; // a x n ... any vector in the plane
+            double ul = Math.sqrt(ux * ux + uy * uy + uz * uz);
+            ux /= ul;
+            uy /= ul;
+            uz /= ul;
+            double vx = pl[1] * uz - pl[2] * uy, vy = pl[2] * ux - pl[0] * uz, vz = pl[0] * uy - pl[1] * ux; // n x u
+            List<Integer> list = new ArrayList<>(verts);
+            final double fcx = cx, fcy = cy, fcz = cz, fux = ux, fuy = uy, fuz = uz, fvx = vx, fvy = vy, fvz = vz;
+            list.sort(java.util.Comparator.comparingDouble(v -> {
+                double dx = vertices[3 * v] - fcx, dy = vertices[3 * v + 1] - fcy, dz = vertices[3 * v + 2] - fcz;
+                return Math.atan2(dx * fvx + dy * fvy + dz * fvz, dx * fux + dy * fuy + dz * fuz);
+            }));
+            ordered.addAll(list);
+            facetStart[f + 1] = ordered.size();
+        }
+        facetVertex = new int[ordered.size()];
+        for (int i = 0; i < facetVertex.length; i++) {
+            facetVertex[i] = ordered.get(i);
+        }
+        // edges between facets: an edge of a triangle whose neighbour triangle belongs to another facet
+        List<int[]> edgeList = new ArrayList<>();
+        Set<Long> edgesSeen = new HashSet<>();
+        for (int f = 0; f < nf; f++) {
+            for (int k = 0; k < 3; k++) {
+                int u = triangles[3 * f + k], v = triangles[3 * f + (k + 1) % 3];
+                Integer g = faceOf.get(((long) v << 32) | u);
+                long key = ((long) Math.min(u, v) << 32) | Math.max(u, v);
+                if (g != null && facetOf[g] != facetOf[f] && edgesSeen.add(key)) {
+                    edgeList.add(new int[] {u, v});
+                }
+            }
+        }
+        edgeVertex = new int[2 * edgeList.size()];
+        for (int i = 0; i < edgeList.size(); i++) {
+            edgeVertex[2 * i] = edgeList.get(i)[0];
+            edgeVertex[2 * i + 1] = edgeList.get(i)[1];
+        }
     }
 
     private double[] cross(int a, int b, int c) {
@@ -153,6 +243,11 @@ public final class ConvexPolytope implements ConvexShape {
         return vertices.length / 3;
     }
 
+    /** The coordinate {@code axis} (0 is x, 1 is y, 2 is z) of vertex {@code i}, without copying the vertex array as {@link #vertices()} does. */
+    public float vertex(int i, int axis) {
+        return vertices[3 * i + axis];
+    }
+
     /** The vertices as {@code x, y, z} triples. */
     public float[] vertices() {
         return vertices.clone();
@@ -181,6 +276,41 @@ public final class ConvexPolytope implements ConvexShape {
     /** The distinct unit edge directions that are not inside a planar facet, as {@code x, y, z} triples (the edge axes of the separating axis test). */
     public double[] edgeDirections() {
         return edgeDirections.clone();
+    }
+
+    /** The number of facets: the planar polygons of the surface (the triangles in one plane form one facet, so a box has 6). */
+    public int facetCount() {
+        return facetStart.length - 1;
+    }
+
+    /** Writes the plane of facet {@code f} to {@code out[0 .. 4)}: the unit outward normal and {@code d}, with {@code n . x = d} on the facet and {@code n . x < d} inside the polytope. */
+    public void facetPlane(int f, double[] out) {
+        System.arraycopy(facetPlane, 4 * f, out, 0, 4);
+    }
+
+    /** The number of vertices of facet {@code f}. */
+    public int facetVertexCount(int f) {
+        return facetStart[f + 1] - facetStart[f];
+    }
+
+    /** The index (into {@link #vertices()}) of the {@code k}-th vertex of facet {@code f}; the vertices run counter-clockwise seen from outside. */
+    public int facetVertex(int f, int k) {
+        return facetVertex[facetStart[f] + k];
+    }
+
+    /** The number of edges between facets (the edges of the surface; not the diagonals of a triangulated facet). */
+    public int edgeCount() {
+        return edgeVertex.length / 2;
+    }
+
+    /** The index of the first vertex of edge {@code e}. */
+    public int edgeStart(int e) {
+        return edgeVertex[2 * e];
+    }
+
+    /** The index of the second vertex of edge {@code e}. */
+    public int edgeEnd(int e) {
+        return edgeVertex[2 * e + 1];
     }
 
     /** Whether the point is inside the polytope or on its surface. Exact: no face of the polytope may have the point above it ({@link Predicates#orient3d}). */

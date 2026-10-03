@@ -68,8 +68,10 @@ class TransformerTest {
         assertTrue(out.contains("record Vec3f(float x"), out);
         assertTrue(out.contains("float A = 1f;"), out);
         assertFalse(out.contains("@GenerateDouble"), out);
-        assertFalse(out.contains("@ValueType"), out);
-        assertFalse(out.contains("vmath.annotations"), out);
+        assertTrue(out.contains("@ValueType"), "@ValueType stays for the validating annotation processor: " + out);
+        assertTrue(out.contains("import vmath.annotations.ValueType;"), out);
+        assertFalse(out.contains("vmath.annotations.GenerateDouble"), out);
+        assertFalse(out.contains("vmath.annotations.FloatOnly"), out);
     }
 
     @Test
@@ -224,7 +226,7 @@ class TransformerTest {
         String out = Transformer.transform(src, "Half.java", new Options(Mode.PLAIN, true, RENAMES, null));
         assertTrue(out.contains("public value record Half(short bits)"), out);
         assertTrue(out.contains("float toFloat() { return 1f; }"), out);
-        assertFalse(out.contains("vmath.annotations"), out);
+        assertTrue(out.contains("@ValueType") && out.contains("import vmath.annotations.ValueType;"), "@ValueType stays for the validator: " + out);
     }
 
     // ------------------------------------------------------------ header and discovery

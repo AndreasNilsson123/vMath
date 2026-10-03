@@ -46,34 +46,54 @@ public final class ClipSampler {
             throw new IllegalArgumentException("pose has " + pose.jointCount() + " joints, the clip " + clip.jointCount());
         }
         float t = wrap(time, loop);
-        float[] out = pose.data();
-        int[] joint = clip.trackJoints(), channel = clip.trackChannels(), start = clip.trackStarts(), valueStart = clip.trackValueStarts(),
-                keys = clip.trackKeyCounts();
+        int tracks = clip.trackCount();
+        for (int tr = 0; tr < tracks; tr++) {
+            sampleTrack(tr, t, pose.data());
+        }
+    }
+
+    /**
+     * Like {@link #sample} but only for the channels of one {@code joint}: the other joints of {@code pose} are left as they are. For when a single joint is wanted (the root of
+     * {@link RootMotion}) and sampling the whole skeleton would be wasted.
+     */
+    public void sampleJoint(float time, boolean loop, int joint, Pose pose) {
+        if (pose.jointCount() != clip.jointCount()) {
+            throw new IllegalArgumentException("pose has " + pose.jointCount() + " joints, the clip " + clip.jointCount());
+        }
+        float t = wrap(time, loop);
+        int[] joints = clip.trackJoints();
+        for (int tr = 0; tr < joints.length; tr++) {
+            if (joints[tr] == joint) {
+                sampleTrack(tr, t, pose.data());
+            }
+        }
+    }
+
+    private void sampleTrack(int tr, float t, float[] out) {
+        int[] joint = clip.trackJoints(), channel = clip.trackChannels(), start = clip.trackStarts(), valueStart = clip.trackValueStarts(), keys = clip.trackKeyCounts();
         float[] times = clip.keyTimes(), values = clip.keyValues();
-        for (int tr = 0; tr < joint.length; tr++) {
-            int s = start[tr], n = keys[tr];
-            int ch = channel[tr];
-            int comps = ch == 1 ? 4 : 3;
-            int dst = joint[tr] * TransformMath.TRS + (ch == 0 ? 0 : ch == 1 ? 3 : 7);
-            int vBase = valueStart[tr];
-            if (n == 1 || t <= times[s]) {
-                System.arraycopy(values, vBase, out, dst, comps);
-                continue;
-            }
-            if (t >= times[s + n - 1]) {
-                System.arraycopy(values, vBase + (n - 1) * comps, out, dst, comps);
-                continue;
-            }
-            int i = findInterval(tr, s, n, times, t);
-            float t0 = times[s + i], t1 = times[s + i + 1];
-            float f = (t - t0) / (t1 - t0);
-            int v0 = vBase + i * comps, v1 = v0 + comps;
-            if (ch == 1) {
-                TransformMath.slerp(values, v0, values, v1, f, out, dst);
-            } else {
-                for (int k = 0; k < 3; k++) {
-                    out[dst + k] = values[v0 + k] + (values[v1 + k] - values[v0 + k]) * f;
-                }
+        int s = start[tr], n = keys[tr];
+        int ch = channel[tr];
+        int comps = ch == 1 ? 4 : 3;
+        int dst = joint[tr] * TransformMath.TRS + (ch == 0 ? 0 : ch == 1 ? 3 : 7);
+        int vBase = valueStart[tr];
+        if (n == 1 || t <= times[s]) {
+            System.arraycopy(values, vBase, out, dst, comps);
+            return;
+        }
+        if (t >= times[s + n - 1]) {
+            System.arraycopy(values, vBase + (n - 1) * comps, out, dst, comps);
+            return;
+        }
+        int i = findInterval(tr, s, n, times, t);
+        float t0 = times[s + i], t1 = times[s + i + 1];
+        float f = (t - t0) / (t1 - t0);
+        int v0 = vBase + i * comps, v1 = v0 + comps;
+        if (ch == 1) {
+            TransformMath.slerp(values, v0, values, v1, f, out, dst);
+        } else {
+            for (int k = 0; k < 3; k++) {
+                out[dst + k] = values[v0 + k] + (values[v1 + k] - values[v0 + k]) * f;
             }
         }
     }

@@ -30,7 +30,8 @@ import vmath.geo.Trianglef;
  * Guard rails that keep every core type a valid future {@code value record}.
  *
  * <p>JEP 401 value classes must be final, have only final fields and must not depend on identity.
- * Records already give us the first two; these checks catch the rest before a Valhalla build does.
+ * Records already give us the first two; these checks catch the rest before a Valhalla build does. The identity rules on the sources (no {@code ==}, {@code synchronized} or
+ * {@code identityHashCode} on a value type) are checked by the compiler plugin of {@code vmath-validator} while the library compiles.
  */
 class ValhallaReadinessTest {
 
@@ -83,29 +84,6 @@ class ValhallaReadinessTest {
                 fail(c.getSimpleName() + ".java must be a '@GenerateDouble @ValueType public record' template so"
                         + " the generator can emit both precisions and -Pvalhalla can make it a value record");
             }
-        }
-    }
-
-    @Test
-    void sourcesRespectTheIdentityRules() throws IOException {
-        List<Path> roots = List.of(Path.of("src/main/java/vmath"), Path.of("src/template/java/vmath"));
-        List<String> found = new java.util.ArrayList<>();
-        int checked = 0;
-        for (Path root : roots) {
-            if (!Files.isDirectory(root)) {
-                continue;
-            }
-            try (var files = Files.walk(root)) {
-                for (Path p : files.filter(f -> f.toString().endsWith(".java")).toList()) {
-                    checked++;
-                    for (ValueTypeChecker.Violation v : ValueTypeChecker.check(p.getFileName().toString(), Files.readString(p))) {
-                        found.add(p + ": " + v);
-                    }
-                }
-            }
-        }
-        if (checked > 0) {
-            assertTrue(found.isEmpty(), "identity-sensitive use of value types:\n" + String.join("\n", found));
         }
     }
 }
