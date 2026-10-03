@@ -260,9 +260,69 @@ None of the kernels allocates (the sub-100 B/op in the profile is benchmark setu
 error bars (the BVH row especially); the BVH win depends on how much of the scene is outside the view, and its numbers exclude
 build and refit.
 
+## Portal and sector culling (`PortalGraph`, `PortalCuller`, `PortalStage`)
+
+For interiors: rooms, corridors and the doors between them. Frustum culling looks at every object in front of the camera, including the ones in the next room behind a wall; portal
+culling never touches an object that cannot be seen through a chain of open doors.
+
+```
+PortalGraph (sectors, portals, doors open or shut, which objects are in which sector)
+    └─ PortalCuller.traverse   the sectors seen through open portals, each with the screen rectangle it is seen through
+       PortalCuller.cullObjects  clears the bits of objects outside those sectors or outside their rectangles
+PortalStage   the two as a CullStage; locates the camera (hint: last frame's sector)
+```
+
+- **Sectors** are convex volumes: boxes (`Builder.addBox`) or any convex set of inward planes (`addConvex`); they must not overlap except along shared faces. `locate` finds the sector of a
+  point through a uniform grid over the sectors' bounding boxes (and, with a hint, in the sector of the previous frame or a neighbour first).
+- **Portals** are convex planar polygons of up to 16 vertices on the boundary between two sectors, with a normal that points from A into B. `addPortal` works out the direction from the
+  sectors; `autoPortals` finds every shared face between box sectors. A portal can be closed and opened again (`setPortalOpen`): a shut door removes the room behind it.
+- **Membership**: an object belongs to every sector its bounds may overlap (`assignAll`), so a box in a doorway belongs to both rooms; `update` re-assigns a moved object in O(1) cells of
+  the grid. Objects that belong to no sector are left alone by default (an object the graph does not know is never culled by accident); `cullUnassigned` removes them.
+
+**The traversal.** From the sector of the eye, with the whole screen as the rectangle `[-1, 1]^2`: for each open portal whose front the eye is on, clip the polygon to the half space in
+front of the eye, project it, take the bounding rectangle, intersect it with the rectangle of the current sector, and continue in the sector behind it. A sector reached by several routes gets the
+bounding rectangle of all of them and is processed again only when that rectangle grows, so the work is bounded (and a budget of `16 * sectors + 64` growths ends a pathological graph by giving
+the rest the whole root rectangle). An eye standing in a doorway passes the portal whole. The portal polygon is clipped at the eye plane, **not** the near plane: a doorway closer than the near
+plane still shows what is behind it. **The object test** builds, for each reached sector, the six planes of the view volume narrowed to its rectangle (the camera's own near and far planes) and tests
+the sector's objects against them; an object in several sectors survives if it passes in any.
+
+**Conservative.** The result never hides what can be seen: rectangles are bounding boxes of the projected portals (enlarged against rounding), NaN bounds are kept, and a portal polygon that is
+seen edge-on is passed whole. The test is not exact in the other direction: a rectangle is looser than the true pyramid of the door chain, so an object just outside the view through a doorway
+may survive. It is for **perspective** views (the side test of a portal uses the eye position); an orthographic view does not fit.
+
+**Tested against** an independent line-of-sight oracle: grids of rooms with doors of random size and position and random solid walls; for random eyes and view directions, 9 sample points of each
+of 1 500 objects are tested by walking the segment from the eye through the rooms and checking that it leaves each room through an open door polygon; every object with a sample point that is in
+the view frustum and in line of sight must survive (in all three depth conventions, including the reversed infinite one, and for eyes closer to a door than the near plane). Objects in sectors that
+cannot be reached through open portals by plain graph search are always culled (exact), and the grid queries (`locate`, membership) are compared with a brute-force search over boxes, a tetrahedron
+and an unbounded sector.
+
+**PVS hooks.** `SectorVisibility` is the interface through which a precomputed potentially visible set narrows the traversal (`PortalCuller.setVisibility`): sectors it says cannot be seen from the
+start sector are not entered. It must be conservative. `PvsMatrix` is a bit-matrix implementation with a plain binary format (rows of `ceil(sectors / 8)` bytes, least significant bit first) that a
+level tool can write, `fromBytes` / `toBytes`, and `fromConnectivity`, the one set this library can promise without geometry: every sector reachable through portals, open or not (it
+removes unconnected parts of a level, nothing else). A tight PVS needs a visibility compiler, which is not part of the library.
+
+**Measured** (`PortalBench`, JDK 25, single thread, 2026-10-03): buildings of 16 x 16 and 32 x 32 rooms of 10 m, a door between neighbours with probability 0.7, 200 000 small objects, a camera in a
+central room looking through one door (2 sectors reached). Objects surviving: **46 508** of 200 000 after a plain frustum cull and **352** after the portal stage in the 16 x 16 building (49 610 and
+184 in the 32 x 32 one); the portal stage alone gives the same result as frustum and portal together here.
+
+| Call | 16 x 16 rooms | 32 x 32 rooms |
+|---|---|---|
+| `PortalCuller.traverse` (the sectors and rectangles) | 0.87 us ± 0.05 us | 1.60 us ± 0.07 us |
+| `PortalStage.cull` on a full set of 200 000 (includes resetting and counting the set) | 69.2 us ± 1.8 us | 19.2 us ± 1.1 us |
+| `CullStages.Frustum` on the same 200 000 | 464 us ± 128 us | 466 us ± 52 us |
+| frustum stage then portal stage | 515 us ± 24 us | 496 us ± 36 us |
+| `PortalGraph.update` of one moved object | 0.34 us ± 0.07 us | 0.31 us ± 0.02 us |
+| `PortalGraph.locate` with a hint | 15 ns ± 4 ns | 14 ns ± 2 ns |
+
+The portal stage costs in proportion to the objects in the sectors it reaches (781 per room at 16 x 16, 195 at 32 x 32, hence its 69 against 19 microseconds), not to the objects in the scene, while the
+flat frustum kernel reads all 200 000. Since the portal stage applies a view volume narrowed to each sector, a separate frustum stage adds nothing for objects that belong to a sector; keep it for the
+unassigned ones. Updating a moved object was 2.4 and 7.7 microseconds (a search over all 256 or 1 024 sectors) before the sector grid, and is now independent of the number of sectors.
+
+Not built: portals as extra cameras (mirrors, portal views), a visibility compiler that bakes a tight PVS, anti-portals, and exact (pyramid) portal frusta instead of rectangles.
+
 ## Not built yet
 
-Portal and sector culling, temporal coherence for occlusion queries, a kernel interface for the occlusion test (a SIMD version) and a SIMD BVH traversal.
+Temporal coherence for occlusion queries, a kernel interface for the occlusion test (a SIMD version) and a SIMD BVH traversal.
 They are in `docs/ROADMAP.md`.
 
 ## Segments, capsules and the remaining overlap tests

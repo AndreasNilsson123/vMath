@@ -6,6 +6,7 @@ Nothing has been released yet; the baseline for the compatibility check is the t
 ## Unreleased
 
 ### Added
+- Portal and sector culling for interiors: `PortalGraph` (convex sectors, portals, doors, object membership with a sector grid), `PortalCuller`, `PortalStage`, `SectorVisibility` and `PvsMatrix` for a precomputed PVS; `docs/CULLING.md`, `PortalBench`. Not `@Experimental`.
 - Core: `Mat2f` and `Mat3x2f` (2D linear and affine transforms, with double twins), `Vec4i`, 2D helpers on `Vec2f` (`fromAngle`, `polarAngle`, `signedAngle`, `perpDot`, `rotateAround`, `orient`);
   `Mat4f.shear`, `orthoReversedZ`, `isOrthonormal`, `isProjection`, `invertProjection`, `decomposeWithShear`, `translationRotateShearScale`. These are not `@Experimental`: they are covered by the compatibility check from the start.
 - Geometry: `BoundingVolumes` (minimum enclosing sphere, PCA box, boxes and spheres of transformed boxes) and `KDop` (6, 14, 18 and 26 directions).

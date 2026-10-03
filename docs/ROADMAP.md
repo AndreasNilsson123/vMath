@@ -263,7 +263,7 @@ can be chained and composed, and they run on SoA bounds.
       *Done: `LodSelector` (bounding-sphere screen size, descending thresholds, hysteresis, cross-fade, cull-below, bias; history in a caller-owned `byte[]`). Per-object thresholds are not built.*
 - [x] **CULL-9 (P2, M)** Small-feature / contribution culling, backface cluster cone culling (meshlet cone test).
       *Done: small-feature stage (earlier) and `ConeCull` (cone builder, conservative sphere+cone test, orthographic variant, SoA `Clusters`).*
-- [ ] **CULL-10 (P2, L)** Portal/sector culling for interiors, PVS import hooks.
+- [x] **CULL-10 (P2, L)** Portal/sector culling for interiors, PVS import hooks. *Done: `PortalGraph`, `PortalCuller`, `PortalStage`, `SectorVisibility`, `PvsMatrix`; tested against a line-of-sight oracle; see `docs/CULLING.md`. No visibility compiler, no portal cameras.*
 - [x] **CULL-11 (P2, M)** Shadow culling: cascade frustum culling, light-space bounds, caster/receiver classification,
       point/spot light volumes, cube-face selection.  
       *Done: `CascadeCasters` (tight light-space caster test per cascade), `LightCull` (point, spot, cube-face masks). Caster/receiver classification bits are not built: the tight caster test covers the same saving.*

@@ -121,7 +121,7 @@ What the library does not do (yet), in one place; each row names the document th
 | Cluster LOD | `ClusterHierarchy` carries positions only, so skinned and multi-attribute meshes cannot be reduced into a cluster hierarchy (`MeshSimplifier` does support attributes) | `docs/MESH.md` |
 | Clustered lighting | Spot lights are assigned to up to 47% more clusters than they touch (conservative, never fewer) | `docs/CAMERA.md` |
 | Cameras | No single culling frustum for both eyes of a stereo pair; the physical camera model is thin-lens only (no breathing, vignetting or bokeh) | `docs/CAMERA.md` |
-| Culling | No portal or sector culling, no temporal coherence for occlusion queries, no SIMD occlusion test | `docs/CULLING.md` |
+| Culling | No portal cameras (mirrors, portal views) or visibility compiler for portal culling, no temporal coherence for occlusion queries, no SIMD occlusion test | `docs/CULLING.md` |
 | Animation | No joint limits for the inverse kinematics, no morph targets, animation compression or dual-quaternion skinning; `AnimationClip` interpolates linearly (the glTF loader converts STEP and CUBICSPLINE curves) | `docs/ANIMATION.md` |
 | Colour | No wide-gamut spaces (Display P3, Rec. 2020), no gamut mapping, no AgX or other image-formation transforms | `docs/COLOR.md` |
 | Formats | No entropy-coded vertex and index buffer compression (the quantization it needs is built) | `docs/FORMATS.md` |
@@ -147,7 +147,7 @@ Versioning and the `@Experimental` marker: [docs/VERSIONING.md](docs/VERSIONING.
 [docs/technical-debt.md](docs/technical-debt.md); design notes and measurements are in `docs/` (CODEGEN, CULLING, GPU, CAMERA, FORMATS, TEXTURES, GLTF, ROBUSTNESS, PERFORMANCE, API-COMPAT, BULK, MEMORY, COLOR, COOKBOOK, EQUALITY, COVERAGE,
 PUBLISHING, FASTMATH, GEOMETRY, UTIL, CURVES, API; the first review of the code is kept in `docs/history.md`).
 
-The largest open items: portal culling and temporal occlusion, and running the GPU layer
+The largest open items: temporal occlusion culling, and running the GPU layer
 against a real graphics API (the shader text and the upload ring are only tested against Java references so far).
 
 ## License

@@ -1032,6 +1032,59 @@ class AllocationContractTest {
         });
     }
 
+    // ------------------------------------------------------------ portal culling
+
+    @Test
+    void portalCulling() {
+        var builder = vmath.spatial.PortalGraph.builder();
+        int n = 6;
+        for (int r = 0; r < n; r++) {
+            for (int c = 0; c < n; c++) {
+                builder.addBox(new Aabbf(c * 10, 0, r * 10, c * 10 + 10, 3, r * 10 + 10));
+            }
+        }
+        builder.autoPortals(1e-3f);
+        var graph = builder.build();
+        var bounds = new vmath.bulk.BoundsArray(2000);
+        SplittableRandom r = new SplittableRandom(3);
+        for (int i = 0; i < 2000; i++) {
+            float x = (float) (r.nextDouble() * 60), z = (float) (r.nextDouble() * 60);
+            bounds.add(x, 0.5f, z, x + 0.5f, 1.5f, z + 0.5f);
+        }
+        graph.assignAll(bounds);
+        Mat4f vp = Mat4f.perspective(1.2f, 1.6f, 0.1f, 200f, vmath.core.ClipSpace.D3D).mul(Mat4f.lookAt(new Vec3f(5, 1.5f, 5), new Vec3f(40, 1.5f, 35), new Vec3f(0, 1, 0)));
+        var frustum = Frustumf.fromViewProjection(vp, DepthRange.ZERO_TO_ONE);
+        var ctx = new vmath.spatial.CullContext(frustum, new Vec3f(5, 1.5f, 5), 0f);
+        var stage = new vmath.spatial.PortalStage(graph).setView(vp, DepthRange.ZERO_TO_ONE);
+        var visible = new vmath.bulk.VisibilitySet(2000);
+        // the stage takes the CullContext value record into a call that is not inlined: strict on the plain JVM, constant per call on the value-record build
+        var smallBounds = new vmath.bulk.BoundsArray(400);
+        for (int i = 0; i < 400; i++) {
+            smallBounds.add(bounds.get(i));
+        }
+        var smallVisible = new vmath.bulk.VisibilitySet(400);
+        Alloc.assertNoAllocationPerElement("PortalStage", WARM_BIG, CALLS_BIG, () -> {
+            smallVisible.setAll(400);
+            stage.cull(ctx, smallBounds, smallVisible);
+        }, () -> {
+            visible.setAll(2000);
+            stage.cull(ctx, bounds, visible);
+        });
+        var culler = new vmath.spatial.PortalCuller(graph);
+        culler.setView(vp, DepthRange.ZERO_TO_ONE);
+        assertNoAllocation("PortalCuller", WARM_BIG, CALLS_BIG, () -> {
+            culler.traverse(5f, 1.5f, 5f, 0);
+            visible.setAll(2000);
+            culler.cullObjects(bounds, visible, false);
+        });
+        int[] k = {0};
+        assertNoAllocation("PortalGraph membership updates", WARM, CALLS, () -> {
+            int i = k[0]++ % 2000;
+            graph.update(i, bounds.minX(i), bounds.minY(i), bounds.minZ(i), bounds.maxX(i), bounds.maxY(i), bounds.maxZ(i));
+            graph.locate(5f, 1.5f, 5f, 0);
+        });
+    }
+
     // ------------------------------------------------------------ inverse kinematics
 
     @Test
