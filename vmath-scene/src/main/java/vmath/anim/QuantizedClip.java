@@ -1,32 +1,61 @@
 package vmath.anim;
 
 /**
- * An {@link AnimationClip} stored in quantised form, sampled directly without expanding it: a fraction of the memory for a small, bounded error. For every key
+ * An {@link AnimationClip} stored in quantised form, sampled directly without expanding it: a
+ * fraction of the memory for a small, bounded error.
+ *
+ * <p>For every key
  *
  * <ul>
- *   <li>the <b>time</b> is a 16-bit fraction of the clip duration (an error of at most {@code duration / 131070} seconds: 0.08 ms for a 10 second clip);</li>
- *   <li>a <b>translation</b> or <b>scale</b> is three 16-bit values, each a fraction of the range of that component over the track ({@code range / 131070} at most; a track that
- *       does not move at all costs nothing in precision);</li>
- *   <li>a <b>rotation</b> is a unit quaternion in the "smallest three" form, the largest of its four components dropped and rebuilt from the others: in {@link RotationFormat#PACKED_32}
- *       three 10-bit signed fractions and the 2-bit index of the dropped component in one {@code int} (the same format as {@code vmath.pack.QuatPacked}), in
- *       {@link RotationFormat#PACKED_64} three 20-bit fractions and the index in one {@code long}.</li>
+ *   <li>the <b>time</b> is a 16-bit fraction of the clip duration (an error of at most
+ *       {@code duration / 131070} seconds: 0.08 ms for a 10 second clip);</li>
+ *   <li>a <b>translation</b> or <b>scale</b> is three 16-bit values, each a fraction of the range
+ *       of that component over the track ({@code range / 131070} at most; a track that does not
+ *       move at all costs nothing in precision);</li>
+ *   <li>a <b>rotation</b> is a unit quaternion in the "smallest three" form, the largest of its
+ *       four components dropped and rebuilt from the others: in {@link RotationFormat#PACKED_32}
+ *       three 10-bit signed fractions and the 2-bit index of the dropped component in one
+ *       {@code int} (the same format as {@code vmath.pack.QuatPacked}), in
+ *       {@link RotationFormat#PACKED_64} three 20-bit fractions and the index in one
+ *       {@code long}.</li>
  * </ul>
  *
- * <p>The rotation error of a component of the kept three is half a step of its range {@code [-1/sqrt 2, 1/sqrt 2]}: 6.9e-4 for 10 bits and 6.7e-7 for 20 bits; the angle between
- * the stored and the true orientation is at most about 4 times that (the dropped component adds its own share), the measured worst cases are in {@code docs/ANIMATION.md}.
+ * <p>The rotation error of a component of the kept three is half a step of its range
+ * {@code [-1/sqrt 2, 1/sqrt 2]}: 6.9e-4 for 10 bits and 6.7e-7 for 20 bits; the angle between the
+ * stored and the true orientation is at most about 4 times that (the dropped component adds its own
+ * share), the measured worst cases are in {@code docs/ANIMATION.md}.
  *
- * <p>{@link #sample} interpolates like {@link ClipSampler} (linear, slerp, held ends) and allocates nothing; it keeps a cursor per track, so use one instance per playing clip and thread. When
- * several keys of a track fall into the same time code, the earlier ones are held at that time. {@link #decode()} expands the clip back to an {@link AnimationClip}, for tools and tests.
+ * <p>{@link #sample} interpolates like {@link ClipSampler} (linear, slerp, held ends) and allocates
+ * nothing; it keeps a cursor per track, so use one instance per playing clip and thread. When
+ * several keys of a track fall into the same time code, the earlier ones are held at that time.
+ * {@link #decode()} expands the clip back to an {@link AnimationClip}, for tools and tests.
  *
- * <p><b>Thread safety.</b> The data is immutable, but sampling updates the cursors: not thread-safe; give each thread its own copy by calling {@link #copy()}, which shares the data.
+ * <p><b>Thread safety.</b> The data is immutable, but sampling updates the cursors: not
+ * thread-safe; give each thread its own copy by calling {@link #copy()}, which shares the data.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * AnimationClip clip = AnimationClip.builder(1).translation(0, new float[] {0f, 1f}, new float[] {0f, 0f, 0f, 1f, 0f, 0f}).build();
+ * QuantizedClip quantized = QuantizedClip.of(clip, QuantizedClip.RotationFormat.PACKED_32);
+ * long bytes = quantized.sizeInBytes();
+ * Pose pose = new Pose(1);
+ * quantized.sample(0.5f, true, pose);                                     // decodes while sampling; use one copy per thread
+ * }</pre>
  */
 public final class QuantizedClip {
 
-    /** How a rotation key is stored. */
+    /**
+     * How a rotation key is stored.
+     */
     public enum RotationFormat {
-        /** Smallest-three in 32 bits: 10 bits per kept component. */
+        /**
+         * Smallest-three in 32 bits: 10 bits per kept component.
+         */
         PACKED_32,
-        /** Smallest-three in 64 bits: 20 bits per kept component. */
+        /**
+         * Smallest-three in 64 bits: 20 bits per kept component.
+         */
         PACKED_64
     }
 
@@ -144,49 +173,95 @@ public final class QuantizedClip {
         }
     }
 
-    /** Quantises {@code clip}, storing the rotations in the given format. */
+    /**
+     * Quantises {@code clip}, storing the rotations in the given format.
+     *
+     * @param clip the clip; must not be {@code null}
+     * @param format the format; must not be {@code null}
+     * @return the quantised clip, never {@code null}
+     */
     public static QuantizedClip of(AnimationClip clip, RotationFormat format) {
         return new QuantizedClip(clip, format);
     }
 
-    /** A sampler over the same data with its own cursors, for another thread or another playing instance. */
+    /**
+     * Duplicates the sampler state while sharing the immutable data, so that several instances or
+     * threads can play the same clip with their own cursors.
+     *
+     * @return a sampler over the same data with its own cursors, for another thread or another
+     *     playing instance
+     */
     public QuantizedClip copy() {
         return new QuantizedClip(this);
     }
 
-    /** The number of joints the clip animates. */
+    /**
+     * Counts the joints that the clip animates.
+     *
+     * @return the number of joints the clip animates
+     */
     public int jointCount() {
         return jointCount;
     }
 
-    /** The duration in seconds. */
+    /**
+     * Exposes the duration of the clip.
+     *
+     * @return the duration in seconds
+     */
     public float duration() {
         return duration;
     }
 
-    /** The format of the rotation keys. */
+    /**
+     * Reports how the rotation keys are stored, which determines the size and the precision of the
+     * clip.
+     *
+     * @return the format of the rotation keys
+     */
     public RotationFormat rotationFormat() {
         return format;
     }
 
-    /** The number of tracks. */
+    /**
+     * Counts the tracks of the clip.
+     *
+     * @return the number of tracks
+     */
     public int trackCount() {
         return trackJoint.length;
     }
 
-    /** The number of keys over all tracks. */
+    /**
+     * Counts the keys over all tracks of the clip.
+     *
+     * @return the number of keys over all tracks
+     */
     public int keyCount() {
         return timeCodes.length;
     }
 
-    /** The size of the quantised data in bytes: key times, values and rotations, the ranges of the vector tracks, and the track tables. */
+    /**
+     * Measures the memory of the quantised clip, counting every table and array, to compare with
+     * the uncompressed clip.
+     *
+     * @return the size of the quantised data in bytes: key times, values and rotations, the ranges
+     *     of the vector tracks, and the track tables
+     */
     public long sizeInBytes() {
         long bytes = 2L * timeCodes.length + 2L * valueCodes.length + 4L * ranges.length + 5L * 4 * trackJoint.length + 4L * trackValueStart.length + 4L * trackRotationStart.length;
         bytes += rotation32 != null ? 4L * rotation32.length : 8L * rotation64.length;
         return bytes;
     }
 
-    /** The size in bytes that {@code clip} takes as {@link AnimationClip} stores it: 4 bytes per key time and per value float, and its track tables. */
+    /**
+     * Measures the memory that an uncompressed clip needs under the same accounting, to compare
+     * with {@link #sizeInBytes()}.
+     *
+     * @param clip the clip; must not be {@code null}
+     * @return the size in bytes that {@code clip} takes as {@link AnimationClip} stores it: 4 bytes
+     *     per key time and per value float, and its track tables
+     */
     public static long sizeInBytes(AnimationClip clip) {
         long values = 0;
         for (int t = 0; t < clip.trackCount(); t++) {
@@ -197,12 +272,20 @@ public final class QuantizedClip {
 
     // ------------------------------------------------------------ sampling
 
-    /** The time of the key code, in seconds. */
+    /**
+     * The time of the key code, in seconds.
+     */
     private float timeOf(char code) {
         return code * duration / 65535f;
     }
 
-    /** Maps a playback time to a time inside the clip as {@link ClipSampler#wrap} does. */
+    /**
+     * Maps a playback time to a time inside the clip as {@link ClipSampler#wrap} does.
+     *
+     * @param time the time
+     * @param loop whether loop
+     * @return the time inside the clip, in {@code [0, duration]}
+     */
     public float wrap(float time, boolean loop) {
         float d = duration;
         if (!(d > 0f) || time != time) {
@@ -215,7 +298,17 @@ public final class QuantizedClip {
         return Math.max(0f, Math.min(d, time));
     }
 
-    /** Writes the value of every animated channel at {@code time} into {@code pose}, like {@link ClipSampler#sample}. Allocates nothing. */
+    /**
+     * Writes the value of every animated channel at {@code time} into {@code pose}, like
+     * {@link ClipSampler#sample}.
+     *
+     * <p>Allocates nothing.
+     *
+     * @param time the time
+     * @param loop whether loop
+     * @param pose the pose; must not be {@code null}
+     * @throws IllegalArgumentException if {@code pose} does not have as many joints as the clip
+     */
     public void sample(float time, boolean loop, Pose pose) {
         if (pose.jointCount() != jointCount) {
             throw new IllegalArgumentException("pose has " + pose.jointCount() + " joints, the clip " + jointCount);
@@ -251,7 +344,10 @@ public final class QuantizedClip {
         }
     }
 
-    /** Index {@code i} relative to the track with {@code time(i) <= t < time(i + 1)}; t is strictly inside the track. */
+    /**
+     * Index {@code i} relative to the track with {@code time(i) <= t < time(i + 1)}; t is strictly
+     * inside the track.
+     */
     private int interval(int track, int s, int n, float t) {
         int c = cursor[track];
         if (c + 1 < n && timeOf(timeCodes[s + c]) <= t && t < timeOf(timeCodes[s + c + 1])) {
@@ -274,7 +370,9 @@ public final class QuantizedClip {
         return lo;
     }
 
-    /** Writes the value of key {@code i} of the track at {@code out[dst ..]}. */
+    /**
+     * Writes the value of key {@code i} of the track at {@code out[dst ..]}.
+     */
     private void decode(int tr, int i, int dst, float[] out) {
         if (trackChannel[tr] == 1) {
             if (format == RotationFormat.PACKED_32) {
@@ -300,7 +398,14 @@ public final class QuantizedClip {
 
     // ------------------------------------------------------------ expanding
 
-    /** Expands the clip to an {@link AnimationClip} with the quantised values (the key times are those of the codes), for inspection and tools. Allocates. */
+    /**
+     * Expands the clip to an {@link AnimationClip} with the quantised values (the key times are
+     * those of the codes), for inspection and tools.
+     *
+     * <p>Allocates.
+     *
+     * @return the expanded clip, never {@code null}
+     */
     public AnimationClip decode() {
         AnimationClip.Builder b = AnimationClip.builder(jointCount);
         b.duration(duration);
@@ -400,7 +505,15 @@ public final class QuantizedClip {
         out[o + l] = (float) Math.sqrt(Math.max(0.0, 1.0 - sumSquares));
     }
 
-    /** The quantised rotation of key {@code i} of rotation track {@code tr} (for tests and tools): writes the unit quaternion to {@code out[0 .. 4)}. */
+    /**
+     * Writes the quantised rotation of key {@code i} of rotation track {@code tr} (for tests and
+     * tools) as a unit quaternion to {@code out[0 .. 4)}.
+     *
+     * @param tr the track index
+     * @param i the index
+     * @param out receives the result
+     * @throws IllegalArgumentException if track {@code tr} is not a rotation track
+     */
     public void rotationKey(int tr, int i, float[] out) {
         if (trackChannel[tr] != 1) {
             throw new IllegalArgumentException("track " + tr + " is not a rotation track");

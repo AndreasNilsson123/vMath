@@ -3,22 +3,40 @@ package vmath.util;
 import vmath.annotations.Experimental;
 
 /**
- * Low-discrepancy point sequences and Poisson-disk sampling: ways to place samples that cover a domain more evenly than independent random numbers do, for anti-aliasing,
- * soft shadows, ambient occlusion, light sampling and object scattering.
+ * Low-discrepancy point sequences and Poisson-disk sampling: ways to place samples that cover a
+ * domain more evenly than independent random numbers do, for anti-aliasing, soft shadows, ambient
+ * occlusion, light sampling and object scattering.
  *
  * <ul>
- *   <li>{@link #halton}: the Halton sequence in bases 2, 3, 5, 7, ..., any prefix of it is well spread; the next point only needs the index.</li>
- *   <li>{@link #sobol2}: the first two dimensions of the Sobol sequence; every block of {@code 2^k} points aligned at a multiple of {@code 2^k} puts exactly one point into each of
- *       the {@code 2^k} equal cells of any grid of {@code 2^a x 2^b} cells with {@code a + b = k}.</li>
- *   <li>{@link #r2}: the "R2" additive-recurrence sequence (Roberts): a point is the previous one plus a constant, wrapped; simple, and good for any number of points.</li>
- *   <li>{@link #hammersley}: the Hammersley set, a point set of a known size {@code n} (the index divided by {@code n}, and the base 2 radical inverse), slightly more even than
- *       a prefix of a sequence.</li>
- *   <li>{@link #poissonDisk}: random points at least a given distance apart, by Bridson's algorithm.</li>
+ *   <li>{@link #halton}: the Halton sequence in bases 2, 3, 5, 7, ..., any prefix of it is well
+ *       spread; the next point only needs the index.</li>
+ *   <li>{@link #sobol2}: the first two dimensions of the Sobol sequence; every block of {@code 2^k}
+ *       points aligned at a multiple of {@code 2^k} puts exactly one point into each of the
+ *       {@code 2^k} equal cells of any grid of {@code 2^a x 2^b} cells with {@code a + b = k}.</li>
+ *   <li>{@link #r2}: the "R2" additive-recurrence sequence (Roberts): a point is the previous one
+ *       plus a constant, wrapped; simple, and good for any number of points.</li>
+ *   <li>{@link #hammersley}: the Hammersley set, a point set of a known size {@code n} (the index
+ *       divided by {@code n}, and the base 2 radical inverse), slightly more even than a prefix of
+ *       a sequence.</li>
+ *   <li>{@link #poissonDisk}: random points at least a given distance apart, by Bridson's
+ *       algorithm.</li>
  * </ul>
  *
- * <p>All sequences are deterministic: the same index always gives the same point. Points are in the unit square {@code [0, 1)^2} unless stated otherwise.
+ * <p>All sequences are deterministic: the same index always gives the same point. Points are in the
+ * unit square {@code [0, 1)^2} unless stated otherwise.
  *
- * <p><b>Thread safety.</b> Stateless apart from the {@link Rng} you pass to {@link #poissonDisk}; every method may be called from any number of threads at the same time.
+ * <p><b>Thread safety.</b> Stateless apart from the {@link Rng} you pass to {@link #poissonDisk};
+ * every method may be called from any number of threads at the same time.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * float[] point = new float[2];
+ * Sequences.sobol2(5L, point, 0);                                                // the 6th point of the 2D Sobol sequence
+ * double h = Sequences.halton(5L, 0);
+ * float[] disk = new float[2 * 200];
+ * int count = Sequences.poissonDisk(new Rng(1L), 10f, 10f, 1f, 30, disk);       // points at least 1 apart
+ * }</pre>
  */
 @Experimental("blue-noise tables and more Sobol dimensions may be added")
 public final class Sequences {
@@ -37,7 +55,18 @@ public final class Sequences {
     private Sequences() {
     }
 
-    /** The radical inverse of {@code index} in {@code base}: its digits mirrored about the point, a number in {@code [0, 1)}. The van der Corput sequence for the given base. */
+    /**
+     * Computes the radical inverse, which mirrors the digits of an index in a base about the radix
+     * point, giving a low-discrepancy number.
+     *
+     * <p>The van der Corput sequence for the given base.
+     *
+     * @param base the base
+     * @param index the index
+     * @return the radical inverse of {@code index} in {@code base}: its digits mirrored about the
+     *     point, a number in {@code [0, 1)}
+     * @throws IllegalArgumentException if {@code base} is below 2
+     */
     public static double radicalInverse(int base, long index) {
         if (base < 2) {
             throw new IllegalArgumentException("the base must be at least 2: " + base);
@@ -52,7 +81,16 @@ public final class Sequences {
         return result;
     }
 
-    /** Dimension {@code dimension} (0 to 15) of the Halton sequence at {@code index}: the radical inverse in the prime number of that dimension (2, 3, 5, 7, ...). */
+    /**
+     * Computes one dimension of the Halton low-discrepancy sequence, using a different prime base
+     * for each dimension, which gives well-spread sample points.
+     *
+     * @param index the index
+     * @param dimension the dimension
+     * @return dimension {@code dimension} (0 to 15) of the Halton sequence at {@code index}: the
+     *     radical inverse in the prime number of that dimension (2, 3, 5, 7, ...)
+     * @throws IllegalArgumentException if {@code dimension} is not a supported dimension
+     */
     public static double halton(long index, int dimension) {
         if (dimension < 0 || dimension >= PRIMES.length) {
             throw new IllegalArgumentException("the dimension must be in [0, " + PRIMES.length + "): " + dimension);
@@ -60,7 +98,17 @@ public final class Sequences {
         return radicalInverse(PRIMES[dimension], index);
     }
 
-    /** The point {@code index} of the 2D Sobol sequence, written to {@code out[offset]} and {@code out[offset + 1]}. Index 0 is the origin. {@code index} must be below {@code 2^32}. */
+    /**
+     * Writes the point {@code index} of the 2D Sobol sequence to {@code out[offset]} and
+     * {@code out[offset + 1]}.
+     *
+     * <p>Index 0 is the origin. {@code index} must be below {@code 2^32}.
+     *
+     * @param index the index
+     * @param out receives the result
+     * @param offset the index of the first element to read or write
+     * @throws IllegalArgumentException if {@code index} is not in {@code [0, 2^32)}
+     */
     public static void sobol2(long index, float[] out, int offset) {
         if (index < 0 || index >= (1L << 32)) {
             throw new IllegalArgumentException("the index must be in [0, 2^32): " + index);
@@ -76,7 +124,14 @@ public final class Sequences {
         out[offset + 1] = (float) ((y & 0xFFFFFFFFL) * 0x1.0p-32);
     }
 
-    /** The point {@code index} of the R2 sequence (the generalised golden ratio for two dimensions), written to {@code out[offset]} and {@code out[offset + 1]}. */
+    /**
+     * Writes the point {@code index} of the R2 sequence (the generalised golden ratio for two
+     * dimensions) to {@code out[offset]} and {@code out[offset + 1]}.
+     *
+     * @param index the index
+     * @param out receives the result
+     * @param offset the index of the first element to read or write
+     */
     public static void r2(long index, float[] out, int offset) {
         final double g = 1.32471795724474602596; // the real root of x^3 = x + 1
         final double a1 = 1.0 / g, a2 = 1.0 / (g * g);
@@ -85,7 +140,16 @@ public final class Sequences {
         out[offset + 1] = (float) y;
     }
 
-    /** The point {@code index} of the Hammersley set of {@code count} points, written to {@code out[offset]} and {@code out[offset + 1]}. */
+    /**
+     * Writes the point {@code index} of the Hammersley set of {@code count} points to
+     * {@code out[offset]} and {@code out[offset + 1]}.
+     *
+     * @param index the index
+     * @param count the number of elements
+     * @param out receives the result
+     * @param offset the index of the first element to read or write
+     * @throws IllegalArgumentException if {@code index} is not in {@code [0, count)}
+     */
     public static void hammersley(int index, int count, float[] out, int offset) {
         if (count <= 0 || index < 0 || index >= count) {
             throw new IllegalArgumentException("the index " + index + " is not in [0, " + count + ")");
@@ -95,10 +159,27 @@ public final class Sequences {
     }
 
     /**
-     * Random points in the rectangle {@code [0, width) x [0, height)} that are at least {@code radius} apart, and that fill the rectangle (Bridson's algorithm: it tries {@code candidates} positions around a point, 30 is the usual value, before it retires the point; a larger
-     * number leaves fewer gaps, and a gap larger than twice the radius is possible but unlikely). The points go to {@code out} as {@code x, y} pairs,
-     * and the number of points written is returned; the sampling stops at {@code out.length / 2} points. This allocates a grid of cells the size of {@code radius / sqrt(2)}, so it is
-     * for set-up, not for every frame.
+     * Generates blue-noise points by Bridson's algorithm, which grows the set from existing points
+     * and rejects candidates that are closer than the radius; the output is bounded by a
+     * caller-supplied array.
+     *
+     * <p>The points go to {@code out} as {@code x, y} pairs, and the number of points written is
+     * returned; the sampling stops at {@code out.length / 2} points. This allocates a grid of cells
+     * the size of {@code radius / sqrt(2)}, so it is for set-up, not for every frame.
+     *
+     * @param rng the rng; must not be {@code null}
+     * @param width the width
+     * @param height the height
+     * @param radius the radius
+     * @param candidates the candidates
+     * @param out receives the result in {@code [0, 2)}
+     * @return random points in the rectangle {@code [0, width) x [0, height)} that are at least
+     *     {@code radius} apart, and that fill the rectangle (Bridson's algorithm: it tries
+     *     {@code candidates} positions around a point, 30 is the usual value, before it retires the
+     *     point; a larger number leaves fewer gaps, and a gap larger than twice the radius is
+     *     possible but unlikely)
+     * @throws IllegalArgumentException if the size or the radius is not positive, there is no
+     *     candidate, or the grid would have too many cells
      */
     public static int poissonDisk(Rng rng, float width, float height, float radius, int candidates, float[] out) {
         if (!(width > 0) || !(height > 0) || !(radius > 0) || candidates < 1) {

@@ -8,28 +8,48 @@ import vmath.gl.DrawCommandBuffer;
 import vmath.gl.GpuWriter;
 
 /**
- * The CPU reference of a GPU-driven culling pass, written to read and write the same bytes a compute shader would: the view as a {@link CullView} std140 block, the objects as a
- * {@link CullObject} std430 array, the draws as an array of {@code DrawElementsIndirect} commands, and the surviving objects as a {@code uint} list.
+ * The CPU reference of a GPU-driven culling pass, written to read and write the same bytes a
+ * compute shader would: the view as a {@link CullView} std140 block, the objects as a
+ * {@link CullObject} std430 array, the draws as an array of {@code DrawElementsIndirect} commands,
+ * and the surviving objects as a {@code uint} list.
  *
- * <p><b>What a pass does for one object</b> (one invocation per object on the GPU): test its box against the six frustum planes; unless the object is flagged
- * {@link #OBJECT_NO_OCCLUSION}, project the box (clip-space {@code w} above {@code nearW} for all eight corners, otherwise it crosses the camera plane and is visible), find its
- * screen rectangle and nearest depth and test them against the Hi-Z pyramid ({@link HiZPyramid#isHidden}); for a survivor take the next slot of its draw,
- * {@code slot = atomicAdd(commands[drawIndex].instanceCount, 1)}, and write the object index to {@code visible[commands[drawIndex].baseInstance + slot]}. A slot beyond the capacity that
- * was reserved for the draw is dropped and counted ({@link Counters#overflow}), as a shader would have to do rather than write out of bounds.
+ * <p><b>What a pass does for one object</b> (one invocation per object on the GPU): test its box
+ * against the six frustum planes; unless the object is flagged {@link #OBJECT_NO_OCCLUSION},
+ * project the box (clip-space {@code w} above {@code nearW} for all eight corners, otherwise it
+ * crosses the camera plane and is visible), find its screen rectangle and nearest depth and test
+ * them against the Hi-Z pyramid ({@link HiZPyramid#isHidden}); for a survivor take the next slot of
+ * its draw, {@code slot = atomicAdd(commands[drawIndex].instanceCount, 1)}, and write the object
+ * index to {@code visible[commands[drawIndex].baseInstance + slot]}. A slot beyond the capacity
+ * that was reserved for the draw is dropped and counted ({@link Counters#overflow}), as a shader
+ * would have to do rather than write out of bounds.
  *
- * <p><b>Order.</b> The reference visits objects in index order, so the instances of a draw are in ascending object order; on a GPU the order within a draw is whatever the atomics
- * produce. Compare as sets per draw. The result for every object, though, does not depend on the order.
+ * <p><b>Order.</b> The reference visits objects in index order, so the instances of a draw are in
+ * ascending object order; on a GPU the order within a draw is whatever the atomics produce. Compare
+ * as sets per draw. The result for every object, though, does not depend on the order.
  *
- * <p><b>NaN</b> in a box or plane is never a separation, so such an object is visible (as in the CPU culling predicates).
+ * <p><b>NaN</b> in a box or plane is never a separation, so such an object is visible (as in the
+ * CPU culling predicates).
  *
- * <p><b>Two phases</b> (the contract documented on {@link vmath.occlusion.HiZ}): {@link #cullPhase1} draws the objects that were visible last frame, tested against the
- * frustum only; the caller renders them, builds the pyramid from that depth ({@link HiZPyramid#fromDepth}), then {@link #cullPhase2} tests every object against the new pyramid, draws
- * those that pass and were not drawn in phase 1, and records which objects are visible now (next frame's history).
+ * <p><b>Two phases</b> (the contract documented on {@link vmath.occlusion.HiZ}):
+ * {@link #cullPhase1} draws the objects that were visible last frame, tested against the frustum
+ * only; the caller renders them, builds the pyramid from that depth ({@link HiZPyramid#fromDepth}),
+ * then {@link #cullPhase2} tests every object against the new pyramid, draws those that pass and
+ * were not drawn in phase 1, and records which objects are visible now (next frame's history).
  *
- * <p>The shader that does the same thing is {@link GpuCullGlsl#computeShader}; it compiles with glslang (see {@code ShaderCompileTest}) but has never run, and this class is what it is checked against by reading.
+ * <p>The shader that does the same thing is {@link GpuCullGlsl#computeShader}; it compiles with
+ * glslang (see {@code ShaderCompileTest}) but has never run, and this class is what it is checked
+ * against by reading.
  *
- * <p><b>Thread safety.</b> Stateless: the passes are static methods. The {@link Counters}, the buffers and the sets you pass in are not synchronised,
- * so two threads must not share one of them.
+ * <p><b>Thread safety.</b> Stateless: the passes are static methods. The {@link Counters}, the
+ * buffers and the sets you pass in are not synchronised, so two threads must not share one of them.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * GpuCullReference.Counters counters = new GpuCullReference.Counters();
+ * counters.reset();
+ * // GpuCullReference.cullSinglePass(view, objects, hzb, commands, drawCapacity, visible, counters);   // what the shader computes, on the CPU
+ * }</pre>
  */
 @Experimental("the buffer layout and the pass structure may change")
 public final class GpuCullReference {
@@ -37,30 +57,50 @@ public final class GpuCullReference {
     private GpuCullReference() {
     }
 
-    /** {@code CullObject.flags} bit: skip the Hi-Z test for this object. */
+    /**
+     * {@code CullObject.flags} bit: skip the Hi-Z test for this object.
+     */
     public static final int OBJECT_NO_OCCLUSION = 1;
-    /** {@code CullView.flags} bit: row 0 of the Hi-Z pyramid is the top of the screen. */
+    /**
+     * {@code CullView.flags} bit: row 0 of the Hi-Z pyramid is the top of the screen.
+     */
     public static final int VIEW_Y_DOWN = 1;
 
-    /** What a pass did. */
+    /**
+     * What a pass did.
+     */
     public static final class Counters {
-        /** Counters that start at zero. */
+        /**
+         * Counters that start at zero.
+         */
         public Counters() {
         }
 
-        /** Objects looked at. */
+        /**
+         * Objects looked at.
+         */
         public int objects;
-        /** Objects that passed the frustum test. */
+        /**
+         * Objects that passed the frustum test.
+         */
         public int inFrustum;
-        /** Objects that passed the frustum test and were rejected by the Hi-Z test. */
+        /**
+         * Objects that passed the frustum test and were rejected by the Hi-Z test.
+         */
         public int occluded;
-        /** Objects written to an instance list. */
+        /**
+         * Objects written to an instance list.
+         */
         public int drawn;
-        /** Survivors dropped because the reserved slots of their draw were full. */
+        /**
+         * Survivors dropped because the reserved slots of their draw were full.
+         */
         public int overflow;
         final HizState hiz = new HizState(); // the view-projection matrix and the depth convention, read once per pass so that a pass allocates nothing
 
-        /** Sets every counter to zero. */
+        /**
+         * Sets every counter to zero.
+         */
         public void reset() {
             objects = 0;
             inFrustum = 0;
@@ -72,7 +112,19 @@ public final class GpuCullReference {
 
     // ---------------------------------------------------------------- the three passes
 
-    /** One pass over every object: frustum, then the Hi-Z test when {@code hzb} is not null. {@code commands}' instance counts are expected to be 0 on entry. */
+    /**
+     * Makes one pass over every object: frustum, then the Hi-Z test when {@code hzb} is not null.
+     *
+     * <p>{@code commands}' instance counts are expected to be 0 on entry.
+     *
+     * @param view the view; must not be {@code null}
+     * @param objects the objects; must not be {@code null}
+     * @param hzb the hzb; may be {@code null}
+     * @param commands the commands; must not be {@code null}
+     * @param drawCapacity the draw capacity
+     * @param visible the visibility set; must not be {@code null}
+     * @param counters the counters; must not be {@code null}
+     */
     public static void cullSinglePass(MemorySegment view, MemorySegment objects, HiZPyramid hzb, DrawCommandBuffer commands, int[] drawCapacity, MemorySegment visible,
                                       Counters counters) {
         int n = GpuWriter.getInt(view, CullViewGpu.OFFSET_OBJECT_COUNT);
@@ -92,8 +144,19 @@ public final class GpuCullReference {
     }
 
     /**
-     * Phase 1: every object that was visible last frame ({@code lastVisible}) and is in the frustum is drawn, without an occlusion test. The objects it draws are recorded in
-     * {@code drawnPhase1}, which is cleared first.
+     * Runs phase 1: every object that was visible last frame ({@code lastVisible}) and is in the
+     * frustum is drawn, without an occlusion test.
+     *
+     * <p>The objects it draws are recorded in {@code drawnPhase1}, which is cleared first.
+     *
+     * @param view the view; must not be {@code null}
+     * @param objects the objects; must not be {@code null}
+     * @param lastVisible the last visible; must not be {@code null}
+     * @param drawnPhase1 the drawn phase1; must not be {@code null}
+     * @param commands the commands; must not be {@code null}
+     * @param drawCapacity the draw capacity
+     * @param visible the visibility set; must not be {@code null}
+     * @param counters the counters; must not be {@code null}
      */
     public static void cullPhase1(MemorySegment view, MemorySegment objects, VisibilitySet lastVisible, VisibilitySet drawnPhase1, DrawCommandBuffer commands, int[] drawCapacity,
                                   MemorySegment visible, Counters counters) {
@@ -112,8 +175,19 @@ public final class GpuCullReference {
     }
 
     /**
-     * Phase 2: every object is tested against the frustum and the pyramid built from phase 1; those that pass are recorded in {@code visibleNow} (cleared first), and those that
-     * were not drawn in phase 1 are drawn now.
+     * Runs phase 2: every object is tested against the frustum and the pyramid built from phase 1;
+     * those that pass are recorded in {@code visibleNow} (cleared first), and those that were not
+     * drawn in phase 1 are drawn now.
+     *
+     * @param view the view; must not be {@code null}
+     * @param objects the objects; must not be {@code null}
+     * @param hzb the hzb; may be {@code null}
+     * @param drawnPhase1 the drawn phase1; must not be {@code null}
+     * @param visibleNow the visible now; must not be {@code null}
+     * @param commands the commands; must not be {@code null}
+     * @param drawCapacity the draw capacity
+     * @param visible the visibility set; must not be {@code null}
+     * @param counters the counters; must not be {@code null}
      */
     public static void cullPhase2(MemorySegment view, MemorySegment objects, HiZPyramid hzb, VisibilitySet drawnPhase1, VisibilitySet visibleNow, DrawCommandBuffer commands,
                                   int[] drawCapacity, MemorySegment visible, Counters counters) {
@@ -143,7 +217,9 @@ public final class GpuCullReference {
         return GpuWriter.getFloat(s, offset);
     }
 
-    /** The six-plane box test, with the positive vertex of each plane; NaN never rejects. */
+    /**
+     * The six-plane box test, with the positive vertex of each plane; NaN never rejects.
+     */
     static boolean inFrustum(MemorySegment view, MemorySegment objects, int i) {
         long o = (long) i * CullObjectGpu.SIZE;
         float minX = f(objects, o + CullObjectGpu.OFFSET_MIN), minY = f(objects, o + CullObjectGpu.OFFSET_MIN + 4), minZ = f(objects, o + CullObjectGpu.OFFSET_MIN + 8);
@@ -159,7 +235,9 @@ public final class GpuCullReference {
         return true;
     }
 
-    /** The Hi-Z test of one object, as described on the class. */
+    /**
+     * The Hi-Z test of one object, as described on the class.
+     */
     static boolean hidden(MemorySegment objects, int i, HiZPyramid hzb, HizState state) {
         long o = (long) i * CullObjectGpu.SIZE;
         if ((GpuWriter.getInt(objects, o + CullObjectGpu.OFFSET_FLAGS) & OBJECT_NO_OCCLUSION) != 0) {
@@ -170,8 +248,11 @@ public final class GpuCullReference {
     }
 
     /**
-     * The Hi-Z test of a box: project its eight corners with the view's matrix (a corner with clip {@code w} not above {@code nearW}, or NaN, makes the box untestable and so visible),
-     * take the screen rectangle and the nearest depth, and ask the pyramid. The view data comes preloaded in {@code state}.
+     * The Hi-Z test of a box: project its eight corners with the view's matrix (a corner with clip
+     * {@code w} not above {@code nearW}, or NaN, makes the box untestable and so visible), take the
+     * screen rectangle and the nearest depth, and ask the pyramid.
+     *
+     * <p>The view data comes preloaded in {@code state}.
      */
     static boolean hiddenBox(HizState state, float x0, float y0, float z0, float x1, float y1, float z1, HiZPyramid hzb) {
         float[] m = state.m;
@@ -197,7 +278,10 @@ public final class GpuCullReference {
         return hzb.isHidden(minX, minY, maxX, maxY, nearest);
     }
 
-    /** Takes the next slot of the object's draw and writes the object index there; false when the slots reserved for the draw are full. */
+    /**
+     * Takes the next slot of the object's draw and writes the object index there; false when the
+     * slots reserved for the draw are full.
+     */
     private static boolean emit(MemorySegment objects, int i, DrawCommandBuffer commands, int[] drawCapacity, MemorySegment visible, Counters counters) {
         int draw = GpuWriter.getInt(objects, (long) i * CullObjectGpu.SIZE + CullObjectGpu.OFFSET_DRAW_INDEX);
         int slot = commands.instanceCount(draw);

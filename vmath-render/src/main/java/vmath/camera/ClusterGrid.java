@@ -3,23 +3,43 @@ package vmath.camera;
 import vmath.annotations.Experimental;
 
 /**
- * The cluster grid of clustered (and tiled) forward lighting: the view frustum cut into tiles in x and y and into slices in depth, so that every fragment finds the
- * few lights that can reach it from one lookup. This class is the arithmetic only (grid size, which cluster a view-space position or a pixel and depth falls in, the
- * bounds of every cluster); {@link ClusterLights} assigns lights to the clusters and the formulas here are the ones the GLSL in {@code docs/CAMERA.md} uses.
+ * The cluster grid of clustered (and tiled) forward lighting: the view frustum cut into tiles in x
+ * and y and into slices in depth, so that every fragment finds the few lights that can reach it
+ * from one lookup.
  *
- * <p><b>Slices.</b> Depth is the distance along the view direction, positive in front of the camera. The slices are exponential,
- * {@code boundary(k) = near * (far / near)^(k / slices)}, so each slice is the same factor deeper than the one before (about the same screen-space proportions), and a
- * fragment finds its slice with {@code floor(ln(depth) * sliceScale + sliceBias)}, one logarithm. Depths outside {@code [near, far]} clamp to the first and last slice.
+ * <p>This class is the arithmetic only (grid size, which cluster a view-space position or a pixel
+ * and depth falls in, the bounds of every cluster); {@link ClusterLights} assigns lights to the
+ * clusters and the formulas here are the ones the GLSL in {@code docs/CAMERA.md} uses.
  *
- * <p><b>Tiles.</b> A tile is {@code tilePixels} wide and high (the last row and column may be smaller). Tile rows are counted in the direction pixel coordinates
- * run: with {@code yDown} (Vulkan, D3D window coordinates) row 0 is the top of the screen, otherwise the bottom (OpenGL {@code gl_FragCoord}).
+ * <p><b>Slices.</b> Depth is the distance along the view direction, positive in front of the
+ * camera. The slices are exponential, {@code boundary(k) = near * (far / near)^(k / slices)}, so
+ * each slice is the same factor deeper than the one before (about the same screen-space
+ * proportions), and a fragment finds its slice with
+ * {@code floor(ln(depth) * sliceScale + sliceBias)}, one logarithm. Depths outside
+ * {@code [near, far]} clamp to the first and last slice.
  *
- * <p><b>Cluster index</b> is {@code (slice * tilesY + row) * tilesX + column}, slices outermost, so the clusters of one depth slice are contiguous.
+ * <p><b>Tiles.</b> A tile is {@code tilePixels} wide and high (the last row and column may be
+ * smaller). Tile rows are counted in the direction pixel coordinates run: with {@code yDown}
+ * (Vulkan, D3D window coordinates) row 0 is the top of the screen, otherwise the bottom (OpenGL
+ * {@code gl_FragCoord}).
  *
- * <p>Perspective projections only. Everything is view space (x right, y up, z negative forward, like {@link Cameraf#viewPositionFromDepth}).
+ * <p><b>Cluster index</b> is {@code (slice * tilesY + row) * tilesX + column}, slices outermost, so
+ * the clusters of one depth slice are contiguous.
  *
- * <p><b>Thread safety.</b> Immutable after construction, so it can be shared between threads freely. The arrays it hands out are its own storage: do
- * not modify them.
+ * <p>Perspective projections only. Everything is view space (x right, y up, z negative forward,
+ * like {@link Cameraf#viewPositionFromDepth}).
+ *
+ * <p><b>Thread safety.</b> Immutable after construction, so it can be shared between threads
+ * freely. The arrays it hands out are its own storage: do not modify them.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * Cameraf camera = Cameraf.lookingAt(new Vec3f(0f, 0f, 5f), Vec3f.ZERO, Vec3f.UNIT_Y, 1f, 16f / 9f, 0.1f, 100f, DepthRange.of(ClipSpace.OPENGL));
+ * ClusterGrid grid = ClusterGrid.of(camera, 1920, 1080, 64, 24, 100f, false);   // 64-pixel tiles, 24 depth slices
+ * int cluster = grid.clusterOf(960f, 540f, 10f);                                 // pixel and view depth to cluster index
+ * int count = grid.clusterCount();
+ * }</pre>
  */
 @Experimental("the grid layout and the set of helpers may change")
 public final class ClusterGrid {
@@ -75,99 +95,212 @@ public final class ClusterGrid {
     }
 
     /**
-     * A grid for a camera. {@code far} is the far plane of the clusters (finite, usually the shadow or light range rather than an infinite camera far plane); the near
-     * plane and field of view come from the camera.
+     * Creates a cluster grid from a camera and a viewport.
+     *
+     * <p>{@code far} is the far plane of the clusters (finite, usually the shadow or light range
+     * rather than an infinite camera far plane); the near plane and field of view come from the
+     * camera.
+     *
+     * @param camera the camera; must not be {@code null}
+     * @param viewportWidth the viewport width
+     * @param viewportHeight the viewport height
+     * @param tilePixels the tile pixels
+     * @param slices the slices
+     * @param far the distance to the far plane
+     * @param yDown whether y down
+     * @return a grid for a camera
      */
     public static ClusterGrid of(Cameraf camera, int viewportWidth, int viewportHeight, int tilePixels, int slices, float far, boolean yDown) {
         return new ClusterGrid(viewportWidth, viewportHeight, tilePixels, slices, yDown, camera.fovy(), camera.aspect(), camera.near(), Math.min(far, camera.far()));
     }
 
-    /** A grid from a vertical field of view (radians), an aspect ratio and the depth range. */
+    /**
+     * Creates a cluster grid from field of view, aspect ratio and depth range, for when no
+     * {@link Cameraf} is at hand.
+     *
+     * @param fovy the vertical field of view in radians
+     * @param aspect the aspect ratio, width divided by height
+     * @param near the distance to the near plane
+     * @param far the distance to the far plane
+     * @param viewportWidth the viewport width
+     * @param viewportHeight the viewport height
+     * @param tilePixels the tile pixels
+     * @param slices the slices
+     * @param yDown whether y down
+     * @return a grid from a vertical field of view (radians), an aspect ratio and the depth range
+     */
     public static ClusterGrid of(float fovy, float aspect, float near, float far, int viewportWidth, int viewportHeight, int tilePixels, int slices, boolean yDown) {
         return new ClusterGrid(viewportWidth, viewportHeight, tilePixels, slices, yDown, fovy, aspect, near, far);
     }
 
-    /** The number of tile columns. */
+    /**
+     * Counts the tile columns.
+     *
+     * @return the number of tile columns
+     */
     public int tilesX() {
         return tilesX;
     }
 
-    /** The number of tile rows. */
+    /**
+     * Counts the tile rows.
+     *
+     * @return the number of tile rows
+     */
     public int tilesY() {
         return tilesY;
     }
 
-    /** The number of depth slices. */
+    /**
+     * Counts the depth slices.
+     *
+     * @return the number of depth slices
+     */
     public int slices() {
         return slices;
     }
 
-    /** The total number of clusters: {@code tilesX * tilesY * slices}. */
+    /**
+     * Counts the clusters of the grid.
+     *
+     * @return the total number of clusters: {@code tilesX * tilesY * slices}
+     */
     public int clusterCount() {
         return tilesX * tilesY * slices;
     }
 
-    /** The side of a tile in pixels. */
+    /**
+     * Exposes the tile size in pixels.
+     *
+     * @return the side of a tile in pixels
+     */
     public int tilePixels() {
         return tilePixels;
     }
 
-    /** The viewport width in pixels. */
+    /**
+     * Exposes the viewport width in pixels.
+     *
+     * @return the viewport width in pixels
+     */
     public int viewportWidth() {
         return viewportWidth;
     }
 
-    /** The viewport height in pixels. */
+    /**
+     * Exposes the viewport height in pixels.
+     *
+     * @return the viewport height in pixels
+     */
     public int viewportHeight() {
         return viewportHeight;
     }
 
-    /** The view distance where the first slice starts. */
+    /**
+     * Exposes the depth at which the first slice starts.
+     *
+     * @return the view distance where the first slice starts
+     */
     public float near() {
         return near;
     }
 
-    /** The view distance where the last slice ends. */
+    /**
+     * Exposes the depth at which the last slice ends.
+     *
+     * @return the view distance where the last slice ends
+     */
     public float far() {
         return far;
     }
 
-    /** Whether pixel row 0 is at the top of the screen (NDC y = +1), as in a Vulkan-style framebuffer. */
+    /**
+     * Returns whether pixel row 0 is at the top of the screen (NDC y = +1), as in a Vulkan-style
+     * framebuffer.
+     *
+     * @return {@code true} if pixel row 0 is at the top of the screen (NDC y = +1), as in a
+     *     Vulkan-style framebuffer
+     */
     public boolean yDown() {
         return yDown;
     }
 
-    /** {@code tan(fovy / 2) * aspect}: the view-space x extent per unit of depth at the edge of the screen. */
+    /**
+     * Exposes the horizontal half-extent per unit of depth, which is used to place the tile planes.
+     *
+     * @return {@code tan(fovy / 2) * aspect}: the view-space x extent per unit of depth at the edge
+     *     of the screen
+     */
     public float tanHalfFovX() {
         return tanX;
     }
 
-    /** {@code tan(fovy / 2)}: the view-space y extent per unit of depth at the edge of the screen. */
+    /**
+     * Exposes the vertical half-extent per unit of depth, which is used to place the tile planes.
+     *
+     * @return {@code tan(fovy / 2)}: the view-space y extent per unit of depth at the edge of the
+     *     screen
+     */
     public float tanHalfFovY() {
         return tanY;
     }
 
-    /** The multiplier of {@code ln(depth)} in the slice formula {@code floor(ln(depth) * sliceScale + sliceBias)}. */
+    /**
+     * Exposes the multiplier of the logarithmic depth slicing, which shaders need to find a
+     * fragment's slice.
+     *
+     * @return the multiplier of {@code ln(depth)} in the slice formula
+     *     {@code floor(ln(depth) * sliceScale + sliceBias)}
+     */
     public float sliceScale() {
         return sliceScale;
     }
 
-    /** The constant in the slice formula {@code floor(ln(depth) * sliceScale + sliceBias)}. */
+    /**
+     * Exposes the offset of the logarithmic depth slicing, which shaders need to find a fragment's
+     * slice.
+     *
+     * @return the constant in the slice formula {@code floor(ln(depth) * sliceScale + sliceBias)}
+     */
     public float sliceBias() {
         return sliceBias;
     }
 
-    /** The linear index of a cluster: {@code (slice * tilesY + row) * tilesX + column}. The arguments are not checked. */
+    /**
+     * Computes the flat index of a cluster from its column, row and slice.
+     *
+     * <p>The arguments are not checked.
+     *
+     * @param column the column, counted from 0
+     * @param row the row, counted from 0
+     * @param slice the slice
+     * @return the linear index of a cluster: {@code (slice * tilesY + row) * tilesX + column}
+     */
     public int index(int column, int row, int slice) {
         return (slice * tilesY + row) * tilesX + column;
     }
 
-    /** Depth of boundary {@code k}, between slice {@code k - 1} and slice {@code k}: boundary 0 is {@code near}, boundary {@code slices} is {@code far}. */
+    /**
+     * Computes the depth at which a slice starts, from the exponential slicing.
+     *
+     * @param k the boundary index, from 0 to the number of slices
+     * @return depth of boundary {@code k}, between slice {@code k - 1} and slice {@code k}:
+     *     boundary 0 is {@code near}, boundary {@code slices} is {@code far}
+     */
     public float sliceBoundary(int k) {
         return sliceDepth[k];
     }
 
-    /** The slice of a depth (distance along the view direction), clamped to {@code [0, slices - 1]}. NaN gives slice 0. */
+    /**
+     * Finds the slice for a depth with the logarithmic slicing formula; the result is clamped to
+     * the valid slices.
+     *
+     * <p>NaN gives slice 0.
+     *
+     * @param depth the depth
+     * @return the slice of a depth (distance along the view direction), clamped to
+     *     {@code [0, slices - 1]}
+     */
     public int sliceOf(float depth) {
         if (!(depth > near)) {
             return 0;
@@ -176,29 +309,68 @@ public final class ClusterGrid {
         return s < 0 ? 0 : Math.min(s, slices - 1);
     }
 
-    /** The slice that an NDC depth value of {@code camera}'s projection falls in (any depth convention, finite or infinite far plane). */
+    /**
+     * Finds the slice for a depth stored in a depth buffer by first converting it back to view
+     * distance, for whatever depth convention the camera uses.
+     *
+     * @param camera the camera; must not be {@code null}
+     * @param ndcDepth the ndc depth
+     * @return the slice that an NDC depth value of {@code camera}'s projection falls in (any depth
+     *     convention, finite or infinite far plane)
+     */
     public int sliceOfNdcDepth(Cameraf camera, float ndcDepth) {
         return sliceOf(camera.linearizeDepth(ndcDepth));
     }
 
-    /** Column of a pixel x coordinate, clamped to the grid. */
+    /**
+     * Finds the tile column of a pixel x coordinate; the result is clamped to the grid.
+     *
+     * @param x the x component
+     * @return column of a pixel x coordinate, clamped to the grid
+     */
     public int columnOfPixel(float x) {
         int c = (int) (x / tilePixels);
         return c < 0 ? 0 : Math.min(c, tilesX - 1);
     }
 
-    /** Row of a pixel y coordinate (counted in the direction the pixel coordinates run), clamped to the grid. */
+    /**
+     * Finds the tile row of a pixel y coordinate; the result is clamped to the grid.
+     *
+     * @param y the y component
+     * @return row of a pixel y coordinate (counted in the direction the pixel coordinates run),
+     *     clamped to the grid
+     */
     public int rowOfPixel(float y) {
         int r = (int) (y / tilePixels);
         return r < 0 ? 0 : Math.min(r, tilesY - 1);
     }
 
-    /** The cluster of a fragment: pixel coordinates (as {@code gl_FragCoord.xy}) and the depth along the view direction. */
+    /**
+     * Finds the cluster of a fragment from its pixel coordinates and its view depth, the lookup a
+     * lighting shader performs.
+     *
+     * @param pixelX the pixel x
+     * @param pixelY the pixel y
+     * @param depth the depth
+     * @return the cluster of a fragment: pixel coordinates (as {@code gl_FragCoord.xy}) and the
+     *     depth along the view direction
+     */
     public int clusterOf(float pixelX, float pixelY, float depth) {
         return index(columnOfPixel(pixelX), rowOfPixel(pixelY), sliceOf(depth));
     }
 
-    /** The cluster of a view-space position, or -1 when it is behind the camera or outside the field of view. Depths beyond {@code far} and before {@code near} clamp. */
+    /**
+     * Finds the cluster of a position that is already in view space, and rejects positions that no
+     * cluster can contain.
+     *
+     * <p>Depths beyond {@code far} and before {@code near} clamp.
+     *
+     * @param x the x component
+     * @param y the y component
+     * @param z the z component
+     * @return the cluster of a view-space position, or -1 when it is behind the camera or outside
+     *     the field of view
+     */
     public int clusterOfViewPosition(float x, float y, float z) {
         float depth = -z;
         if (!(depth > 0f)) {
@@ -213,13 +385,25 @@ public final class ClusterGrid {
         return index(columnOfPixel(px), rowOfPixel(py), sliceOf(depth));
     }
 
-    /** NDC x range {@code [lo, hi]} of a tile column, written to {@code out[0..1]}. */
+    /**
+     * Computes the NDC x range {@code [lo, hi]} of a tile column and writes it to
+     * {@code out[0..1]}.
+     *
+     * @param column the column, counted from 0
+     * @param out receives the result in {@code [0, 2)}
+     */
     public void columnRange(int column, float[] out) {
         out[0] = columnNdc[column];
         out[1] = columnNdc[column + 1];
     }
 
-    /** NDC y range {@code [lo, hi]} of a tile row (with {@code yDown} row 0 is the top, so its range is the highest), written to {@code out[0..1]}. */
+    /**
+     * Computes the NDC y range {@code [lo, hi]} of a tile row (with {@code yDown} row 0 is the top,
+     * so its range is the highest) and writes it to {@code out[0..1]}.
+     *
+     * @param row the row, counted from 0
+     * @param out receives the result in {@code [0, 2)}
+     */
     public void rowRange(int row, float[] out) {
         out[0] = rowLow(row);
         out[1] = rowHigh(row);
@@ -234,15 +418,33 @@ public final class ClusterGrid {
     }
 
     /**
-     * The view-space box around a cluster: x and y from the tile edges at the two slice depths (the bounding box of the frustum slice, so a little larger than it),
-     * z from {@code -far side} to {@code -near side}. Writes {@code minX, minY, minZ, maxX, maxY, maxZ} to {@code out[offset..offset + 5]}.
+     * Computes the view-space box around a cluster: x and y from the tile edges at the two slice
+     * depths (the bounding box of the frustum slice, so a little larger than it), z from
+     * {@code -far side} to {@code -near side}.
+     *
+     * <p>Writes {@code minX, minY, minZ, maxX, maxY, maxZ} to {@code out[offset..offset + 5]}.
+     *
+     * @param cluster the cluster index
+     * @param out receives the result
+     * @param offset the index of the first element to read or write
      */
     public void bounds(int cluster, float[] out, int offset) {
         int column = cluster % tilesX, row = (cluster / tilesX) % tilesY, slice = cluster / (tilesX * tilesY);
         bounds(column, row, slice, sliceDepth[slice], sliceDepth[slice + 1], out, offset);
     }
 
-    /** As {@link #bounds(int, float[], int)} for explicit depths of the two sides (used when a tile's own depth range replaces the slice, see {@link ClusterLights#assignTiled}). */
+    /**
+     * As {@link #bounds(int, float[], int)} for explicit depths of the two sides (used when a
+     * tile's own depth range replaces the slice, see {@link ClusterLights#assignTiled}).
+     *
+     * @param column the column, counted from 0
+     * @param row the row, counted from 0
+     * @param slice the slice
+     * @param depthNear the depth near
+     * @param depthFar the depth far
+     * @param out receives the result
+     * @param offset the index of the first element to read or write
+     */
     public void bounds(int column, int row, int slice, float depthNear, float depthFar, float[] out, int offset) {
         float xl = colLowSlope[column], xh = colHighSlope[column], yl = rowLowSlope[row], yh = rowHighSlope[row];
         out[offset] = xl >= 0f ? xl * depthNear : xl * depthFar;
@@ -254,9 +456,17 @@ public final class ClusterGrid {
     }
 
     /**
-     * The four side planes of a tile as slopes: {@code x / depth} at the left and right edge and {@code y / depth} at the bottom and top edge, written to
-     * {@code out[offset..offset + 3]} as {@code xLow, xHigh, yLow, yHigh}. The tile is the set of points whose slopes lie between them, so its side planes are
+     * Computes the four side planes of a tile as slopes: {@code x / depth} at the left and right
+     * edge and {@code y / depth} at the bottom and top edge, written to
+     * {@code out[offset..offset + 3]} as {@code xLow, xHigh, yLow, yHigh}.
+     *
+     * <p>The tile is the set of points whose slopes lie between them, so its side planes are
      * {@code x = slope * depth} through the camera.
+     *
+     * @param column the column, counted from 0
+     * @param row the row, counted from 0
+     * @param out receives the result
+     * @param offset the index of the first element to read or write
      */
     public void slopes(int column, int row, float[] out, int offset) {
         out[offset] = colLowSlope[column];
@@ -266,9 +476,18 @@ public final class ClusterGrid {
     }
 
     /**
-     * GLSL for the fragment-side lookup of this grid: constants and a function {@code clusterIndex(fragCoord, viewDepth)} that compute {@link #clusterOf} with the same
-     * formulas (one logarithm for the slice). {@code fragCoord} must be in the pixel convention the grid was built for ({@link #yDown()}) and {@code viewDepth} is the
-     * distance along the view direction, for example {@code -viewPosition.z}. Compiled (with glslang, in {@code ShaderCompileTest}) but never run; the other tests check the text against the numbers.
+     * Generates GLSL source for the fragment-side lookup, using the same formulas as
+     * {@link #clusterOf} so that CPU and GPU agree; the constants are baked in, so regenerate the
+     * text when the grid changes.
+     *
+     * <p>{@code fragCoord} must be in the pixel convention the grid was built for
+     * ({@link #yDown()}) and {@code viewDepth} is the distance along the view direction, for
+     * example {@code -viewPosition.z}. Compiled (with glslang, in {@code ShaderCompileTest}) but
+     * never run; the other tests check the text against the numbers.
+     *
+     * @return GLSL for the fragment-side lookup of this grid: constants and a function
+     *     {@code clusterIndex(fragCoord, viewDepth)} that compute {@link #clusterOf} with the same
+     *     formulas (one logarithm for the slice)
      */
     public String glslLookup() {
         return "const uvec3 CLUSTER_GRID = uvec3(" + tilesX + "u, " + tilesY + "u, " + slices + "u);\n"
@@ -287,7 +506,12 @@ public final class ClusterGrid {
         return t.contains(".") || t.contains("E") || t.contains("N") || t.contains("I") ? t : t + ".0";
     }
 
-    /** Fills {@code out} (six floats per cluster) with the bounds of every cluster: the buffer a compute shader would build or a CPU-side light assignment reads. */
+    /**
+     * Fills {@code out} (six floats per cluster) with the bounds of every cluster: the buffer a
+     * compute shader would build or a CPU-side light assignment reads.
+     *
+     * @param out receives the result
+     */
     public void fillBounds(float[] out) {
         int n = clusterCount();
         for (int c = 0; c < n; c++) {

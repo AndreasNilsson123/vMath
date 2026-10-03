@@ -1,25 +1,44 @@
 package vmath.core;
 
 /**
- * Hilbert curve codes: like {@link Morton} codes, but consecutive codes are always neighbouring grid cells, so sorting by Hilbert code gives a better locality
- * than Z-order (no long jumps between quadrants). The price is a more expensive encode: a table lookup per two (3D) or four (2D) levels instead of a few shifts for the whole code.
+ * Hilbert curve codes: like {@link Morton} codes, but consecutive codes are always neighbouring
+ * grid cells, so sorting by Hilbert code gives a better locality than Z-order (no long jumps
+ * between quadrants).
  *
- * <p>The curve starts at the origin and visits every cell of the {@code 2^bits} grid once. It is hierarchical: the top {@code 2k} (2D) or {@code 3k} (3D)
- * bits of a code depend only on the top {@code k} bits of the coordinates, so a code prefix names a square or cube of cells. Coordinates are treated as unsigned
- * and must fit in {@code bits} bits (an {@link IllegalArgumentException} otherwise). The implementation is Skilling's transpose algorithm
- * (J. Skilling, "Programming the Hilbert curve", 2004).
+ * <p>The price is a more expensive encode: a table lookup per two (3D) or four (2D) levels instead
+ * of a few shifts for the whole code.
  *
- * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time. The arrays and buffers you pass in are
- * not synchronised, so two threads must not write the same one.
+ * <p>The curve starts at the origin and visits every cell of the {@code 2^bits} grid once. It is
+ * hierarchical: the top {@code 2k} (2D) or {@code 3k} (3D) bits of a code depend only on the top
+ * {@code k} bits of the coordinates, so a code prefix names a square or cube of cells. Coordinates
+ * are treated as unsigned and must fit in {@code bits} bits (an {@link IllegalArgumentException}
+ * otherwise). The implementation is Skilling's transpose algorithm (J. Skilling, "Programming the
+ * Hilbert curve", 2004).
+ *
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the
+ * same time. The arrays and buffers you pass in are not synchronised, so two threads must not write
+ * the same one.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * long code = Hilbert.encode3(10, 20, 30, 10);                 // a cell of a 1024 cube
+ * Vec3i cell = Hilbert.decode3(code, 10);                      // (10, 20, 30)
+ * long byPosition = Hilbert.encode3(new Vec3f(1f, 2f, 3f), 0f, 0f, 0f, 10f, 10f, 10f);
+ * }</pre>
  */
 public final class Hilbert {
 
     private Hilbert() {
     }
 
-    /** Most bits per axis in 2D: the code then uses all 64 bits (unsigned). */
+    /**
+     * Most bits per axis in 2D: the code then uses all 64 bits (unsigned).
+     */
     public static final int MAX_BITS_2D = 32;
-    /** Most bits per axis in 3D: 63 bits of code, always non-negative. */
+    /**
+     * Most bits per axis in 3D: 63 bits of code, always non-negative.
+     */
     public static final int MAX_BITS_3D = 21;
 
     private static void checkBits(int bits, int max) {
@@ -34,7 +53,10 @@ public final class Hilbert {
         }
     }
 
-    /** Bit {@code j} of the result is the parity of the bits of {@code v} above bit {@code j}, excluding bit 0: the effect of the loop "xor q-1 for every set bit q above 1". */
+    /**
+     * Bit {@code j} of the result is the parity of the bits of {@code v} above bit {@code j},
+     * excluding bit 0: the effect of the loop "xor q-1 for every set bit q above 1".
+     */
     private static long suffixParity(long v) {
         long x = v >>> 1;
         x ^= x >>> 1;
@@ -45,7 +67,17 @@ public final class Hilbert {
         return x; // the coordinates have at most 32 bits, so x has at most 31 and these five steps cover them
     }
 
-    /** The Hilbert index of cell {@code (x, y)} of a {@code 2^bits} by {@code 2^bits} grid ({@code 1 <= bits <= 32}); unsigned if {@code bits == 32}. */
+    /**
+     * Maps a two-dimensional cell to its position along the Hilbert curve, a space-filling curve
+     * that keeps nearby cells close in the index; consecutive indices are always adjacent cells,
+     * unlike with Morton codes.
+     *
+     * @param x the x component
+     * @param y the y component
+     * @param bits the number of bits
+     * @return the Hilbert index of cell {@code (x, y)} of a {@code 2^bits} by {@code 2^bits} grid
+     *     ({@code 1 <= bits <= 32}); unsigned if {@code bits == 32}
+     */
     public static long encode2(int x, int y, int bits) {
         checkBits(bits, MAX_BITS_2D);
         checkCoordinate(x, bits);
@@ -53,7 +85,10 @@ public final class Hilbert {
         return AUTOMATON_2.encode(Morton.encode2(y, x), bits);
     }
 
-    /** Skilling's transpose algorithm as published, one bit at a time: the oracle of the table-driven {@link #encode2}, which gives the same codes. */
+    /**
+     * Skilling's transpose algorithm as published, one bit at a time: the oracle of the
+     * table-driven {@link #encode2}, which gives the same codes.
+     */
     static long encode2Reference(int x, int y, int bits) {
         checkBits(bits, MAX_BITS_2D);
         checkCoordinate(x, bits);
@@ -78,7 +113,17 @@ public final class Hilbert {
         return Morton.spread2(b) | (Morton.spread2(a) << 1);
     }
 
-    /** The cell of Hilbert index {@code code} in a {@code 2^bits} grid: the inverse of {@link #encode2}. */
+    /**
+     * Maps a position along the two-dimensional Hilbert curve back to its cell, inverting the
+     * encoder.
+     *
+     * @param code the code
+     * @param bits the number of bits
+     * @return the cell of Hilbert index {@code code} in a {@code 2^bits} grid: the inverse of
+     *     {@link #encode2}
+     * @throws IllegalArgumentException if {@code code} is outside a grid of {@code bits} bits per
+     *     axis
+     */
     public static Vec2i decode2(long code, int bits) {
         checkBits(bits, MAX_BITS_2D);
         long b = Morton.compact2(code), a = Morton.compact2(code >>> 1);
@@ -105,7 +150,17 @@ public final class Hilbert {
         return new Vec2i((int) a, (int) b);
     }
 
-    /** The Hilbert index of cell {@code (x, y, z)} of a {@code 2^bits} cube ({@code 1 <= bits <= 21}). */
+    /**
+     * Maps a three-dimensional cell to its position along the Hilbert curve, a space-filling curve
+     * with better locality than Morton order at a higher encoding cost.
+     *
+     * @param x the x component
+     * @param y the y component
+     * @param z the z component
+     * @param bits the number of bits
+     * @return the Hilbert index of cell {@code (x, y, z)} of a {@code 2^bits} cube
+     *     ({@code 1 <= bits <= 21})
+     */
     public static long encode3(int x, int y, int z, int bits) {
         checkBits(bits, MAX_BITS_3D);
         checkCoordinate(x, bits);
@@ -114,7 +169,10 @@ public final class Hilbert {
         return AUTOMATON_3.encode(Morton.encode3(z, y, x), bits);
     }
 
-    /** Skilling's transpose algorithm, branch-free, one bit at a time: the oracle of the table-driven {@link #encode3}, which gives the same codes. */
+    /**
+     * Skilling's transpose algorithm, branch-free, one bit at a time: the oracle of the
+     * table-driven {@link #encode3}, which gives the same codes.
+     */
     static long encode3Reference(int x, int y, int z, int bits) {
         checkBits(bits, MAX_BITS_3D);
         checkCoordinate(x, bits);
@@ -145,7 +203,17 @@ public final class Hilbert {
         return Morton.spread3(c) | (Morton.spread3(b) << 1) | (Morton.spread3(a) << 2);
     }
 
-    /** The cell of Hilbert index {@code code} in a {@code 2^bits} cube: the inverse of {@link #encode3}. */
+    /**
+     * Maps a position along the three-dimensional Hilbert curve back to its cell, inverting the
+     * encoder.
+     *
+     * @param code the code
+     * @param bits the number of bits
+     * @return the cell of Hilbert index {@code code} in a {@code 2^bits} cube: the inverse of
+     *     {@link #encode3}
+     * @throws IllegalArgumentException if {@code code} is outside a cube of {@code bits} bits per
+     *     axis
+     */
     public static Vec3i decode3(long code, int bits) {
         checkBits(bits, MAX_BITS_3D);
         if ((code >>> (3 * bits)) != 0) {
@@ -186,11 +254,16 @@ public final class Hilbert {
     private static final Automaton AUTOMATON_3 = new Automaton(3, 2);
 
     /**
-     * Skilling's algorithm as a finite automaton over Morton digits. Reading the coordinates from the top bit down, the work done on the bits below a level is always
-     * one of a few signed permutations of the axes, together with the running parity of the Gray code; those (axis permutation, axis flips, parity) are the states,
-     * 16 in 2D and 48 in 3D, found by exploring from the identity. A table gives, for a state and the bits of a level (one per axis), the code digit and
-     * the next state; a second table does the same for {@code chunk} levels at once, so a 21-bit 3D code takes 11 lookups instead of 20 iterations of bit twiddling.
-     * The tables are built once at class initialisation from the automaton's own definition, and the codes are checked against the original algorithm
+     * Skilling's algorithm as a finite automaton over Morton digits.
+     *
+     * <p>Reading the coordinates from the top bit down, the work done on the bits below a level is
+     * always one of a few signed permutations of the axes, together with the running parity of the
+     * Gray code; those (axis permutation, axis flips, parity) are the states, 16 in 2D and 48 in
+     * 3D, found by exploring from the identity. A table gives, for a state and the bits of a level
+     * (one per axis), the code digit and the next state; a second table does the same for
+     * {@code chunk} levels at once, so a 21-bit 3D code takes 11 lookups instead of 20 iterations
+     * of bit twiddling. The tables are built once at class initialisation from the automaton's own
+     * definition, and the codes are checked against the original algorithm
      * ({@link #encode3Reference}) in the tests.
      */
     private static final class Automaton {
@@ -199,7 +272,10 @@ public final class Hilbert {
         private final int[] one;   // [state << dims | r] = next << dims | digit
         private final int[] many;  // [state << (dims * chunk) | rr] = next << (dims * chunk) | digits
 
-        /** An automaton state: for each effective axis the raw axis it reads and whether it is complemented; and the Gray-code parity. */
+        /**
+         * An automaton state: for each effective axis the raw axis it reads and whether it is
+         * complemented; and the Gray-code parity.
+         */
         private record State(int[] perm, boolean[] flip, int parity) {
             @Override
             public boolean equals(Object o) {
@@ -254,7 +330,10 @@ public final class Hilbert {
             }
         }
 
-        /** One level: {@code r} holds the raw bit of each axis (axis 0 in the highest bit); returns the next state and writes the code digit to {@code digitOut[0]}. */
+        /**
+         * One level: {@code r} holds the raw bit of each axis (axis 0 in the highest bit); returns
+         * the next state and writes the code digit to {@code digitOut[0]}.
+         */
         private State step(State s, int r, int[] digitOut) {
             int[] e = new int[dims];
             for (int i = 0; i < dims; i++) {
@@ -287,7 +366,10 @@ public final class Hilbert {
             return new State(perm, flip, s.parity ^ gray[dims - 1]);
         }
 
-        /** The Hilbert code of the cell whose Morton code is {@code morton} (axis 0 in the highest bit of each digit), for a grid of {@code bits} levels. */
+        /**
+         * The Hilbert code of the cell whose Morton code is {@code morton} (axis 0 in the highest
+         * bit of each digit), for a grid of {@code bits} levels.
+         */
         long encode(long morton, int bits) {
             int levelBits = dims * chunk;
             int mask = (1 << dims) - 1;
@@ -311,17 +393,46 @@ public final class Hilbert {
         }
     }
 
-    /** 32-bit code of a cell of a 65536 by 65536 grid; unsigned, so compare with {@link Integer#compareUnsigned}. */
+    /**
+     * Encodes a cell of a fixed 16-bit grid as a 32-bit Hilbert index, for sorting by spatial
+     * locality; the code is unsigned.
+     *
+     * @param x the x component
+     * @param y the y component
+     * @return 32-bit code of a cell of a 65536 by 65536 grid; unsigned, so compare with
+     *     {@link Integer#compareUnsigned}
+     */
     public static int encode2Int(int x, int y) {
         return (int) encode2(x, y, 16);
     }
 
-    /** 30-bit code of a cell of a 1024-cell cube; non-negative. */
+    /**
+     * Encodes a cell of a fixed 10-bit cube as a 30-bit Hilbert index, for sorting by spatial
+     * locality; the code fits a non-negative {@code int}.
+     *
+     * @param x the x component
+     * @param y the y component
+     * @param z the z component
+     * @return 30-bit code of a cell of a 1024-cell cube; non-negative
+     */
     public static int encode3Int(int x, int y, int z) {
         return (int) encode3(x, y, z, 10);
     }
 
-    /** Hilbert code of {@code p} inside the given bounds at full 21-bit precision per axis (positions outside are clamped, see {@link Morton#quantize}). */
+    /**
+     * Quantizes a position to a grid inside the given box and encodes the cell as a Hilbert index;
+     * positions outside the box are clamped to its border.
+     *
+     * @param p the vector; must not be {@code null}
+     * @param minX the smallest x coordinate
+     * @param minY the smallest y coordinate
+     * @param minZ the smallest z coordinate
+     * @param maxX the largest x coordinate
+     * @param maxY the largest y coordinate
+     * @param maxZ the largest z coordinate
+     * @return hilbert code of {@code p} inside the given bounds at full 21-bit precision per axis
+     *     (positions outside are clamped, see {@link Morton#quantize})
+     */
     public static long encode3(Vec3f p, float minX, float minY, float minZ, float maxX, float maxY, float maxZ) {
         int cells = Morton.MAX_3D + 1;
         return encode3(Morton.quantize(p.x(), minX, maxX, cells), Morton.quantize(p.y(), minY, maxY, cells),

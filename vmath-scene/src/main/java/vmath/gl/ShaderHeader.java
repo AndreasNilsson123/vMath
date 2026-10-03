@@ -14,9 +14,13 @@ import vmath.gl.GlslType.Struct;
 import vmath.gl.GlslType.Vec;
 
 /**
- * Generates a shader include file from the same {@link StructLayout}s that the Java writers use, so a struct is defined once: in the Java record. The header holds an
- * include guard, the struct declarations (nested structs first, each once), the constants shared with the Java code (flag bits, sizes) and, if asked, interface
- * blocks. Write the result to a file and {@code #include} it (GLSL with {@code GL_GOOGLE_include_directive} or a preprocessing step; Slang natively).
+ * Generates a shader include file from the same {@link StructLayout}s that the Java writers use, so
+ * a struct is defined once: in the Java record.
+ *
+ * <p>The header holds an include guard, the struct declarations (nested structs first, each once),
+ * the constants shared with the Java code (flag bits, sizes) and, if asked, interface blocks. Write
+ * the result to a file and {@code #include} it (GLSL with {@code GL_GOOGLE_include_directive} or a
+ * preprocessing step; Slang natively).
  *
  * <pre>{@code
  * String glsl = ShaderHeader.builder("VMATH_CULL")
@@ -25,22 +29,31 @@ import vmath.gl.GlslType.Vec;
  *         .build(ShaderHeader.Language.GLSL);
  * }</pre>
  *
- * <p>The output is deterministic, so a build can regenerate it and compare with the committed file. Member offsets are in a comment on each struct so a diff shows a
- * layout change. <b>Nothing here compiles the result</b>; GLSL is plain text from {@link Struct#glslDeclaration}'s rules, and the Slang output uses {@code float3},
- * {@code float4x4} and so on with the same member order. Matrices are column-major in the data; in Slang declare them with the row/column-major option that matches
- * (for Vulkan targets {@code -fvk-use-gl-layout}, or {@code column_major} on the members you use), and check the first compile against the reflection with
- * {@link LayoutValidator}.
+ * <p>The output is deterministic, so a build can regenerate it and compare with the committed file.
+ * Member offsets are in a comment on each struct so a diff shows a layout change. <b>Nothing here
+ * compiles the result</b>; GLSL is plain text from {@link Struct#glslDeclaration}'s rules, and the
+ * Slang output uses {@code float3}, {@code float4x4} and so on with the same member order. Matrices
+ * are column-major in the data; in Slang declare them with the row/column-major option that matches
+ * (for Vulkan targets {@code -fvk-use-gl-layout}, or {@code column_major} on the members you use),
+ * and check the first compile against the reflection with {@link LayoutValidator}.
  *
- * <p><b>Thread safety.</b> Immutable once built, so it can be shared. The {@link Builder} is not thread-safe.
+ * <p><b>Thread safety.</b> Immutable once built, so it can be shared. The {@link Builder} is not
+ * thread-safe.
  */
 @Experimental("the output format may change")
 public final class ShaderHeader {
 
-    /** The shading language to emit. */
+    /**
+     * The shading language to emit.
+     */
     public enum Language {
-        /** GLSL source, for {@code #version 450} shaders. */
+        /**
+         * GLSL source, for {@code #version 450} shaders.
+         */
         GLSL,
-        /** Slang source. */
+        /**
+         * Slang source.
+         */
         SLANG
     }
 
@@ -58,7 +71,12 @@ public final class ShaderHeader {
         this.blocks = blocks;
     }
 
-    /** Starts a header with this include-guard macro name. */
+    /**
+     * Starts a header with this include-guard macro name.
+     *
+     * @param guard the guard; must not be {@code null}
+     * @return the builder, never {@code null}
+     */
     public static Builder builder(String guard) {
         return new Builder(guard);
     }
@@ -69,7 +87,9 @@ public final class ShaderHeader {
         }
     }
 
-    /** Fluent builder. */
+    /**
+     * Fluent builder.
+     */
     public static final class Builder {
         private final String guard;
         private final List<StructLayout> structs = new ArrayList<>();
@@ -82,13 +102,29 @@ public final class ShaderHeader {
             this.guard = guard;
         }
 
-        /** Adds a struct (and, before it, the structs it contains). The layout's rules are only used for the comment on its size and offsets. */
+        /**
+         * Adds a struct (and, before it, the structs it contains).
+         *
+         * <p>The layout's rules are only used for the comment on its size and offsets.
+         *
+         * @param layout the GPU layout; must not be {@code null}
+         * @return this builder, for chaining
+         */
         public Builder struct(StructLayout layout) {
             structs.add(layout);
             return this;
         }
 
-        /** An unsigned integer constant, for flag bits and sizes shared with the Java code. */
+        /**
+         * Adds an unsigned integer constant to the header, so that flag bits and sizes are shared
+         * between Java and shaders.
+         *
+         * @param name the name; must not be {@code null}
+         * @param value the value
+         * @return an unsigned integer constant, for flag bits and sizes shared with the Java code
+         * @throws IllegalArgumentException if {@code value} does not fit in an unsigned 32-bit
+         *     integer
+         */
         public Builder constant(String name, long value) {
             if (value < 0 || value > 0xFFFFFFFFL) {
                 throw new IllegalArgumentException(name + " does not fit in a uint: " + value);
@@ -96,12 +132,25 @@ public final class ShaderHeader {
             return add(name, "uint", Long.toString(value) + "u");
         }
 
-        /** A signed integer constant. */
+        /**
+         * Adds a signed integer constant to the header.
+         *
+         * @param name the name; must not be {@code null}
+         * @param value the value
+         * @return a signed integer constant
+         */
         public Builder constant(String name, int value) {
             return add(name, "int", Integer.toString(value));
         }
 
-        /** A float constant, written with enough digits to read back exactly. */
+        /**
+         * Adds a float constant to the header, written with enough digits to read back exactly.
+         *
+         * @param name the name; must not be {@code null}
+         * @param value the value
+         * @return a float constant, written with enough digits to read back exactly
+         * @throws IllegalArgumentException if {@code value} is not finite
+         */
         public Builder constant(String name, float value) {
             if (!Float.isFinite(value)) {
                 throw new IllegalArgumentException(name + " must be finite");
@@ -119,24 +168,48 @@ public final class ShaderHeader {
             return this;
         }
 
-        /** Adds a GLSL interface block for a struct, as {@link Struct#glslBlock}. Ignored in Slang output, where buffers are declared with their types. */
+        /**
+         * Adds a GLSL interface block for a struct, as {@link Struct#glslBlock}.
+         *
+         * <p>Ignored in Slang output, where buffers are declared with their types.
+         *
+         * @param struct the struct; must not be {@code null}
+         * @param layout the GPU layout; must not be {@code null}
+         * @param storage the storage; must not be {@code null}
+         * @param instanceName the instance name; must not be {@code null}
+         * @return this builder, for chaining
+         */
         public Builder block(Struct struct, GpuLayout layout, String storage, String instanceName) {
             blocks.add(struct.glslBlock(layout, storage, instanceName));
             return this;
         }
 
-        /** Builds the header; the builder may be reused. */
+        /**
+         * Builds the header; the builder may be reused.
+         *
+         * @return the header, never {@code null}
+         */
         public ShaderHeader build() {
             return new ShaderHeader(guard, List.copyOf(structs), List.copyOf(constants), List.copyOf(blocks));
         }
 
-        /** Shortcut for {@code build().emit(language)}. */
+        /**
+         * Builds the header and emits it in one step.
+         *
+         * @param language the language; must not be {@code null}
+         * @return shortcut for {@code build().emit(language)}
+         */
         public String build(Language language) {
             return build().emit(language);
         }
     }
 
-    /** The header text. */
+    /**
+     * Generates the header as source text for the chosen shading language.
+     *
+     * @param language the language; must not be {@code null}
+     * @return the header text
+     */
     public String emit(Language language) {
         StringBuilder sb = new StringBuilder();
         sb.append("// Generated by vmath ShaderHeader from the Java struct layouts. Do not edit.\n");

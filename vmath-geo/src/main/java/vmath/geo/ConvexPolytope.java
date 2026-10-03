@@ -10,14 +10,29 @@ import vmath.core.Quatf;
 import vmath.core.Vec3f;
 
 /**
- * A solid convex polytope: the extreme points of a point set (from {@link ConvexHull}), its triangular faces with outward normals, and the list of distinct face directions and
- * edge directions that the separating axis test ({@link Sat}) needs. It is a {@link ConvexShape} (the support function scans the vertices, so it suits polytopes of up to a
- * few hundred vertices), and offers an exact point-containment test.
+ * A solid convex polytope: the extreme points of a point set (from {@link ConvexHull}), its
+ * triangular faces with outward normals, and the list of distinct face directions and edge
+ * directions that the separating axis test ({@link Sat}) needs.
  *
- * <p>Faces that are coplanar (the triangles of one planar facet) share one entry in the list of face normals, and edges between coplanar triangles are left out of the list of edges,
- * so a box has 3 face directions and 3 edge directions however it was triangulated.
+ * <p>It is a {@link ConvexShape} (the support function scans the vertices, so it suits polytopes of
+ * up to a few hundred vertices), and offers an exact point-containment test.
  *
- * <p><b>Thread safety.</b> Immutable: safe to share between threads. The arrays returned by the accessors are copies.
+ * <p>Faces that are coplanar (the triangles of one planar facet) share one entry in the list of
+ * face normals, and edges between coplanar triangles are left out of the list of edges, so a box
+ * has 3 face directions and 3 edge directions however it was triangulated.
+ *
+ * <p><b>Thread safety.</b> Immutable: safe to share between threads. The arrays returned by the
+ * accessors are copies.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * ConvexPolytope box = ConvexPolytope.of(Aabbf.of(new Vec3f(-1f, -1f, -1f), new Vec3f(1f, 1f, 1f)));
+ * ConvexPolytope moved = box.transformed(Quatf.rotationZ(0.3f), new Vec3f(1.5f, 0f, 0f));
+ * boolean overlapping = Sat.intersects(box, moved);
+ * double[] plane = new double[4];
+ * box.facetPlane(0, plane);                                           // unit outward normal and offset of the first facet
+ * }</pre>
  */
 @Experimental("the representation follows what the collision queries need; a half-edge structure may replace the triangle list")
 public final class ConvexPolytope implements ConvexShape {
@@ -191,8 +206,18 @@ public final class ConvexPolytope implements ConvexShape {
     }
 
     /**
-     * The polytope that is the convex hull of {@code count} points ({@code x, y, z} triples). The vertices are the extreme points only; the indices of the faces refer to
-     * {@link #vertices()}. {@link IllegalArgumentException} when the points do not span space (all coplanar, collinear or equal): such a set has no volume.
+     * Builds a polytope from a point cloud by taking its convex hull and extracting the facets and
+     * edges that collision queries need; an offline step, not meant for every frame.
+     *
+     * <p>The vertices are the extreme points only; the indices of the faces refer to
+     * {@link #vertices()}. {@link IllegalArgumentException} when the points do not span space (all
+     * coplanar, collinear or equal): such a set has no volume.
+     *
+     * @param xyz the three components
+     * @param count the number of elements
+     * @return the polytope that is the convex hull of {@code count} points ({@code x, y, z}
+     *     triples)
+     * @throws IllegalArgumentException if the points do not span three dimensions
      */
     public static ConvexPolytope of(float[] xyz, int count) {
         ConvexHull hull = ConvexHull.of(xyz, count);
@@ -214,7 +239,12 @@ public final class ConvexPolytope implements ConvexShape {
         return new ConvexPolytope(v, t);
     }
 
-    /** The box as a polytope: 8 vertices, 12 triangles. */
+    /**
+     * Builds the polytope of an axis-aligned box.
+     *
+     * @param box the box; must not be {@code null}
+     * @return the box as a polytope: 8 vertices, 12 triangles
+     */
     public static ConvexPolytope of(Aabbf box) {
         float[] c = new float[24];
         for (int i = 0; i < 8; i++) {
@@ -226,7 +256,15 @@ public final class ConvexPolytope implements ConvexShape {
         return of(c, 8);
     }
 
-    /** The polytope rotated by {@code rotation} (a unit quaternion) about the origin and then moved by {@code translation}; the faces keep their indices. */
+    /**
+     * Applies a rigid transform to the polytope without changing its topology, so face and vertex
+     * indices stay valid; the rotation must be a unit quaternion.
+     *
+     * @param rotation the rotation; must not be {@code null}
+     * @param translation the translation; must not be {@code null}
+     * @return the polytope rotated by {@code rotation} (a unit quaternion) about the origin and
+     *     then moved by {@code translation}; the faces keep their indices
+     */
     public ConvexPolytope transformed(Quatf rotation, Vec3f translation) {
         float[] v = new float[vertices.length];
         for (int i = 0; i < vertices.length / 3; i++) {
@@ -238,82 +276,174 @@ public final class ConvexPolytope implements ConvexShape {
         return new ConvexPolytope(v, triangles.clone());
     }
 
-    /** The number of vertices. */
+    /**
+     * Counts the vertices of the polytope.
+     *
+     * @return the number of vertices
+     */
     public int vertexCount() {
         return vertices.length / 3;
     }
 
-    /** The coordinate {@code axis} (0 is x, 1 is y, 2 is z) of vertex {@code i}, without copying the vertex array as {@link #vertices()} does. */
+    /**
+     * Reads one coordinate of a vertex directly from the stored array, which avoids the copy that
+     * {@link #vertices()} makes.
+     *
+     * @param i the index
+     * @param axis the axis
+     * @return the coordinate {@code axis} (0 is x, 1 is y, 2 is z) of vertex {@code i}, without
+     *     copying the vertex array as {@link #vertices()} does
+     */
     public float vertex(int i, int axis) {
         return vertices[3 * i + axis];
     }
 
-    /** The vertices as {@code x, y, z} triples. */
+    /**
+     * Exposes the vertex coordinates; this is a copy, so use {@link #vertex(int, int)} in loops.
+     *
+     * @return the vertices as {@code x, y, z} triples
+     */
     public float[] vertices() {
         return vertices.clone();
     }
 
-    /** The faces as vertex index triples, counter-clockwise seen from outside. */
+    /**
+     * Lists the surface triangles as indices into the vertices, wound counter-clockwise seen from
+     * outside.
+     *
+     * @return the faces as vertex index triples, counter-clockwise seen from outside
+     */
     public int[] triangles() {
         return triangles.clone();
     }
 
-    /** The volume. */
+    /**
+     * Exposes the enclosed volume, computed once at construction.
+     *
+     * @return the volume
+     */
     public double volume() {
         return volume;
     }
 
-    /** The number of distinct face directions, counting a direction and its opposite once (the axes of the separating axis test): 3 for a box, however its facets are triangulated. */
+    /**
+     * Counts the distinct face directions, which are the candidate axes of the separating axis
+     * test; coplanar triangles and opposite faces are merged, so this is smaller than the triangle
+     * count.
+     *
+     * @return the number of distinct face directions, counting a direction and its opposite once
+     *     (the axes of the separating axis test): 3 for a box, however its facets are triangulated
+     */
     public int faceDirectionCount() {
         return faceNormals.length / 3;
     }
 
-    /** The distinct unit face normals, up to sign (one of each pair of opposite directions), as {@code x, y, z} triples. */
+    /**
+     * Lists the distinct face normals, one per pair of opposite directions, as the face axes for a
+     * separating axis test.
+     *
+     * @return the distinct unit face normals, up to sign (one of each pair of opposite directions),
+     *     as {@code x, y, z} triples
+     */
     public double[] faceDirections() {
         return faceNormals.clone();
     }
 
-    /** The distinct unit edge directions that are not inside a planar facet, as {@code x, y, z} triples (the edge axes of the separating axis test). */
+    /**
+     * Lists the distinct edge directions that are not inside a planar facet, as the edge axes for a
+     * separating axis test; this list can be long for round shapes.
+     *
+     * @return the distinct unit edge directions that are not inside a planar facet, as
+     *     {@code x, y, z} triples (the edge axes of the separating axis test)
+     */
     public double[] edgeDirections() {
         return edgeDirections.clone();
     }
 
-    /** The number of facets: the planar polygons of the surface (the triangles in one plane form one facet, so a box has 6). */
+    /**
+     * Counts the planar facets of the surface, where coplanar triangles form one facet.
+     *
+     * @return the number of facets: the planar polygons of the surface (the triangles in one plane
+     *     form one facet, so a box has 6)
+     */
     public int facetCount() {
         return facetStart.length - 1;
     }
 
-    /** Writes the plane of facet {@code f} to {@code out[0 .. 4)}: the unit outward normal and {@code d}, with {@code n . x = d} on the facet and {@code n . x < d} inside the polytope. */
+    /**
+     * Writes the plane of facet {@code f} to {@code out[0 .. 4)}: the unit outward normal and
+     * {@code d}, with {@code n . x = d} on the facet and {@code n . x < d} inside the polytope.
+     *
+     * @param f the facet index
+     * @param out receives the result
+     */
     public void facetPlane(int f, double[] out) {
         System.arraycopy(facetPlane, 4 * f, out, 0, 4);
     }
 
-    /** The number of vertices of facet {@code f}. */
+    /**
+     * Counts the vertices of one facet.
+     *
+     * @param f the facet index
+     * @return the number of vertices of facet {@code f}
+     */
     public int facetVertexCount(int f) {
         return facetStart[f + 1] - facetStart[f];
     }
 
-    /** The index (into {@link #vertices()}) of the {@code k}-th vertex of facet {@code f}; the vertices run counter-clockwise seen from outside. */
+    /**
+     * Looks up a vertex of a facet by position in the facet's boundary loop, which runs
+     * counter-clockwise seen from outside.
+     *
+     * @param f the facet index
+     * @param k the position of the vertex within the facet
+     * @return the index (into {@link #vertices()}) of the {@code k}-th vertex of facet {@code f};
+     *     the vertices run counter-clockwise seen from outside
+     */
     public int facetVertex(int f, int k) {
         return facetVertex[facetStart[f] + k];
     }
 
-    /** The number of edges between facets (the edges of the surface; not the diagonals of a triangulated facet). */
+    /**
+     * Counts the edges between facets, which excludes the diagonals of triangulated facets.
+     *
+     * @return the number of edges between facets (the edges of the surface; not the diagonals of a
+     *     triangulated facet)
+     */
     public int edgeCount() {
         return edgeVertex.length / 2;
     }
 
-    /** The index of the first vertex of edge {@code e}. */
+    /**
+     * Looks up the first end point of an edge.
+     *
+     * @param e the edge index
+     * @return the index of the first vertex of edge {@code e}
+     */
     public int edgeStart(int e) {
         return edgeVertex[2 * e];
     }
 
-    /** The index of the second vertex of edge {@code e}. */
+    /**
+     * Looks up the second end point of an edge.
+     *
+     * @param e the edge index
+     * @return the index of the second vertex of edge {@code e}
+     */
     public int edgeEnd(int e) {
         return edgeVertex[2 * e + 1];
     }
 
-    /** Whether the point is inside the polytope or on its surface. Exact: no face of the polytope may have the point above it ({@link Predicates#orient3d}). */
+    /**
+     * Returns whether the point is inside the polytope or on its surface.
+     *
+     * <p>Exact: no face of the polytope may have the point above it ({@link Predicates#orient3d}).
+     *
+     * @param x the x component
+     * @param y the y component
+     * @param z the z component
+     * @return {@code true} if the point is inside the polytope or on its surface
+     */
     public boolean contains(float x, float y, float z) {
         for (int f = 0; f < triangles.length / 3; f++) {
             int a = triangles[3 * f], b = triangles[3 * f + 1], c = triangles[3 * f + 2];

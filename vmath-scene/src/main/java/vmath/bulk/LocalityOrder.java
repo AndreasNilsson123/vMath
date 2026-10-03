@@ -5,24 +5,41 @@ import vmath.core.Hilbert;
 import vmath.core.Morton;
 
 /**
- * Orders points along a space-filling curve, so that points that are close in space end up close in memory: sort instances, particles or mesh vertices with it
- * before building a BVH or uploading, and neighbouring work touches neighbouring memory. Both curves use 21 bits per axis over the bounding box of the points,
- * and the sort is the stable {@link RadixSorter} (equal codes keep their input order).
+ * Orders points along a space-filling curve, so that points that are close in space end up close in
+ * memory: sort instances, particles or mesh vertices with it before building a BVH or uploading,
+ * and neighbouring work touches neighbouring memory.
  *
- * <p>{@link Curve#HILBERT} has no long jumps and so the better locality; {@link Curve#MORTON} costs less to compute. {@code docs/BULK.md} has the measured
- * difference in path length and in time.
+ * <p>Both curves use 21 bits per axis over the bounding box of the points, and the sort is the
+ * stable {@link RadixSorter} (equal codes keep their input order).
  *
- * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time. The arrays and buffers you pass in are
- * not synchronised, so two threads must not write the same one.
+ * <p>{@link Curve#HILBERT} has no long jumps and so the better locality; {@link Curve#MORTON} costs
+ * less to compute. {@code docs/BULK.md} has the measured difference in path length and in time.
+ *
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the
+ * same time. The arrays and buffers you pass in are not synchronised, so two threads must not write
+ * the same one.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * float[] positions = {5f, 0f, 0f, 0f, 0f, 0f, 2f, 0f, 0f};
+ * int[] order = LocalityOrder.order(positions, 3, LocalityOrder.Curve.HILBERT);   // the indices in space-filling-curve order
+ * }</pre>
  */
 @Experimental("the set of helpers may grow")
 public final class LocalityOrder {
 
-    /** Which curve to follow. */
+    /**
+     * Which curve to follow.
+     */
     public enum Curve {
-        /** Z-order: cheap to compute, with larger jumps between neighbouring cells. */
+        /**
+         * Z-order: cheap to compute, with larger jumps between neighbouring cells.
+         */
         MORTON,
-        /** Hilbert order: better locality, at several times the cost of Morton per code. */
+        /**
+         * Hilbert order: better locality, at several times the cost of Morton per code.
+         */
         HILBERT
     }
 
@@ -30,10 +47,19 @@ public final class LocalityOrder {
     }
 
     /**
-     * Writes to {@code order[0..n)} the permutation that puts the {@code n} points of {@code xyz} (three floats per point, packed) in curve order:
-     * {@code order[i]} is the index of the point that comes {@code i}-th. {@code codes} is scratch of at least {@code n} longs; with a reused {@code sorter}
-     * (see {@link RadixSorter#reserve}) nothing is allocated.
+     * Writes to {@code order[0..n)} the permutation that puts the {@code n} points of {@code xyz}
+     * (three floats per point, packed) in curve order: {@code order[i]} is the index of the point
+     * that comes {@code i}-th.
      *
+     * <p>{@code codes} is scratch of at least {@code n} longs; with a reused {@code sorter} (see
+     * {@link RadixSorter#reserve}) nothing is allocated.
+     *
+     * @param xyz the three components
+     * @param n the number of elements
+     * @param curve the curve; must not be {@code null}
+     * @param order the order
+     * @param codes the codes
+     * @param sorter the sorter; must not be {@code null}
      * @throws IllegalArgumentException if a coordinate is not finite or an array is too short
      */
     public static void order(float[] xyz, int n, Curve curve, int[] order, long[] codes, RadixSorter sorter) {
@@ -77,7 +103,16 @@ public final class LocalityOrder {
         return Math.min(Math.max(q, 0), cells - 1);
     }
 
-    /** As {@link #order(float[], int, Curve, int[], long[], RadixSorter)}, allocating its own scratch and sorter; returns the order. */
+    /**
+     * Computes a spatial sort order of points along a space-filling curve, using its own scratch
+     * memory; the overload with caller-supplied scratch avoids the allocation.
+     *
+     * @param xyz the three components
+     * @param n the number of elements
+     * @param curve the curve; must not be {@code null}
+     * @return as {@link #order(float[], int, Curve, int[], long[], RadixSorter)}, allocating its
+     *     own scratch and sorter; returns the order
+     */
     public static int[] order(float[] xyz, int n, Curve curve) {
         int[] order = new int[n];
         order(xyz, n, curve, order, new long[n], new RadixSorter());

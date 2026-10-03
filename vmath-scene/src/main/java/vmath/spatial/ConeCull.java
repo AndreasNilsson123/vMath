@@ -5,34 +5,84 @@ import vmath.bulk.VisibilitySet;
 import vmath.geo.NormalCone;
 
 /**
- * Backface culling of whole clusters of triangles ("meshlets") with one test per cluster, over many clusters at once. The cone computation and the single-cluster
- * test are {@link NormalCone}; the methods here forward to it. See there for the test and its conservativeness.
+ * Backface culling of whole clusters of triangles ("meshlets") with one test per cluster, over many
+ * clusters at once.
  *
- * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time. The arrays and buffers you pass in are
- * not synchronised, so two threads must not write the same one.
+ * <p>The cone computation and the single-cluster test are {@link NormalCone}; the methods here
+ * forward to it. See there for the test and its conservativeness.
+ *
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the
+ * same time. The arrays and buffers you pass in are not synchronised, so two threads must not write
+ * the same one.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * ConeCull.Clusters clusters = new ConeCull.Clusters();
+ * clusters.add(0f, 0f, 0f, 1f, 0f, 0f, 1f, 0.5f);                       // sphere (center, radius) and normal cone (axis, cutoff)
+ * VisibilitySet visible = new VisibilitySet(1);
+ * visible.setAll(1);
+ * int rejected = clusters.cull(0f, 0f, -10f, visible);                  // clears the clusters that face away from the eye
+ * }</pre>
  */
 public final class ConeCull {
 
     private ConeCull() {
     }
 
-    /** Forwards to {@link NormalCone#compute}. */
+    /**
+     * Forwards to {@link NormalCone#compute}.
+     *
+     * @param normals the normals
+     * @param offset the index of the first element to read or write
+     * @param triangleCount the triangle count
+     * @param out receives the result
+     * @param outOffset the index of the first element written to {@code out}
+     */
     public static void computeCone(float[] normals, int offset, int triangleCount, float[] out, int outOffset) {
         NormalCone.compute(normals, offset, triangleCount, out, outOffset);
     }
 
-    /** Forwards to {@link NormalCone#backfacing}. */
+    /**
+     * Forwards to {@link NormalCone#backfacing}.
+     *
+     * @param cx the x coordinate of the center
+     * @param cy the y coordinate of the center
+     * @param cz the z coordinate of the center
+     * @param radius the radius
+     * @param ax the x component of the cone axis
+     * @param ay the y component of the cone axis
+     * @param az the z component of the cone axis
+     * @param cutoff the sine of the half angle of the normal cone; 1 means no useful cone
+     * @param ex the x coordinate of the eye, in the space of the cluster data
+     * @param ey the y coordinate of the eye, in the space of the cluster data
+     * @param ez the z coordinate of the eye, in the space of the cluster data
+     * @return {@code true} if the cone faces away from the eye, so that the cluster is back-facing
+     */
     public static boolean backfacing(float cx, float cy, float cz, float radius, float ax, float ay, float az, float cutoff,
                                      float ex, float ey, float ez) {
         return NormalCone.backfacing(cx, cy, cz, radius, ax, ay, az, cutoff, ex, ey, ez);
     }
 
-    /** Forwards to {@link NormalCone#backfacingOrthographic}. */
+    /**
+     * Forwards to {@link NormalCone#backfacingOrthographic}.
+     *
+     * @param ax the x component of the cone axis
+     * @param ay the y component of the cone axis
+     * @param az the z component of the cone axis
+     * @param cutoff the sine of the half angle of the normal cone; 1 means no useful cone
+     * @param vx the x component of the unit view direction
+     * @param vy the y component of the unit view direction
+     * @param vz the z component of the unit view direction
+     * @return {@code true} if every triangle of the cone faces away from the view direction
+     */
     public static boolean backfacingOrthographic(float ax, float ay, float az, float cutoff, float vx, float vy, float vz) {
         return NormalCone.backfacingOrthographic(ax, ay, az, cutoff, vx, vy, vz);
     }
 
-    /** Structure-of-arrays storage for the bounding spheres and normal cones of many clusters. */
+    /**
+     * Structure-of-arrays storage for the bounding spheres and normal cones of many clusters.
+     */
     public static final class Clusters {
 
         private float[] center = new float[3 * 16];
@@ -40,16 +90,36 @@ public final class ConeCull {
         private float[] cone = new float[4 * 16];
         private int size;
 
-        /** An empty set of clusters. */
+        /**
+         * Creates an empty set of clusters.
+         */
         public Clusters() {
         }
 
-        /** The number of clusters. */
+        /**
+         * Counts the clusters.
+         *
+         * @return the number of clusters
+         */
         public int size() {
             return size;
         }
 
-        /** Adds a cluster and returns its index. {@code axis} must have unit length. */
+        /**
+         * Adds a cluster and returns its index.
+         *
+         * <p>{@code axis} must have unit length.
+         *
+         * @param cx the x coordinate of the center
+         * @param cy the y coordinate of the center
+         * @param cz the z coordinate of the center
+         * @param radius the radius
+         * @param ax the x component of the cone axis
+         * @param ay the y component of the cone axis
+         * @param az the z component of the cone axis
+         * @param cutoff the sine of the half angle of the normal cone; 1 means no useful cone
+         * @return its index
+         */
         public int add(float cx, float cy, float cz, float radius, float ax, float ay, float az, float cutoff) {
             if (size == this.radius.length) {
                 int c = size * 2;
@@ -69,12 +139,24 @@ public final class ConeCull {
             return i;
         }
 
-        /** Removes all clusters; the capacity is kept. */
+        /**
+         * Removes all clusters; the capacity is kept.
+         */
         public void clear() {
             size = 0;
         }
 
-        /** Clears the bit of every visible cluster that is back-facing from the eye position. Returns how many were culled. */
+        /**
+         * Clears the bit of every visible cluster that is back-facing from the eye position.
+         *
+         * <p>Returns how many were culled.
+         *
+         * @param ex the x coordinate of the eye, in the space of the cluster data
+         * @param ey the y coordinate of the eye, in the space of the cluster data
+         * @param ez the z coordinate of the eye, in the space of the cluster data
+         * @param visible the visibility set; must not be {@code null}
+         * @return how many were culled
+         */
         public int cull(float ex, float ey, float ez, VisibilitySet visible) {
             long[] words = visible.words();
             int culled = 0;
@@ -88,7 +170,18 @@ public final class ConeCull {
             return culled;
         }
 
-        /** Orthographic version of {@link #cull}: {@code (vx, vy, vz)} is the unit direction the camera looks along. */
+        /**
+         * Culls clusters for an orthographic view along a direction, which replaces the
+         * position-dependent test of the perspective version by one that depends only on the
+         * direction.
+         *
+         * @param vx the x component of the unit view direction
+         * @param vy the y component of the unit view direction
+         * @param vz the z component of the unit view direction
+         * @param visible the visibility set; must not be {@code null}
+         * @return orthographic version of {@link #cull}: {@code (vx, vy, vz)} is the unit direction
+         *     the camera looks along
+         */
         public int cullOrthographic(float vx, float vy, float vz, VisibilitySet visible) {
             long[] words = visible.words();
             int culled = 0;

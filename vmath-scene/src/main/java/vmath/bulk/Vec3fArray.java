@@ -5,26 +5,55 @@ import vmath.core.Vec3f;
 import vmath.geo.Aabbf;
 
 /**
- * Many 3D vectors (positions, directions, normals) in one {@code float[]}, three floats each, so there is no {@code Vec3f} object per element.
- * The batch methods read and write the array directly and allocate nothing; they accept the same array as input and output.
+ * Many 3D vectors (positions, directions, normals) in one {@code float[]}, three floats each, so
+ * there is no {@code Vec3f} object per element.
  *
- * <p>The array is tightly packed ({@code x, y, z, x, y, z, ...}), the layout of a vertex position stream or a scalar-layout {@code vec3[]}; a std140 or
- * std430 {@code vec3[]} has a 16-byte stride and needs the padded writers in {@code vmath.gl}.
+ * <p>The batch methods read and write the array directly and allocate nothing; they accept the same
+ * array as input and output.
  *
- * <p><b>Thread safety.</b> Not thread-safe: it is mutable, so use one instance per thread or synchronise externally. Concurrent reads are safe only
- * while no thread is writing.
+ * <p>The array is tightly packed ({@code x, y, z, x, y, z, ...}), the layout of a vertex position
+ * stream or a scalar-layout {@code vec3[]}; a std140 or std430 {@code vec3[]} has a 16-byte stride
+ * and needs the padded writers in {@code vmath.gl}.
+ *
+ * <p><b>Thread safety.</b> Not thread-safe: it is mutable, so use one instance per thread or
+ * synchronise externally. Concurrent reads are safe only while no thread is writing.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * Vec3fArray points = new Vec3fArray(3);
+ * points.add(0f, 0f, 0f);
+ * points.add(1f, 0f, 0f);
+ * points.add(0f, 1f, 0f);
+ * Vec3fArray moved = new Vec3fArray(3);
+ * points.transformPositions(Mat4f.translation(1f, 1f, 1f), moved);
+ * Aabbf bounds = points.bounds();
+ * }</pre>
  */
 public final class Vec3fArray extends FloatElements {
 
-    /** Floats per vector. */
+    /**
+     * Floats per vector.
+     */
     public static final int STRIDE = 3;
 
-    /** An empty array with room for {@code capacity} vectors (at least 1). */
+    /**
+     * Creates an empty array with room for {@code capacity} vectors (at least 1).
+     *
+     * @param capacity the capacity in elements
+     */
     public Vec3fArray(int capacity) {
         super(capacity, STRIDE);
     }
 
-    /** Appends a vector and returns its index. */
+    /**
+     * Appends a vector and returns its index.
+     *
+     * @param x the x component
+     * @param y the y component
+     * @param z the z component
+     * @return its index
+     */
     public int add(float x, float y, float z) {
         ensureCapacity(size + 1);
         int o = size * STRIDE;
@@ -34,12 +63,25 @@ public final class Vec3fArray extends FloatElements {
         return size++;
     }
 
-    /** Appends a vector and returns its index. */
+    /**
+     * Appends a vector and returns its index.
+     *
+     * @param v the vector; must not be {@code null}
+     * @return its index
+     */
     public int add(Vec3f v) {
         return add(v.x(), v.y(), v.z());
     }
 
-    /** Replaces vector {@code i}; {@link IndexOutOfBoundsException} for an index that is not below {@link #size()}. */
+    /**
+     * Replaces vector {@code i}; {@link IndexOutOfBoundsException} for an index that is not below
+     * {@link #size()}.
+     *
+     * @param i the index
+     * @param x the x component
+     * @param y the y component
+     * @param z the z component
+     */
     public void set(int i, float x, float y, float z) {
         checkIndex(i);
         int o = i * STRIDE;
@@ -48,31 +90,59 @@ public final class Vec3fArray extends FloatElements {
         data[o + 2] = z;
     }
 
-    /** Replaces vector {@code i}; {@link IndexOutOfBoundsException} for an index that is not below {@link #size()}. */
+    /**
+     * Replaces vector {@code i}; {@link IndexOutOfBoundsException} for an index that is not below
+     * {@link #size()}.
+     *
+     * @param i the index
+     * @param v the vector; must not be {@code null}
+     */
     public void set(int i, Vec3f v) {
         set(i, v.x(), v.y(), v.z());
     }
 
-    /** Vector {@code i} as a value (allocates); {@link IndexOutOfBoundsException} for an index that is not below {@link #size()}. */
+    /**
+     * Reads a vector as an object; allocates, so use the component accessors in loops.
+     *
+     * @param i the index
+     * @return vector {@code i} as a value (allocates); {@link IndexOutOfBoundsException} for an
+     *     index that is not below {@link #size()}
+     */
     public Vec3f get(int i) {
         checkIndex(i);
         int o = i * STRIDE;
         return new Vec3f(data[o], data[o + 1], data[o + 2]);
     }
 
-    /** The x of vector {@code i}; {@link IndexOutOfBoundsException} for an index that is not below {@link #size()}. */
+    /**
+     * Reads the x component of a vector without allocating.
+     *
+     * @param i the index
+     * @return the x of vector {@code i}; {@link IndexOutOfBoundsException} for an index that is not
+     *     below {@link #size()}
+     */
     public float x(int i) {
         checkIndex(i);
         return data[i * STRIDE];
     }
 
-    /** The y of vector {@code i}. */
+    /**
+     * Reads the y component of a vector without allocating.
+     *
+     * @param i the index
+     * @return the y of vector {@code i}
+     */
     public float y(int i) {
         checkIndex(i);
         return data[i * STRIDE + 1];
     }
 
-    /** The z of vector {@code i}. */
+    /**
+     * Reads the z component of a vector without allocating.
+     *
+     * @param i the index
+     * @return the z of vector {@code i}
+     */
     public float z(int i) {
         checkIndex(i);
         return data[i * STRIDE + 2];
@@ -81,14 +151,28 @@ public final class Vec3fArray extends FloatElements {
     // ---------------------------------------------------------------- batch kernels
 
     /**
-     * {@code out[i] = m * (this[i], 1)}: transforms every element as a position (rotation, scale and translation). {@code out} is resized to the element
-     * count and may be this array. The matrix is assumed affine (its bottom row is taken as 0, 0, 0, 1).
+     * Transforms every element as a position (rotation, scale and translation):
+     * {@code out[i] = m * (this[i], 1)}.
+     *
+     * <p>{@code out} is resized to the element count and may be this array. The matrix is assumed
+     * affine (its bottom row is taken as 0, 0, 0, 1).
+     *
+     * @param m the matrix; must not be {@code null}
+     * @param out receives the result; must not be {@code null}
      */
     public void transformPositions(Mat4f m, Vec3fArray out) {
         transform(m, out, true);
     }
 
-    /** {@code out[i] = upper-left 3x3 of m * this[i]}: transforms every element as a direction (no translation). {@code out} may be this array. */
+    /**
+     * Transforms every element as a direction (no translation):
+     * {@code out[i] = upper-left 3x3 of m * this[i]}.
+     *
+     * <p>{@code out} may be this array.
+     *
+     * @param m the matrix; must not be {@code null}
+     * @param out receives the result; must not be {@code null}
+     */
     public void transformDirections(Mat4f m, Vec3fArray out) {
         transform(m, out, false);
     }
@@ -109,7 +193,9 @@ public final class Vec3fArray extends FloatElements {
         out.size = size;
     }
 
-    /** Scales every vector to unit length in place; a zero vector stays zero. */
+    /**
+     * Scales every vector to unit length in place; a zero vector stays zero.
+     */
     public void normalizeAll() {
         for (int i = 0, o = 0; i < size; i++, o += STRIDE) {
             float x = data[o], y = data[o + 1], z = data[o + 2];
@@ -123,7 +209,11 @@ public final class Vec3fArray extends FloatElements {
         }
     }
 
-    /** The box around all vectors taken as points; {@link Aabbf#EMPTY} when there are none. */
+    /**
+     * Computes the box around all vectors, treated as points, by a linear scan.
+     *
+     * @return the box around all vectors taken as points; {@link Aabbf#EMPTY} when there are none
+     */
     public Aabbf bounds() {
         if (size == 0) {
             return Aabbf.EMPTY;

@@ -3,80 +3,158 @@ package vmath.util;
 import vmath.annotations.Experimental;
 
 /**
- * The standard easing curves: functions of the progress {@code t} in {@code [0, 1]} with {@code f(0) = 0} and {@code f(1) = 1}. Each family comes in three forms: <b>in</b>
- * (slow start), <b>out</b> (slow end, {@code out(t) = 1 - in(1 - t)}) and <b>in-out</b> (slow at both ends, symmetric about the middle).
+ * The standard easing curves: functions of the progress {@code t} in {@code [0, 1]} with
+ * {@code f(0) = 0} and {@code f(1) = 1}.
  *
- * <p>The families are: {@link #LINEAR}, polynomial ({@link #QUAD_IN quad}, {@link #CUBIC_IN cubic}, {@link #QUART_IN quart}, {@link #QUINT_IN quint}), {@link #SINE_IN sine},
- * {@link #EXPO_IN expo}, {@link #CIRC_IN circ}, and three that leave the range {@code [0, 1]} on the way: {@link #BACK_IN back} (overshoot), {@link #ELASTIC_IN elastic}
- * (a decaying oscillation) and {@link #BOUNCE_OUT bounce}. The first nine are monotonic. Inputs outside {@code [0, 1]} are clamped, so {@code QUAD_IN.apply(2.0)} is 1.
+ * <p>Each family comes in three forms: <b>in</b> (slow start), <b>out</b> (slow end,
+ * {@code out(t) = 1 - in(1 - t)}) and <b>in-out</b> (slow at both ends, symmetric about the
+ * middle).
  *
- * <p>The formulas are the usual published ones (Penner's equations); the exact constants are in the source of {@link #apply(double)}.
+ * <p>The families are: {@link #LINEAR}, polynomial ({@link #QUAD_IN quad}, {@link #CUBIC_IN cubic},
+ * {@link #QUART_IN quart}, {@link #QUINT_IN quint}), {@link #SINE_IN sine}, {@link #EXPO_IN expo},
+ * {@link #CIRC_IN circ}, and three that leave the range {@code [0, 1]} on the way:
+ * {@link #BACK_IN back} (overshoot), {@link #ELASTIC_IN elastic} (a decaying oscillation) and
+ * {@link #BOUNCE_OUT bounce}. The first nine are monotonic. Inputs outside {@code [0, 1]} are
+ * clamped, so {@code QUAD_IN.apply(2.0)} is 1.
  *
- * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time.
+ * <p>The formulas are the usual published ones (Penner's equations); the exact constants are in the
+ * source of {@link #apply(double)}.
+ *
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the
+ * same time.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * double eased = Easing.values()[1].apply(0.25);                               // the eased value for the progress 0.25
+ * double value = Easing.values()[1].mix(10.0, 20.0, 0.5);                      // the eased value between 10 and 20 for the progress 0.5
+ * }</pre>
  */
 @Experimental("the set of curves may grow")
 public enum Easing {
-    /** {@code t}. */
+    /**
+     * {@code t}.
+     */
     LINEAR,
-    /** {@code t^2}. */
+    /**
+     * {@code t^2}.
+     */
     QUAD_IN,
-    /** {@code 1 - (1 - t)^2}. */
+    /**
+     * {@code 1 - (1 - t)^2}.
+     */
     QUAD_OUT,
-    /** Quadratic, slow at both ends. */
+    /**
+     * Quadratic, slow at both ends.
+     */
     QUAD_IN_OUT,
-    /** {@code t^3}. */
+    /**
+     * {@code t^3}.
+     */
     CUBIC_IN,
-    /** {@code 1 - (1 - t)^3}. */
+    /**
+     * {@code 1 - (1 - t)^3}.
+     */
     CUBIC_OUT,
-    /** Cubic, slow at both ends. */
+    /**
+     * Cubic, slow at both ends.
+     */
     CUBIC_IN_OUT,
-    /** {@code t^4}. */
+    /**
+     * {@code t^4}.
+     */
     QUART_IN,
-    /** {@code 1 - (1 - t)^4}. */
+    /**
+     * {@code 1 - (1 - t)^4}.
+     */
     QUART_OUT,
-    /** Quartic, slow at both ends. */
+    /**
+     * Quartic, slow at both ends.
+     */
     QUART_IN_OUT,
-    /** {@code t^5}. */
+    /**
+     * {@code t^5}.
+     */
     QUINT_IN,
-    /** {@code 1 - (1 - t)^5}. */
+    /**
+     * {@code 1 - (1 - t)^5}.
+     */
     QUINT_OUT,
-    /** Quintic, slow at both ends. */
+    /**
+     * Quintic, slow at both ends.
+     */
     QUINT_IN_OUT,
-    /** {@code 1 - cos(t pi / 2)}. */
+    /**
+     * {@code 1 - cos(t pi / 2)}.
+     */
     SINE_IN,
-    /** {@code sin(t pi / 2)}. */
+    /**
+     * {@code sin(t pi / 2)}.
+     */
     SINE_OUT,
-    /** {@code (1 - cos(t pi)) / 2}. */
+    /**
+     * {@code (1 - cos(t pi)) / 2}.
+     */
     SINE_IN_OUT,
-    /** {@code 2^(10 (t - 1))}, shifted and scaled so that it is exactly 0 at 0. */
+    /**
+     * {@code 2^(10 (t - 1))}, shifted and scaled so that it is exactly 0 at 0.
+     */
     EXPO_IN,
-    /** Mirror of {@link #EXPO_IN}. */
+    /**
+     * Mirror of {@link #EXPO_IN}.
+     */
     EXPO_OUT,
-    /** Exponential, slow at both ends. */
+    /**
+     * Exponential, slow at both ends.
+     */
     EXPO_IN_OUT,
-    /** {@code 1 - sqrt(1 - t^2)}: a quarter circle. */
+    /**
+     * {@code 1 - sqrt(1 - t^2)}: a quarter circle.
+     */
     CIRC_IN,
-    /** Mirror of {@link #CIRC_IN}. */
+    /**
+     * Mirror of {@link #CIRC_IN}.
+     */
     CIRC_OUT,
-    /** Circular, slow at both ends. */
+    /**
+     * Circular, slow at both ends.
+     */
     CIRC_IN_OUT,
-    /** Pulls back below 0 (to about -0.1) before moving on, with overshoot constant 1.70158. */
+    /**
+     * Pulls back below 0 (to about -0.1) before moving on, with overshoot constant 1.70158.
+     */
     BACK_IN,
-    /** Overshoots 1 (to about 1.1) and settles back. */
+    /**
+     * Overshoots 1 (to about 1.1) and settles back.
+     */
     BACK_OUT,
-    /** Pulls back at the start and overshoots at the end. */
+    /**
+     * Pulls back at the start and overshoots at the end.
+     */
     BACK_IN_OUT,
-    /** A decaying oscillation before the start. */
+    /**
+     * A decaying oscillation before the start.
+     */
     ELASTIC_IN,
-    /** A decaying oscillation around 1 at the end. */
+    /**
+     * A decaying oscillation around 1 at the end.
+     */
     ELASTIC_OUT,
-    /** Oscillations at both ends. */
+    /**
+     * Oscillations at both ends.
+     */
     ELASTIC_IN_OUT,
-    /** Bounces off the start like a ball dropped upwards in reverse. */
+    /**
+     * Bounces off the start like a ball dropped upwards in reverse.
+     */
     BOUNCE_IN,
-    /** A ball dropped onto 1: four bounces of decreasing height. */
+    /**
+     * A ball dropped onto 1: four bounces of decreasing height.
+     */
     BOUNCE_OUT,
-    /** Bounces at both ends. */
+    /**
+     * Bounces at both ends.
+     */
     BOUNCE_IN_OUT;
 
     private static final double C1 = 1.70158;
@@ -85,7 +163,12 @@ public enum Easing {
     private static final double C4 = 2 * Math.PI / 3;
     private static final double C5 = 2 * Math.PI / 4.5;
 
-    /** The eased value for the progress {@code t}; {@code t} is clamped to {@code [0, 1]}. */
+    /**
+     * Evaluates the easing curve at a progress value, which is clamped to the unit interval.
+     *
+     * @param t the progress, clamped to {@code [0, 1]}
+     * @return the eased value for the progress {@code t}; {@code t} is clamped to {@code [0, 1]}
+     */
     public double apply(double t) {
         if (!(t > 0)) {
             return t == t ? 0 : t; // 0 for t <= 0, NaN stays NaN
@@ -154,7 +237,15 @@ public enum Easing {
         return n1 * t * t + 0.984375;
     }
 
-    /** The eased value of {@code t} for the curve, and then the linear mix between {@code a} and {@code b} at that progress: {@code a + (b - a) * apply(t)}. */
+    /**
+     * Eases a progress value and uses it to interpolate between two values.
+     *
+     * @param a the value at progress 0
+     * @param b the value at progress 1
+     * @param t the progress, clamped to {@code [0, 1]}
+     * @return the eased value of {@code t} for the curve, and then the linear mix between {@code a}
+     *     and {@code b} at that progress: {@code a + (b - a) * apply(t)}
+     */
     public double mix(double a, double b, double t) {
         return a + (b - a) * apply(t);
     }

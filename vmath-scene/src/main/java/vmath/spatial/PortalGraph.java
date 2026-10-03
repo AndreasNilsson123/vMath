@@ -7,28 +7,54 @@ import vmath.bulk.BoundsArray;
 import vmath.geo.Aabbf;
 
 /**
- * The structure of an interior for portal culling: <b>sectors</b> (rooms, cells: convex volumes), <b>portals</b> (convex polygons in the openings between two sectors: doors, windows,
- * archways) and the <b>membership</b> of objects in sectors. Portal culling starts in the sector that holds the camera and only looks into a neighbouring sector through a portal that
- * is visible, so everything behind walls is never touched, however many objects there are; {@link PortalCuller} does the traversal and the object test.
+ * The structure of an interior for portal culling: <b>sectors</b> (rooms, cells: convex volumes),
+ * <b>portals</b> (convex polygons in the openings between two sectors: doors, windows, archways)
+ * and the <b>membership</b> of objects in sectors.
  *
- * <p><b>Sectors.</b> A sector is a convex volume given by inward-facing planes {@code (a, b, c, d)} with {@code a x + b y + c z + d >= 0} inside ({@link Builder#addConvex}), or an axis-aligned box
- * ({@link Builder#addBox}). Sectors must not overlap except along shared faces; their union need not be convex. {@link #locate} finds the sector that holds a point, using the sector
- * of the previous frame as a hint.
+ * <p>Portal culling starts in the sector that holds the camera and only looks into a neighbouring
+ * sector through a portal that is visible, so everything behind walls is never touched, however
+ * many objects there are; {@link PortalCuller} does the traversal and the object test.
  *
- * <p><b>Portals.</b> A portal joins sector {@code a} to sector {@code b}: a planar convex polygon of 3 to {@value #MAX_PORTAL_VERTICES} vertices on their shared boundary, whose normal points from
- * {@code a} into {@code b}. {@link Builder#addPortal} works out the direction from the sectors; {@link Builder#autoPortals} finds all the openings between box sectors that touch. A portal
- * can be <b>closed</b> and opened again at run time ({@link #setPortalOpen}): a shut door hides the room behind it from the traversal.
+ * <p><b>Sectors.</b> A sector is a convex volume given by inward-facing planes {@code (a, b, c, d)}
+ * with {@code a x + b y + c z + d >= 0} inside ({@link Builder#addConvex}), or an axis-aligned box
+ * ({@link Builder#addBox}). Sectors must not overlap except along shared faces; their union need
+ * not be convex. {@link #locate} finds the sector that holds a point, using the sector of the
+ * previous frame as a hint.
  *
- * <p><b>Membership.</b> An object belongs to the sectors its bounds overlap ({@link #assignAll}, {@link #assign}); a box straddling a doorway belongs to both rooms. Moving objects are
- * re-assigned with {@link #update}, in time proportional to the sectors involved. Objects that belong to no sector are <em>unassigned</em>: {@link PortalCuller#cullObjects} leaves them
- * alone unless told otherwise (an object that the graph does not know is never culled by accident).
+ * <p><b>Portals.</b> A portal joins sector {@code a} to sector {@code b}: a planar convex polygon
+ * of 3 to {@value #MAX_PORTAL_VERTICES} vertices on their shared boundary, whose normal points from
+ * {@code a} into {@code b}. {@link Builder#addPortal} works out the direction from the sectors;
+ * {@link Builder#autoPortals} finds all the openings between box sectors that touch. A portal can
+ * be <b>closed</b> and opened again at run time ({@link #setPortalOpen}): a shut door hides the
+ * room behind it from the traversal.
  *
- * <p>The topology (sectors and portals) is fixed once built; the open flags and the membership change between frames. <b>Thread safety.</b> Not thread-safe for changes; any number of
+ * <p><b>Membership.</b> An object belongs to the sectors its bounds overlap ({@link #assignAll},
+ * {@link #assign}); a box straddling a doorway belongs to both rooms. Moving objects are
+ * re-assigned with {@link #update}, in time proportional to the sectors involved. Objects that
+ * belong to no sector are <em>unassigned</em>: {@link PortalCuller#cullObjects} leaves them alone
+ * unless told otherwise (an object that the graph does not know is never culled by accident).
+ *
+ * <p>The topology (sectors and portals) is fixed once built; the open flags and the membership
+ * change between frames. <b>Thread safety.</b> Not thread-safe for changes; any number of
  * {@link PortalCuller}s may read it at once while nobody changes it.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * PortalGraph.Builder builder = PortalGraph.builder();
+ * int room = builder.addBox(Aabbf.of(new Vec3f(0f, 0f, 0f), new Vec3f(10f, 3f, 10f)));
+ * int hall = builder.addBox(Aabbf.of(new Vec3f(10f, 0f, 0f), new Vec3f(20f, 3f, 10f)));
+ * builder.autoPortals(0.01f);
+ * PortalGraph graph = builder.build();
+ * int where = graph.locate(5f, 1f, 5f);                                      // the sector containing the point
+ * graph.assign(0, hall);                                                     // object 0 belongs to the hall
+ * }</pre>
  */
 public final class PortalGraph {
 
-    /** The largest number of vertices of a portal polygon. */
+    /**
+     * The largest number of vertices of a portal polygon.
+     */
     public static final int MAX_PORTAL_VERTICES = 16;
 
     private static final float INSIDE_EPS = 1e-5f;
@@ -140,7 +166,11 @@ public final class PortalGraph {
         Arrays.fill(objectHead, -1);
     }
 
-    /** A builder for a new graph. */
+    /**
+     * Starts a builder for a portal graph.
+     *
+     * @return a builder for a new graph
+     */
     public static Builder builder() {
         return new Builder();
     }
@@ -148,8 +178,11 @@ public final class PortalGraph {
     // ------------------------------------------------------------ the grid over the sectors
 
     /**
-     * The bounding box of sector {@code s} into {@link #sectorBounds}: the box itself for a box sector, otherwise the extent of the vertices of the convex volume (the intersection
-     * points of every three planes that lie inside all of them). Returns false when the sector has no finite box (unbounded or degenerate).
+     * The bounding box of sector {@code s} into {@link #sectorBounds}: the box itself for a box
+     * sector, otherwise the extent of the vertices of the convex volume (the intersection points of
+     * every three planes that lie inside all of them).
+     *
+     * <p>Returns false when the sector has no finite box (unbounded or degenerate).
      */
     private boolean computeBounds(int s) {
         int first = planeStart[s], last = planeStart[s + 1];
@@ -194,8 +227,11 @@ public final class PortalGraph {
     }
 
     /**
-     * Whether the volume of the planes {@code first .. last - 1} is bounded: it is exactly when no non-zero direction {@code d} has {@code n . d >= 0} for every normal {@code n}. If there
-     * is one, there is one of the form (a normal crossed with another), so only those are tried; planes whose normals are all parallel never bound a volume.
+     * Whether the volume of the planes {@code first .. last - 1} is bounded: it is exactly when no
+     * non-zero direction {@code d} has {@code n . d >= 0} for every normal {@code n}.
+     *
+     * <p>If there is one, there is one of the form (a normal crossed with another), so only those
+     * are tried; planes whose normals are all parallel never bound a volume.
      */
     private boolean isBounded(int first, int last) {
         boolean anyPair = false;
@@ -222,7 +258,10 @@ public final class PortalGraph {
         return anyPair;
     }
 
-    /** The point where the planes {@code i}, {@code j} and {@code k} meet, or null when they do not meet in a single point. */
+    /**
+     * The point where the planes {@code i}, {@code j} and {@code k} meet, or null when they do not
+     * meet in a single point.
+     */
     private double[] intersect(int i, int j, int k) {
         double a1 = planes[4 * i], b1 = planes[4 * i + 1], c1 = planes[4 * i + 2], d1 = -planes[4 * i + 3];
         double a2 = planes[4 * j], b2 = planes[4 * j + 1], c2 = planes[4 * j + 2], d2 = -planes[4 * j + 3];
@@ -237,7 +276,10 @@ public final class PortalGraph {
                 (a1 * (b2 * d3 - b3 * d2) - b1 * (a2 * d3 - a3 * d2) + d1 * (a2 * b3 - a3 * b2)) / det};
     }
 
-    /** A uniform grid over the bounded sectors, with cells about as large as a typical sector, listing for each cell the sectors whose box touches it. */
+    /**
+     * A uniform grid over the bounded sectors, with cells about as large as a typical sector,
+     * listing for each cell the sectors whose box touches it.
+     */
     private void buildGrid() {
         float[] lo = {Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY}, hi = {Float.NEGATIVE_INFINITY, Float.NEGATIVE_INFINITY, Float.NEGATIVE_INFINITY};
         double[] mean = new double[3];
@@ -305,69 +347,142 @@ public final class PortalGraph {
 
     // ------------------------------------------------------------ topology
 
-    /** The number of sectors. */
+    /**
+     * Counts the sectors of the graph.
+     *
+     * @return the number of sectors
+     */
     public int sectorCount() {
         return sectorCount;
     }
 
-    /** The number of portals. */
+    /**
+     * Counts the portals of the graph.
+     *
+     * @return the number of portals
+     */
     public int portalCount() {
         return portalCount;
     }
 
-    /** The sector on the back of portal {@code p}: its normal points away from this one, and traversal from it needs the eye on this side. */
+    /**
+     * Reads the sector behind a portal, which traversal can only enter from the front.
+     *
+     * @param p the portal index
+     * @return the sector on the back of portal {@code p}: its normal points away from this one, and
+     *     traversal from it needs the eye on this side
+     */
     public int portalSectorA(int p) {
         return portalA[p];
     }
 
-    /** The sector in front of portal {@code p}: the one its normal points into. */
+    /**
+     * Reads the sector in front of a portal, which is the side its normal points into.
+     *
+     * @param p the portal index
+     * @return the sector in front of portal {@code p}: the one its normal points into
+     */
     public int portalSectorB(int p) {
         return portalB[p];
     }
 
-    /** The number of vertices of portal {@code p}. */
+    /**
+     * Counts the vertices of a portal polygon.
+     *
+     * @param p the portal index
+     * @return the number of vertices of portal {@code p}
+     */
     public int portalVertexCount(int p) {
         return vertexStart[p + 1] - vertexStart[p];
     }
 
-    /** Copies the vertices of portal {@code p} ({@code x, y, z} triples) to {@code out}, which needs room for {@code 3 * portalVertexCount(p)} floats. */
+    /**
+     * Copies the vertices of portal {@code p} ({@code x, y, z} triples) to {@code out}, which needs
+     * room for {@code 3 * portalVertexCount(p)} floats.
+     *
+     * @param p the portal index
+     * @param out receives the result
+     */
     public void portalVertices(int p, float[] out) {
         System.arraycopy(vertices, 3 * vertexStart[p], out, 0, 3 * portalVertexCount(p));
     }
 
-    /** Writes the plane {@code (nx, ny, nz, d)} of portal {@code p} to {@code out[0 .. 4)}: a unit normal from sector A to sector B, and {@code n . x + d = 0} on the portal. */
+    /**
+     * Writes the plane {@code (nx, ny, nz, d)} of portal {@code p} to {@code out[0 .. 4)}: a unit
+     * normal from sector A to sector B, and {@code n . x + d = 0} on the portal.
+     *
+     * @param p the portal index
+     * @param out receives the result
+     */
     public void portalPlane(int p, float[] out) {
         System.arraycopy(portalPlane, 4 * p, out, 0, 4);
     }
 
-    /** The number of portals that touch sector {@code s}. */
+    /**
+     * Counts the portals that touch a sector.
+     *
+     * @param s the sector index
+     * @return the number of portals that touch sector {@code s}
+     */
     public int portalsOf(int s) {
         return adjacencyStart[s + 1] - adjacencyStart[s];
     }
 
-    /** The {@code k}-th portal of sector {@code s}, {@code k} below {@link #portalsOf}. */
+    /**
+     * Reads a portal of a sector by position in its portal list.
+     *
+     * @param s the sector index
+     * @param k the index of the portal among those of the sector
+     * @return the {@code k}-th portal of sector {@code s}, {@code k} below {@link #portalsOf}
+     */
     public int portalOf(int s, int k) {
         return adjacency[adjacencyStart[s] + k];
     }
 
-    /** The sector on the other side of portal {@code p} from sector {@code s}. */
+    /**
+     * Maps a portal and one of its sectors to the sector on the other side.
+     *
+     * @param p the portal index
+     * @param s the sector index
+     * @return the sector on the other side of portal {@code p} from sector {@code s}
+     */
     public int otherSector(int p, int s) {
         return portalA[p] == s ? portalB[p] : portalA[p];
     }
 
-    /** Whether portal {@code p} is open (the default). */
+    /**
+     * Returns whether portal {@code p} is open (the default).
+     *
+     * @param p the portal index
+     * @return {@code true} if portal {@code p} is open (the default)
+     */
     public boolean isPortalOpen(int p) {
         return open[p];
     }
 
-    /** Opens or closes portal {@code p}: a closed portal blocks the traversal, as a shut door does. */
+    /**
+     * Opens or closes portal {@code p}: a closed portal blocks the traversal, as a shut door does.
+     *
+     * @param p the portal index
+     * @param isOpen whether is open
+     */
     public void setPortalOpen(int p, boolean isOpen) {
         open[p] = isOpen;
     }
 
     // ------------------------------------------------------------ locating points
 
-    /** Whether the sector contains the point: it is on the inner side of every plane of the sector, up to a tolerance of 1e-5 (points on a shared face belong to both sectors). */
+    /**
+     * Returns whether the sector contains the point: it is on the inner side of every plane of the
+     * sector, up to a tolerance of 1e-5 (points on a shared face belong to both sectors).
+     *
+     * @param s the sector index
+     * @param x the x component
+     * @param y the y component
+     * @param z the z component
+     * @return {@code true} if the sector contains the point: it is on the inner side of every plane
+     *     of the sector, up to a tolerance of 1e-5 (points on a shared face belong to both sectors)
+     */
     public boolean contains(int s, float x, float y, float z) {
         for (int k = planeStart[s]; k < planeStart[s + 1]; k++) {
             if (planes[4 * k] * x + planes[4 * k + 1] * y + planes[4 * k + 2] * z + planes[4 * k + 3] < -INSIDE_EPS) {
@@ -377,7 +492,17 @@ public final class PortalGraph {
         return true;
     }
 
-    /** The first sector (lowest index) that contains the point, or -1 when it is in none (outside the level). */
+    /**
+     * Finds the sector that contains a point by testing the sectors in order; the cost grows with
+     * the number of sectors, so prefer the overload with a hint when the previous position is
+     * known.
+     *
+     * @param x the x component
+     * @param y the y component
+     * @param z the z component
+     * @return the first sector (lowest index) that contains the point, or -1 when it is in none
+     *     (outside the level)
+     */
     public int locate(float x, float y, float z) {
         int best = Integer.MAX_VALUE;
         for (int s : unbounded) {
@@ -403,8 +528,19 @@ public final class PortalGraph {
     }
 
     /**
-     * {@link #locate(float, float, float)} that tries the sector {@code hint} (the one of the previous frame) first, then its neighbours through portals, and only then all sectors: for a
-     * camera that moves a little each frame, the answer is found in the first step. A negative or out-of-range hint is ignored.
+     * Finds the sector that contains a point, trying the previous sector and its neighbours first,
+     * which is nearly constant time when the camera moves continuously.
+     *
+     * <p>A negative or out-of-range hint is ignored.
+     *
+     * @param x the x component
+     * @param y the y component
+     * @param z the z component
+     * @param hint the hint
+     * @return {@link #locate(float, float, float)} that tries the sector {@code hint} (the one of
+     *     the previous frame) first, then its neighbours through portals, and only then all
+     *     sectors: for a camera that moves a little each frame, the answer is found in the first
+     *     step
      */
     public int locate(float x, float y, float z, int hint) {
         if (hint >= 0 && hint < sectorCount) {
@@ -421,7 +557,22 @@ public final class PortalGraph {
         return locate(x, y, z);
     }
 
-    /** Whether the box may overlap the sector: it overlaps the bounding box of the sector and is not entirely outside any plane of it (conservative: a box near a corner may be reported although it misses the sector). */
+    /**
+     * Returns whether the box may overlap the sector: it overlaps the bounding box of the sector
+     * and is not entirely outside any plane of it (conservative: a box near a corner may be
+     * reported although it misses the sector).
+     *
+     * @param s the sector index
+     * @param minX the smallest x coordinate
+     * @param minY the smallest y coordinate
+     * @param minZ the smallest z coordinate
+     * @param maxX the largest x coordinate
+     * @param maxY the largest y coordinate
+     * @param maxZ the largest z coordinate
+     * @return {@code true} if the box may overlap the sector: it overlaps the bounding box of the
+     *     sector and is not entirely outside any plane of it (conservative: a box near a corner may
+     *     be reported although it misses the sector)
+     */
     public boolean mayOverlap(int s, float minX, float minY, float minZ, float maxX, float maxY, float maxZ) {
         int sb = 6 * s;
         if (minX > sectorBounds[sb + 3] || maxX < sectorBounds[sb] || minY > sectorBounds[sb + 4] || maxY < sectorBounds[sb + 1] || minZ > sectorBounds[sb + 5] || maxZ < sectorBounds[sb + 2]) {
@@ -457,7 +608,16 @@ public final class PortalGraph {
 
     // ------------------------------------------------------------ membership
 
-    /** Adds {@code object} to {@code sector}. An object may belong to several sectors; adding it twice to the same one lists it twice (harmless, but wasteful). */
+    /**
+     * Adds {@code object} to {@code sector}.
+     *
+     * <p>An object may belong to several sectors; adding it twice to the same one lists it twice
+     * (harmless, but wasteful).
+     *
+     * @param object the object
+     * @param sector the sector
+     * @throws IllegalArgumentException if {@code object} or {@code sector} is out of range
+     */
     public void assign(int object, int sector) {
         if (object < 0 || sector < 0 || sector >= sectorCount) {
             throw new IllegalArgumentException("object " + object + ", sector " + sector + " (the graph has " + sectorCount + " sectors)");
@@ -505,7 +665,13 @@ public final class PortalGraph {
         }
     }
 
-    /** Removes {@code object} from every sector. An object that belongs to none is left as it is. */
+    /**
+     * Removes {@code object} from every sector.
+     *
+     * <p>An object that belongs to none is left as it is.
+     *
+     * @param object the object
+     */
     public void remove(int object) {
         if (object < 0 || object >= objectHead.length) {
             return;
@@ -531,7 +697,9 @@ public final class PortalGraph {
         assigned[object >>> 6] &= ~(1L << object);
     }
 
-    /** Removes every object from every sector. */
+    /**
+     * Removes every object from every sector.
+     */
     public void clearObjects() {
         Arrays.fill(sectorHead, -1);
         Arrays.fill(sectorMembers, 0);
@@ -542,8 +710,19 @@ public final class PortalGraph {
     }
 
     /**
-     * Adds {@code object} with the given bounds to every sector it may overlap ({@link #mayOverlap}) and returns the number of sectors. When there is none, the object stays
-     * unassigned.
+     * Adds {@code object} with the given bounds to every sector it may overlap
+     * ({@link #mayOverlap}) and returns the number of sectors.
+     *
+     * <p>When there is none, the object stays unassigned.
+     *
+     * @param object the object
+     * @param minX the smallest x coordinate
+     * @param minY the smallest y coordinate
+     * @param minZ the smallest z coordinate
+     * @param maxX the largest x coordinate
+     * @param maxY the largest y coordinate
+     * @param maxZ the largest z coordinate
+     * @return the number of sectors
      */
     public int assignByBounds(int object, float minX, float minY, float minZ, float maxX, float maxY, float maxZ) {
         int n = 0;
@@ -581,7 +760,15 @@ public final class PortalGraph {
         return n;
     }
 
-    /** {@link #assignByBounds} for every object of {@code bounds}, after clearing all earlier membership. Returns the number of objects that belong to no sector. */
+    /**
+     * Assigns every object to the sectors it overlaps, replacing earlier assignments.
+     *
+     * <p>Returns the number of objects that belong to no sector.
+     *
+     * @param bounds the bounds; must not be {@code null}
+     * @return {@link #assignByBounds} for every object of {@code bounds}, after clearing all
+     *     earlier membership
+     */
     public int assignAll(BoundsArray bounds) {
         clearObjects();
         int unassigned = 0;
@@ -593,18 +780,44 @@ public final class PortalGraph {
         return unassigned;
     }
 
-    /** Re-assigns {@code object} after it moved: removes it everywhere and adds it to the sectors its new bounds overlap. Returns the number of sectors. */
+    /**
+     * Re-assigns {@code object} after it moved: removes it everywhere and adds it to the sectors
+     * its new bounds overlap.
+     *
+     * <p>Returns the number of sectors.
+     *
+     * @param object the object
+     * @param minX the smallest x coordinate
+     * @param minY the smallest y coordinate
+     * @param minZ the smallest z coordinate
+     * @param maxX the largest x coordinate
+     * @param maxY the largest y coordinate
+     * @param maxZ the largest z coordinate
+     * @return the number of sectors
+     */
     public int update(int object, float minX, float minY, float minZ, float maxX, float maxY, float maxZ) {
         remove(object);
         return assignByBounds(object, minX, minY, minZ, maxX, maxY, maxZ);
     }
 
-    /** The number of entries in sector {@code s}: objects that overlap several sectors are counted once per sector. */
+    /**
+     * Counts the entries of a sector; an object that overlaps several sectors is counted once per
+     * sector.
+     *
+     * @param s the sector index
+     * @return the number of entries in sector {@code s}: objects that overlap several sectors are
+     *     counted once per sector
+     */
     public int memberCount(int s) {
         return sectorMembers[s];
     }
 
-    /** Whether {@code object} belongs to at least one sector. */
+    /**
+     * Returns whether {@code object} belongs to at least one sector.
+     *
+     * @param object the object
+     * @return {@code true} if {@code object} belongs to at least one sector
+     */
     public boolean isAssigned(int object) {
         return object >= 0 && (object >>> 6) < assigned.length && (assigned[object >>> 6] & (1L << object)) != 0;
     }
@@ -627,7 +840,9 @@ public final class PortalGraph {
 
     // ------------------------------------------------------------ the builder
 
-    /** Collects sectors and portals; {@link #build()} makes the graph. */
+    /**
+     * Collects sectors and portals; {@link #build()} makes the graph.
+     */
     public static final class Builder {
 
         private final List<float[]> sectorPlanes = new ArrayList<>();
@@ -638,7 +853,16 @@ public final class PortalGraph {
         private Builder() {
         }
 
-        /** Adds an axis-aligned box sector and returns its index. An empty or flat box is rejected. */
+        /**
+         * Adds an axis-aligned box sector and returns its index.
+         *
+         * <p>An empty or flat box is rejected.
+         *
+         * @param box the box; must not be {@code null}
+         * @return its index
+         * @throws IllegalArgumentException if the box does not have a positive extent along every
+         *     axis
+         */
         public int addBox(Aabbf box) {
             if (box.isEmpty() || !(box.maxX() > box.minX()) || !(box.maxY() > box.minY()) || !(box.maxZ() > box.minZ())) {
                 throw new IllegalArgumentException("a sector box needs a positive extent along every axis: " + box);
@@ -653,8 +877,17 @@ public final class PortalGraph {
         }
 
         /**
-         * Adds a convex sector bounded by {@code count} planes ({@code a, b, c, d} quadruples with {@code a x + b y + c z + d >= 0} inside; the normals need not be unit) and returns its
-         * index. At least four planes are needed to enclose a volume.
+         * Adds a convex sector bounded by {@code count} planes ({@code a, b, c, d} quadruples with
+         * {@code a x + b y + c z + d >= 0} inside; the normals need not be unit) and returns its
+         * index.
+         *
+         * <p>At least four planes are needed to enclose a volume.
+         *
+         * @param planes the planes
+         * @param count the number of elements
+         * @return its index
+         * @throws IllegalArgumentException if there are fewer than 4 planes, the array is too short
+         *     or a plane has no normal
          */
         public int addConvex(float[] planes, int count) {
             if (count < 4 || planes.length < 4 * count) {
@@ -678,9 +911,21 @@ public final class PortalGraph {
         }
 
         /**
-         * Adds a portal between sectors {@code a} and {@code b}: the convex planar polygon of {@code count} vertices ({@code x, y, z} triples, either winding) on their shared boundary.
-         * The normal's direction, from {@code a} into {@code b}, is found by testing which side of the polygon each sector lies on; {@link IllegalArgumentException} when that cannot be
+         * Adds a portal between sectors {@code a} and {@code b}: the convex planar polygon of
+         * {@code count} vertices ({@code x, y, z} triples, either winding) on their shared
+         * boundary.
+         *
+         * <p>The normal's direction, from {@code a} into {@code b}, is found by testing which side
+         * of the polygon each sector lies on; {@link IllegalArgumentException} when that cannot be
          * decided (use the overload with the normal). Returns the portal's index.
+         *
+         * @param a the index of the first sector
+         * @param b the index of the second sector
+         * @param polygon the polygon
+         * @param count the number of elements
+         * @return the portal's index
+         * @throws IllegalArgumentException if the side of the portal that sector {@code a} lies on
+         *     cannot be told: give the normal explicitly
          */
         public int addPortal(int a, int b, float[] polygon, int count) {
             double[] n = newell(polygon, count);
@@ -706,7 +951,22 @@ public final class PortalGraph {
             return addPortal(a, b, polygon, count, (float) (s * n[0]), (float) (s * n[1]), (float) (s * n[2]));
         }
 
-        /** {@link #addPortal(int, int, float[], int)} with the normal given: it must point from sector {@code a} into sector {@code b}; it is normalised. */
+        /**
+         * Adds a portal with an explicit normal, which fixes which side counts as front; the normal
+         * is normalised.
+         *
+         * @param a the index of the first sector
+         * @param b the index of the second sector
+         * @param polygon the polygon
+         * @param count the number of elements
+         * @param nx the x component of the normal
+         * @param ny the y component of the normal
+         * @param nz the z component of the normal
+         * @return {@link #addPortal(int, int, float[], int)} with the normal given: it must point
+         *     from sector {@code a} into sector {@code b}; it is normalised
+         * @throws IllegalArgumentException if the sectors are not two different existing sectors,
+         *     or the normal is zero or not perpendicular to the polygon
+         */
         public int addPortal(int a, int b, float[] polygon, int count, float nx, float ny, float nz) {
             int sectors = sectorPlanes.size();
             if (a < 0 || b < 0 || a >= sectors || b >= sectors || a == b) {
@@ -744,9 +1004,15 @@ public final class PortalGraph {
         }
 
         /**
-         * Adds a portal for every pair of box sectors that share part of a face: the overlap of the two faces, a rectangle whose area exceeds {@code tolerance} squared, with the faces
-         * counted as shared when their planes are within {@code tolerance}. Only sectors made by {@link #addBox} take part. Returns the number of portals added. Call it once, after the
-         * boxes: it does not look at portals that were added by hand.
+         * Adds a portal for every pair of box sectors that share part of a face: the overlap of the
+         * two faces, a rectangle whose area exceeds {@code tolerance} squared, with the faces
+         * counted as shared when their planes are within {@code tolerance}.
+         *
+         * <p>Only sectors made by {@link #addBox} take part. Returns the number of portals added.
+         * Call it once, after the boxes: it does not look at portals that were added by hand.
+         *
+         * @param tolerance the tolerance
+         * @return the number of portals added
          */
         public int autoPortals(float tolerance) {
             int added = 0;
@@ -821,7 +1087,14 @@ public final class PortalGraph {
             return new double[] {nx / len, ny / len, nz / len};
         }
 
-        /** Makes the graph: all portals open, no objects assigned. At least one sector is required. */
+        /**
+         * Makes the graph: all portals open, no objects assigned.
+         *
+         * <p>At least one sector is required.
+         *
+         * @return the graph, never {@code null}
+         * @throws IllegalStateException if no sector was added
+         */
         public PortalGraph build() {
             if (sectorPlanes.isEmpty()) {
                 throw new IllegalStateException("a portal graph needs at least one sector");

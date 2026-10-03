@@ -1,6 +1,8 @@
 package vmath.bulk;
 
-/** The two ways of closing gaps in an array of fixed-size elements, shared by the containers. */
+/**
+ * The two ways of closing gaps in an array of fixed-size elements, shared by the containers.
+ */
 final class Compaction {
 
     private Compaction() {
@@ -9,7 +11,8 @@ final class Compaction {
     /**
      * Moves the last element of {@code data[0..size)} into slot {@code i}.
      *
-     * @return the index the moved element had (the old last index), or -1 if {@code i} was the last element and nothing moved
+     * @return the index the moved element had (the old last index), or -1 if {@code i} was the last
+     *     element and nothing moved
      */
     static int swapRemove(float[] data, int stride, int size, int i) {
         int last = size - 1;
@@ -20,7 +23,12 @@ final class Compaction {
         return last;
     }
 
-    /** Keeps the elements whose bit is set in {@code keep}, moving them down in their original order. Returns the new size. */
+    /**
+     * Keeps the elements whose bit is set in {@code keep}, moving them down in their original
+     * order.
+     *
+     * <p>Returns the new size.
+     */
     static int stable(float[] data, int stride, int size, VisibilitySet keep) {
         int out = 0;
         int i = keep.nextSetBit(0);

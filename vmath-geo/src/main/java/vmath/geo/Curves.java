@@ -3,22 +3,42 @@ package vmath.geo;
 import vmath.annotations.Experimental;
 
 /**
- * Parametric curves in 1 to 4 dimensions on plain {@code float[]} data: Bézier curves of any degree, cubic Hermite segments, Catmull-Rom splines (uniform, centripetal or chordal)
- * and uniform cubic B-splines, open or closed. Points are stored as {@code dim} consecutive floats, so a 3D curve is {@code x, y, z, x, y, z, ...}; a result is written to
- * an array at an offset. Evaluation allocates nothing and runs in double precision.
+ * Parametric curves in 1 to 4 dimensions on plain {@code float[]} data: Bézier curves of any
+ * degree, cubic Hermite segments, Catmull-Rom splines (uniform, centripetal or chordal) and uniform
+ * cubic B-splines, open or closed.
+ *
+ * <p>Points are stored as {@code dim} consecutive floats, so a 3D curve is
+ * {@code x, y, z, x, y, z, ...}; a result is written to an array at an offset. Evaluation allocates
+ * nothing and runs in double precision.
  *
  * <ul>
- *   <li>{@link #bezier} evaluates a Bézier curve of degree {@code count - 1} (the Bernstein form, which is stable for the degrees used in practice); {@link #bezierTangent} its derivative
- *       with respect to {@code t}; {@link #bezierSplit} cuts it in two by the algorithm of de Casteljau.</li>
- *   <li>{@link #hermite} and {@link #hermiteTangent}: the cubic through two points with given tangents.</li>
- *   <li>{@link #catmullRom}: the spline that passes through every point of a list; {@code alpha} 0 is the uniform spline, 0.5 the <b>centripetal</b> one (no cusps or loops within a
- *       segment, the usual choice), 1 the chordal one.</li>
- *   <li>{@link #bSpline}: the uniform cubic B-spline, which has continuous second derivatives but only passes near the control points; {@link #bSplineTangent}.</li>
+ *   <li>{@link #bezier} evaluates a Bézier curve of degree {@code count - 1} (the Bernstein form,
+ *       which is stable for the degrees used in practice); {@link #bezierTangent} its derivative
+ *       with respect to {@code t}; {@link #bezierSplit} cuts it in two by the algorithm of de
+ *       Casteljau.</li>
+ *   <li>{@link #hermite} and {@link #hermiteTangent}: the cubic through two points with given
+ *       tangents.</li>
+ *   <li>{@link #catmullRom}: the spline that passes through every point of a list; {@code alpha} 0
+ *       is the uniform spline, 0.5 the <b>centripetal</b> one (no cusps or loops within a segment,
+ *       the usual choice), 1 the chordal one.</li>
+ *   <li>{@link #bSpline}: the uniform cubic B-spline, which has continuous second derivatives but
+ *       only passes near the control points; {@link #bSplineTangent}.</li>
  * </ul>
  *
- * <p>For a speed that does not depend on how the parameter was chosen, measure the curve with {@link ArcLengthTable}.
+ * <p>For a speed that does not depend on how the parameter was chosen, measure the curve with
+ * {@link ArcLengthTable}.
  *
- * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time.
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the
+ * same time.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * float[] controlPoints = {0f, 0f, 1f, 2f, 3f, 2f, 4f, 0f};          // a cubic Bezier curve in 2D: four points
+ * float[] out = new float[2];
+ * Curves.bezier(controlPoints, 0, 4, 2, 0.5, out, 0);                // the point at t = 0.5
+ * Curves.bezierTangent(controlPoints, 0, 4, 2, 0.5, out, 0);         // the derivative there
+ * }</pre>
  */
 @Experimental("NURBS and per-segment tangent access may be added")
 public final class Curves {
@@ -29,8 +49,20 @@ public final class Curves {
     // ------------------------------------------------------------ Bézier
 
     /**
-     * The point of the Bézier curve with the {@code count} control points {@code cp[offset ..]} ({@code dim} floats each) at parameter {@code t}, written to {@code out[outOffset ..]}.
-     * {@code t} is usually in {@code [0, 1]} but any value extrapolates the polynomial. A curve needs at least one control point.
+     * Computes the point of the Bézier curve with the {@code count} control points
+     * {@code cp[offset ..]} ({@code dim} floats each) at parameter {@code t}, written to
+     * {@code out[outOffset ..]}.
+     *
+     * <p>{@code t} is usually in {@code [0, 1]} but any value extrapolates the polynomial. A curve
+     * needs at least one control point.
+     *
+     * @param cp the control points, {@code dim} floats each, starting at {@code offset}
+     * @param offset the index of the first element to read or write
+     * @param count the number of elements
+     * @param dim the dimension
+     * @param t the curve parameter, 0 at the start and 1 at the end
+     * @param out receives the result
+     * @param outOffset the index of the first element written to {@code out}
      */
     public static void bezier(float[] cp, int offset, int count, int dim, double t, float[] out, int outOffset) {
         check(cp, offset, count, dim);
@@ -92,7 +124,20 @@ public final class Curves {
         }
     }
 
-    /** The derivative {@code dB/dt} of the Bézier curve at {@code t}: the curve of degree {@code count - 2} through the scaled differences of the control points. Zero for one point. */
+    /**
+     * Computes the derivative {@code dB/dt} of the Bézier curve at {@code t}: the curve of degree
+     * {@code count - 2} through the scaled differences of the control points.
+     *
+     * <p>Zero for one point.
+     *
+     * @param cp the control points, {@code dim} floats each, starting at {@code offset}
+     * @param offset the index of the first element to read or write
+     * @param count the number of elements
+     * @param dim the dimension
+     * @param t the curve parameter, 0 at the start and 1 at the end
+     * @param out receives the result
+     * @param outOffset the index of the first element written to {@code out}
+     */
     public static void bezierTangent(float[] cp, int offset, int count, int dim, double t, float[] out, int outOffset) {
         check(cp, offset, count, dim);
         int n = count - 1;
@@ -119,8 +164,23 @@ public final class Curves {
     }
 
     /**
-     * Splits the Bézier curve at {@code t} into two curves of the same degree that together trace the original: {@code left} receives the part from 0 to {@code t} and {@code right} the
-     * part from {@code t} to 1, each as {@code count} control points of {@code dim} floats (at the given offsets). The arrays must not overlap {@code cp}'s range.
+     * Splits the Bézier curve at {@code t} into two curves of the same degree that together trace
+     * the original: {@code left} receives the part from 0 to {@code t} and {@code right} the part
+     * from {@code t} to 1, each as {@code count} control points of {@code dim} floats (at the given
+     * offsets).
+     *
+     * <p>The arrays must not overlap {@code cp}'s range.
+     *
+     * @param cp the control points, {@code dim} floats each, starting at {@code offset}
+     * @param offset the index of the first element to read or write
+     * @param count the number of elements
+     * @param dim the dimension
+     * @param t the curve parameter, 0 at the start and 1 at the end
+     * @param left the left
+     * @param leftOffset the left offset
+     * @param right the right
+     * @param rightOffset the right offset
+     * @throws IllegalArgumentException if the output arrays are too small for the points
      */
     public static void bezierSplit(float[] cp, int offset, int count, int dim, double t, float[] left, int leftOffset, float[] right, int rightOffset) {
         check(cp, offset, count, dim);
@@ -149,8 +209,17 @@ public final class Curves {
     // ------------------------------------------------------------ Hermite
 
     /**
-     * The cubic Hermite curve at {@code t} through {@code p0} (at 0) and {@code p1} (at 1) with tangents {@code m0} and {@code m1} (derivatives with respect to {@code t}). The data
-     * are {@code p0, m0, p1, m1} ({@code 4 * dim} floats) starting at {@code offset}.
+     * Computes the cubic Hermite curve at {@code t} through {@code p0} (at 0) and {@code p1} (at 1)
+     * with tangents {@code m0} and {@code m1} (derivatives with respect to {@code t}).
+     *
+     * <p>The data are {@code p0, m0, p1, m1} ({@code 4 * dim} floats) starting at {@code offset}.
+     *
+     * @param data the data
+     * @param offset the index of the first element to read or write
+     * @param dim the dimension
+     * @param t the curve parameter, 0 at the start and 1 at the end
+     * @param out receives the result
+     * @param outOffset the index of the first element written to {@code out}
      */
     public static void hermite(float[] data, int offset, int dim, double t, float[] out, int outOffset) {
         check(data, offset, 4, dim);
@@ -161,7 +230,16 @@ public final class Curves {
         }
     }
 
-    /** The derivative with respect to {@code t} of the {@link #hermite} curve. */
+    /**
+     * Computes the derivative with respect to {@code t} of the {@link #hermite} curve.
+     *
+     * @param data the data
+     * @param offset the index of the first element to read or write
+     * @param dim the dimension
+     * @param t the curve parameter, 0 at the start and 1 at the end
+     * @param out receives the result
+     * @param outOffset the index of the first element written to {@code out}
+     */
     public static void hermiteTangent(float[] data, int offset, int dim, double t, float[] out, int outOffset) {
         check(data, offset, 4, dim);
         double t2 = t * t;
@@ -174,9 +252,18 @@ public final class Curves {
     // ------------------------------------------------------------ Catmull-Rom
 
     /**
-     * The number of parameter units of a Catmull-Rom or B-spline through {@code count} points: the parameter {@code u} of {@link #catmullRom} runs from 0 to this value. An open
-     * Catmull-Rom spline has {@code count - 1} segments (it passes through every point), a closed one {@code count}; an open B-spline has {@code count - 3} (it needs 4 points) and a closed
-     * one {@code count}.
+     * Computes how many curve segments a spline through a number of points has, which bounds the
+     * spline parameter.
+     *
+     * <p>An open Catmull-Rom spline has {@code count - 1} segments (it passes through every point),
+     * a closed one {@code count}; an open B-spline has {@code count - 3} (it needs 4 points) and a
+     * closed one {@code count}.
+     *
+     * @param count the number of elements
+     * @param closed whether the shape is closed
+     * @param bSpline whether b spline
+     * @return the number of parameter units of a Catmull-Rom or B-spline through {@code count}
+     *     points: the parameter {@code u} of {@link #catmullRom} runs from 0 to this value
      */
     public static int segments(int count, boolean closed, boolean bSpline) {
         if (closed) {
@@ -186,9 +273,24 @@ public final class Curves {
     }
 
     /**
-     * The point at parameter {@code u} of the Catmull-Rom spline through the {@code count} points {@code pts[offset ..]}: segment {@code i} runs from point {@code i} (at {@code u = i})
-     * to point {@code i + 1}, {@code u} in {@code [0, segments(count, closed, false)]}. An open spline repeats the end points as the missing neighbours (so its end tangents point at
-     * the next point); a closed one wraps around. {@code alpha} chooses the parametrization: 0 uniform, 0.5 centripetal, 1 chordal. Needs at least 2 points.
+     * Computes the point at parameter {@code u} of the Catmull-Rom spline through the {@code count}
+     * points {@code pts[offset ..]}: segment {@code i} runs from point {@code i} (at {@code u = i})
+     * to point {@code i + 1}, {@code u} in {@code [0, segments(count, closed, false)]}.
+     *
+     * <p>An open spline repeats the end points as the missing neighbours (so its end tangents point
+     * at the next point); a closed one wraps around. {@code alpha} chooses the parametrization: 0
+     * uniform, 0.5 centripetal, 1 chordal. Needs at least 2 points.
+     *
+     * @param pts the pts
+     * @param offset the index of the first element to read or write
+     * @param count the number of elements
+     * @param dim the dimension
+     * @param closed whether the shape is closed
+     * @param alpha the alpha
+     * @param u the spline parameter, counted in segments along the spline
+     * @param out receives the result
+     * @param outOffset the index of the first element written to {@code out}
+     * @throws IllegalArgumentException if {@code count} is below 2
      */
     public static void catmullRom(float[] pts, int offset, int count, int dim, boolean closed, double alpha, double u, float[] out, int outOffset) {
         check(pts, offset, count, dim);
@@ -239,16 +341,42 @@ public final class Curves {
     // ------------------------------------------------------------ B-spline
 
     /**
-     * The point at parameter {@code u} of the uniform cubic B-spline with the control points {@code pts[offset ..]}: segment {@code i} (for {@code u} from {@code i} to {@code i + 1}) uses control
-     * points {@code i .. i + 3}, {@code u} in {@code [0, segments(count, closed, true)]}. The curve is smooth (continuous second derivative) but passes near, not through, the control
-     * points: at each knot it is the weighted mean {@code (P[i] + 4 P[i + 1] + P[i + 2]) / 6}. A closed spline wraps around and needs at least 3 points; an open one needs 4.
+     * Computes the point at parameter {@code u} of the uniform cubic B-spline with the control
+     * points {@code pts[offset ..]}: segment {@code i} (for {@code u} from {@code i} to
+     * {@code i + 1}) uses control points {@code i .. i + 3}, {@code u} in
+     * {@code [0, segments(count, closed, true)]}.
+     *
+     * <p>The curve is smooth (continuous second derivative) but passes near, not through, the
+     * control points: at each knot it is the weighted mean
+     * {@code (P[i] + 4 P[i + 1] + P[i + 2]) / 6}. A closed spline wraps around and needs at least 3
+     * points; an open one needs 4.
+     *
+     * @param pts the pts
+     * @param offset the index of the first element to read or write
+     * @param count the number of elements
+     * @param dim the dimension
+     * @param closed whether the shape is closed
+     * @param u the spline parameter, counted in segments along the spline
+     * @param out receives the result
+     * @param outOffset the index of the first element written to {@code out}
      */
     public static void bSpline(float[] pts, int offset, int count, int dim, boolean closed, double u, float[] out, int outOffset) {
         check(pts, offset, count, dim);
         bSplineEval(pts, offset, count, dim, closed, u, out, outOffset, false);
     }
 
-    /** The derivative with respect to {@code u} of the {@link #bSpline} curve. */
+    /**
+     * Computes the derivative with respect to {@code u} of the {@link #bSpline} curve.
+     *
+     * @param pts the pts
+     * @param offset the index of the first element to read or write
+     * @param count the number of elements
+     * @param dim the dimension
+     * @param closed whether the shape is closed
+     * @param u the spline parameter, counted in segments along the spline
+     * @param out receives the result
+     * @param outOffset the index of the first element written to {@code out}
+     */
     public static void bSplineTangent(float[] pts, int offset, int count, int dim, boolean closed, double u, float[] out, int outOffset) {
         check(pts, offset, count, dim);
         bSplineEval(pts, offset, count, dim, closed, u, out, outOffset, true);

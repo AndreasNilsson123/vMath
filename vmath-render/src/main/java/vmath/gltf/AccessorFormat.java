@@ -1,6 +1,9 @@
 package vmath.gltf;
 
-/** The accessor component types and element layouts of glTF 2.0, and the conversion of one stored component to a float. */
+/**
+ * The accessor component types and element layouts of glTF 2.0, and the conversion of one stored
+ * component to a float.
+ */
 final class AccessorFormat {
 
     private AccessorFormat() {
@@ -40,7 +43,9 @@ final class AccessorFormat {
         };
     }
 
-    /** Bytes of one element; matrix columns are padded to a multiple of 4 bytes. */
+    /**
+     * Bytes of one element; matrix columns are padded to a multiple of 4 bytes.
+     */
     static int elementBytes(String type, int compSize) {
         int rows = matrixRows(type);
         if (rows == 0) {
@@ -50,7 +55,9 @@ final class AccessorFormat {
         return column * rows;
     }
 
-    /** Byte offset of component {@code c} inside an element. */
+    /**
+     * Byte offset of component {@code c} inside an element.
+     */
     static int componentOffset(String type, int compSize, int c) {
         int rows = matrixRows(type);
         if (rows == 0) {

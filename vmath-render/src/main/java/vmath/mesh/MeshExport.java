@@ -8,38 +8,78 @@ import vmath.pack.Quantizer;
 import vmath.pack.UvQuantizer;
 
 /**
- * Writes a {@link Mesh} into GPU-ready buffers: interleaved vertices as described by a {@link VertexLayout}, and 16- or 32-bit indices.
- * Everything goes straight from the mesh's arrays into a {@link MemorySegment} (use {@link GpuWriter#of(java.nio.ByteBuffer)} to wrap a
- * {@code ByteBuffer}), in native byte order, with no per-vertex objects. A stream the layout asks for but the mesh lacks is an error,
- * not silently zero.
+ * Writes a {@link Mesh} into GPU-ready buffers: interleaved vertices as described by a
+ * {@link VertexLayout}, and 16- or 32-bit indices.
  *
- * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time. The arrays and buffers you pass in are
- * not synchronised, so two threads must not write the same one.
+ * <p>Everything goes straight from the mesh's arrays into a {@link MemorySegment} (use
+ * {@link GpuWriter#of(java.nio.ByteBuffer)} to wrap a {@code ByteBuffer}), in native byte order,
+ * with no per-vertex objects. A stream the layout asks for but the mesh lacks is an error, not
+ * silently zero.
+ *
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the
+ * same time. The arrays and buffers you pass in are not synchronised, so two threads must not write
+ * the same one.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * Mesh mesh = Primitives.box(1f, 1f, 1f);
+ * VertexLayout layout = VertexLayout.builder().position().normalOct16().uvHalf(0).build();
+ * MemorySegment vertices = Arena.ofAuto().allocate(MeshExport.vertexBytes(mesh, layout));
+ * MeshExport.writeVertices(mesh, layout, vertices, 0);
+ * MemorySegment indices = Arena.ofAuto().allocate(MeshExport.indexBytes16(mesh));
+ * MeshExport.writeIndices16(mesh, indices, 0);
+ * }</pre>
  */
 public final class MeshExport {
 
     private MeshExport() {
     }
 
-    /** Bytes {@link #writeVertices} will write for this mesh. */
+    /**
+     * Computes the size of the vertex buffer for a layout, so that a buffer of the right size can
+     * be allocated before writing.
+     *
+     * @param mesh the mesh; must not be {@code null}
+     * @param layout the GPU layout; must not be {@code null}
+     * @return bytes {@link #writeVertices} will write for this mesh
+     */
     public static long vertexBytes(Mesh mesh, VertexLayout layout) {
         return (long) mesh.vertexCount() * layout.stride();
     }
 
-    /** Bytes {@link #writeIndices32} writes for this mesh. */
+    /**
+     * Computes the size of an index buffer with 32-bit indices.
+     *
+     * @param mesh the mesh; must not be {@code null}
+     * @return bytes {@link #writeIndices32} writes for this mesh
+     */
     public static long indexBytes32(Mesh mesh) {
         return 4L * mesh.indexCount();
     }
 
-    /** Bytes {@link #writeIndices16} writes for this mesh. */
+    /**
+     * Computes the size of an index buffer with 16-bit indices; the mesh must have no more vertices
+     * than that can address.
+     *
+     * @param mesh the mesh; must not be {@code null}
+     * @return bytes {@link #writeIndices16} writes for this mesh
+     */
     public static long indexBytes16(Mesh mesh) {
         return 2L * mesh.indexCount();
     }
 
     /**
-     * The quantizer {@link #writeVertices} uses for a {@link VertexLayout.Format#POSITION_UNORM16X4} attribute: unorm16 over the mesh's bounding box. Its
-     * {@code dequantizationMatrix()} turns the normalized values the GPU reads back into model space.
+     * Constructs the quantizer that the export uses for packed positions, so that a shader can
+     * decode them with the matching matrix.
      *
+     * <p>Its {@code dequantizationMatrix()} turns the normalized values the GPU reads back into
+     * model space.
+     *
+     * @param mesh the mesh; must not be {@code null}
+     * @return the quantizer {@link #writeVertices} uses for a
+     *     {@link VertexLayout.Format#POSITION_UNORM16X4} attribute: unorm16 over the mesh's
+     *     bounding box
      * @throws IllegalStateException if the mesh has no vertices
      */
     public static Quantizer positionQuantizer(Mesh mesh) {
@@ -50,15 +90,35 @@ public final class MeshExport {
     }
 
     /**
-     * The quantizer {@link #writeVertices} uses for a {@link VertexLayout.Format#UV_UNORM16X2} attribute of the given set: unorm16 over the smallest rectangle around
-     * its texture coordinates. {@code minU() + sizeU() * code / 65535} restores a coordinate (in the shader: the normalized value times the size plus the minimum).
+     * Constructs the quantizer that the export uses for packed texture coordinates of one set, so
+     * that a shader can decode them.
+     *
+     * <p>{@code minU() + sizeU() * code / 65535} restores a coordinate (in the shader: the
+     * normalized value times the size plus the minimum).
+     *
+     * @param mesh the mesh; must not be {@code null}
+     * @param set the set
+     * @return the quantizer {@link #writeVertices} uses for a
+     *     {@link VertexLayout.Format#UV_UNORM16X2} attribute of the given set: unorm16 over the
+     *     smallest rectangle around its texture coordinates
      */
     public static UvQuantizer uvQuantizer(Mesh mesh, int set) {
         require(mesh.hasUvs(set), "uv set " + set);
         return UvQuantizer.fit(mesh.uvs(set), mesh.vertexCount(), 16);
     }
 
-    /** Writes every vertex, interleaved, starting at {@code offset}. Returns the offset just past the last byte written. */
+    /**
+     * Writes every vertex, interleaved, starting at {@code offset}.
+     *
+     * <p>Returns the offset just past the last byte written.
+     *
+     * @param mesh the mesh; must not be {@code null}
+     * @param layout the GPU layout; must not be {@code null}
+     * @param dst receives the result; must not be {@code null}
+     * @param offset the index of the first element to read or write
+     * @return the offset just past the last byte written
+     * @throws IllegalArgumentException if the destination is too small
+     */
     public static long writeVertices(Mesh mesh, VertexLayout layout, MemorySegment dst, long offset) {
         int stride = layout.stride();
         for (VertexLayout.Attribute a : layout.attributes()) {
@@ -128,7 +188,17 @@ public final class MeshExport {
         return offset + (long) mesh.vertexCount() * stride;
     }
 
-    /** Writes the triangle indices as 32-bit integers. Returns the offset just past the last byte written. */
+    /**
+     * Writes the triangle indices as 32-bit integers.
+     *
+     * <p>Returns the offset just past the last byte written.
+     *
+     * @param mesh the mesh; must not be {@code null}
+     * @param dst receives the result; must not be {@code null}
+     * @param offset the index of the first element to read or write
+     * @return the offset just past the last byte written
+     * @throws IllegalArgumentException if the destination is too small
+     */
     public static long writeIndices32(Mesh mesh, MemorySegment dst, long offset) {
         if (dst.byteSize() < offset + indexBytes32(mesh)) {
             throw new IllegalArgumentException("destination too small: need " + indexBytes32(mesh) + " bytes from " + offset);
@@ -141,8 +211,16 @@ public final class MeshExport {
     }
 
     /**
-     * Writes the triangle indices as unsigned 16-bit integers (two bytes each). Throws if the mesh has more than 65536 vertices,
-     * because their indices would not fit.
+     * Writes the triangle indices as unsigned 16-bit integers (two bytes each).
+     *
+     * <p>Throws if the mesh has more than 65536 vertices, because their indices would not fit.
+     *
+     * @param mesh the mesh; must not be {@code null}
+     * @param dst receives the result; must not be {@code null}
+     * @param offset the index of the first element to read or write
+     * @return the byte offset just after the last index written
+     * @throws IllegalArgumentException if the mesh has more vertices than 16-bit indices can
+     *     address, or the destination is too small
      */
     public static long writeIndices16(Mesh mesh, MemorySegment dst, long offset) {
         if (mesh.vertexCount() > 65536) {

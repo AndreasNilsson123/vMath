@@ -4,19 +4,35 @@ import java.util.Arrays;
 import vmath.bulk.BoundsArray;
 
 /**
- * A bounding-volume hierarchy over the boxes of a {@link BoundsArray}, built with the binned surface-area heuristic.
+ * A bounding-volume hierarchy over the boxes of a {@link BoundsArray}, built with the binned
+ * surface-area heuristic.
  *
- * <p><b>Layout.</b> Nodes live in parallel arrays in depth-first order, so the left child of an internal node
- * {@code i} is always {@code i + 1} and only the right child is stored. Each node also records the contiguous
- * range of {@link #order()} that holds all primitives beneath it, which lets a query accept a whole subtree at once.
- * There are no node objects: traversal reads {@code float[]} and {@code int[]} only, and a node costs 24 bytes of
- * bounds plus 12 bytes of links.
+ * <p><b>Layout.</b> Nodes live in parallel arrays in depth-first order, so the left child of an
+ * internal node {@code i} is always {@code i + 1} and only the right child is stored. Each node
+ * also records the contiguous range of {@link #order()} that holds all primitives beneath it, which
+ * lets a query accept a whole subtree at once. There are no node objects: traversal reads
+ * {@code float[]} and {@code int[]} only, and a node costs 24 bytes of bounds plus 12 bytes of
+ * links.
  *
- * <p><b>Updates.</b> A moved object only needs {@link #refit}, an O(n) bottom-up bounds recomputation that keeps the
- * topology. Rebuild when objects have moved far enough that quality ({@link #sahCost}) degrades.
+ * <p><b>Updates.</b> A moved object only needs {@link #refit}, an O(n) bottom-up bounds
+ * recomputation that keeps the topology. Rebuild when objects have moved far enough that quality
+ * ({@link #sahCost}) degrades.
  *
- * <p>Instances are immutable except for {@link #refit}, and safe to query from many threads, each with its own
- * {@link BvhQuery}.
+ * <p>Instances are immutable except for {@link #refit}, and safe to query from many threads, each
+ * with its own {@link BvhQuery}.
+ *
+ * <p><b>Thread safety.</b> Immutable except for {@link #refit}. It is safe to query from many
+ * threads, each with its own {@link BvhQuery}, as long as nobody calls {@code refit} meanwhile.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * BoundsArray bounds = new BoundsArray(1000);
+ * bounds.add(-1f, -1f, -1f, 1f, 1f, 1f);
+ * StaticBvh bvh = StaticBvh.build(bounds);                                    // binned SAH, at most 4 primitives per leaf
+ * bounds.set(0, Aabbf.of(new Vec3f(5f, 0f, 0f), new Vec3f(6f, 1f, 1f)));
+ * bvh.refit(bounds);                                                          // the boxes moved, the tree shape stays
+ * }</pre>
  */
 public final class StaticBvh {
 
@@ -43,52 +59,105 @@ public final class StaticBvh {
 
     // ------------------------------------------------------------------ accessors
 
-    /** The number of nodes; node 0 is the root. Zero for a tree over no primitives. */
+    /**
+     * Counts the nodes of the tree, where the root is node zero.
+     *
+     * <p>Zero for a tree over no primitives.
+     *
+     * @return the number of nodes; node 0 is the root
+     */
     public int nodeCount() {
         return nodeCount;
     }
 
-    /** Number of primitives the tree was built over. */
+    /**
+     * Counts the primitives that the tree was built over.
+     *
+     * @return number of primitives the tree was built over
+     */
     public int primitiveCount() {
         return order.length;
     }
 
-    /** The largest number of primitives a leaf may hold, as given to the builder. */
+    /**
+     * Exposes the largest number of primitives that a leaf may hold.
+     *
+     * @return the largest number of primitives a leaf may hold, as given to the builder
+     */
     public int maxLeafSize() {
         return maxLeafSize;
     }
 
-    /** Whether {@code node} is a leaf; a leaf holds {@code primitiveCount(node)} primitives starting at {@code firstPrimitive(node)} in {@link #order()}. */
+    /**
+     * Returns whether {@code node} is a leaf; a leaf holds {@code primitiveCount(node)} primitives
+     * starting at {@code firstPrimitive(node)} in {@link #order()}.
+     *
+     * @param node the node index
+     * @return {@code true} if {@code node} is a leaf; a leaf holds {@code primitiveCount(node)}
+     *     primitives starting at {@code firstPrimitive(node)} in {@link #order()}
+     */
     public boolean isLeaf(int node) {
         return right[node] == 0;
     }
 
-    /** Right child of an internal node (its left child is {@code node + 1}). */
+    /**
+     * Reads the right child of an internal node; the left child directly follows its parent in
+     * memory.
+     *
+     * @param node the node index
+     * @return right child of an internal node (its left child is {@code node + 1})
+     */
     public int rightChild(int node) {
         return right[node];
     }
 
-    /** Start of the node's primitives in {@link #order()}. */
+    /**
+     * Reads where the primitives of a node start in the ordering.
+     *
+     * @param node the node index
+     * @return start of the node's primitives in {@link #order()}
+     */
     public int firstPrimitive(int node) {
         return first[node];
     }
 
-    /** Number of primitives under the node. */
+    /**
+     * Counts the primitives under a node.
+     *
+     * @param node the node index
+     * @return number of primitives under the node
+     */
     public int primitiveCount(int node) {
         return count[node];
     }
 
-    /** Primitive indices arranged so that every node's primitives are contiguous. Live array, do not modify. */
+    /**
+     * Exposes the primitive order in which every node's primitives are contiguous, as a live array.
+     *
+     * <p>Live array, do not modify.
+     *
+     * @return primitive indices arranged so that every node's primitives are contiguous
+     */
     public int[] order() {
         return order;
     }
 
-    /** Node bounds, six floats per node: {@code minX, minY, minZ, maxX, maxY, maxZ}. Live array, do not modify. */
+    /**
+     * Exposes the node bounds as a flat live array, six floats per node.
+     *
+     * <p>Live array, do not modify.
+     *
+     * @return node bounds, six floats per node: {@code minX, minY, minZ, maxX, maxY, maxZ}
+     */
     public float[] nodeBounds() {
         return nodeBounds;
     }
 
-    /** Longest root-to-leaf path, in nodes. */
+    /**
+     * Measures the depth of the tree, which bounds the traversal stack.
+     *
+     * @return longest root-to-leaf path, in nodes
+     */
     public int depth() {
         int[] depthOf = new int[nodeCount];
         int max = 0;
@@ -104,9 +173,14 @@ public final class StaticBvh {
     }
 
     /**
-     * Expected cost of a random ray query relative to the root: the sum of node surface areas weighted by cost
-     * (1 per node visited, 1 per primitive test in a leaf), divided by the root area. Lower is better; compare it
-     * before and after {@link #refit} to decide when to rebuild.
+     * Computes the surface area heuristic cost of the tree, a quality measure that predicts the
+     * cost of random ray queries.
+     *
+     * <p>Lower is better; compare it before and after {@link #refit} to decide when to rebuild.
+     *
+     * @return expected cost of a random ray query relative to the root: the sum of node surface
+     *     areas weighted by cost (1 per node visited, 1 per primitive test in a leaf), divided by
+     *     the root area
      */
     public float sahCost() {
         if (nodeCount == 0) {
@@ -127,8 +201,12 @@ public final class StaticBvh {
     // ------------------------------------------------------------------ refit
 
     /**
-     * Recomputes every node's bounds from {@code bounds} without changing the tree shape. The array must have the
-     * same size as when the tree was built.
+     * Recomputes every node's bounds from {@code bounds} without changing the tree shape.
+     *
+     * <p>The array must have the same size as when the tree was built.
+     *
+     * @param bounds the bounds; must not be {@code null}
+     * @throws IllegalArgumentException if {@code bounds} does not have the size of the build
      */
     public void refit(BoundsArray bounds) {
         if (bounds.size() != order.length) {
@@ -170,15 +248,29 @@ public final class StaticBvh {
 
     // ------------------------------------------------------------------ build
 
-    /** Builds with leaves of at most 4 primitives. */
+    /**
+     * Builds with leaves of at most 4 primitives.
+     *
+     * @param bounds the bounds; must not be {@code null}
+     * @return the tree, never {@code null}
+     */
     public static StaticBvh build(BoundsArray bounds) {
         return build(bounds, 4);
     }
 
     /**
-     * Top-down binned SAH build: at each node the centroids are binned along their widest axis into 16 bins, and the
-     * split plane with the lowest surface-area cost wins. O(n log n) time; allocates the result arrays plus O(n)
-     * scratch, so build outside the frame loop.
+     * Builds the tree top-down with the binned surface area heuristic: centroids are binned along
+     * the widest axis and the split with the lowest cost wins; build time is roughly linear times
+     * logarithmic in the primitive count.
+     *
+     * <p>O(n log n) time; allocates the result arrays plus O(n) scratch, so build outside the frame
+     * loop.
+     *
+     * @param bounds the bounds; must not be {@code null}
+     * @param maxLeafSize the max leaf size
+     * @return top-down binned SAH build: at each node the centroids are binned along their widest
+     *     axis into 16 bins, and the split plane with the lowest surface-area cost wins
+     * @throws IllegalArgumentException if {@code maxLeafSize} is below 1
      */
     public static StaticBvh build(BoundsArray bounds, int maxLeafSize) {
         if (maxLeafSize < 1) {
@@ -393,7 +485,9 @@ public final class StaticBvh {
         return area(b[o], b[o + 1], b[o + 2], b[o + 3], b[o + 4], b[o + 5]);
     }
 
-    /** Surface area; zero for an empty box. */
+    /**
+     * Surface area; zero for an empty box.
+     */
     static float area(float x0, float y0, float z0, float x1, float y1, float z1) {
         float dx = x1 - x0, dy = y1 - y0, dz = z1 - z0;
         if (dx < 0f || dy < 0f || dz < 0f) {

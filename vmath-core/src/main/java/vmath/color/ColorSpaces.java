@@ -4,22 +4,41 @@ import vmath.annotations.Experimental;
 import vmath.core.Vec3f;
 
 /**
- * Conversions between linear sRGB (the RGB of lighting, with Rec. 709 primaries) and the colour models artists and gradients use. Every conversion writes its three
- * results to {@code out[0..2]} (no allocation), and has a {@link Vec3f} overload for convenience.
+ * Conversions between linear sRGB (the RGB of lighting, with Rec. 709 primaries) and the colour
+ * models artists and gradients use.
+ *
+ * <p>Every conversion writes its three results to {@code out[0..2]} (no allocation), and has a
+ * {@link Vec3f} overload for convenience.
  *
  * <ul>
- *   <li><b>HSV and HSL</b>: hue in degrees {@code [0, 360)}, saturation and value or lightness in {@code [0, 1]}. They are conveniences of the encoded sRGB cube, not
- *       perceptual: feed them encoded RGB if you want what a colour picker shows. Inputs above 1 (HDR) are accepted and give values above 1 in {@code v}.</li>
- *   <li><b>Oklab</b> (Björn Ottosson, 2020): a perceptually uniform space, taking and returning <em>linear</em> sRGB. {@code L} is lightness in {@code [0, 1]} for
- *       displayable colours, {@code a} (green to red) and {@code b} (blue to yellow) are about {@code [-0.4, 0.4]}. Equal steps in Oklab look like equal steps, so mix
- *       and make gradients here ({@link #mixOklab}), not in RGB.</li>
+ *   <li><b>HSV and HSL</b>: hue in degrees {@code [0, 360)}, saturation and value or lightness in
+ *       {@code [0, 1]}. They are conveniences of the encoded sRGB cube, not perceptual: feed them
+ *       encoded RGB if you want what a colour picker shows. Inputs above 1 (HDR) are accepted and
+ *       give values above 1 in {@code v}.</li>
+ *   <li><b>Oklab</b> (Björn Ottosson, 2020): a perceptually uniform space, taking and returning
+ *       <em>linear</em> sRGB. {@code L} is lightness in {@code [0, 1]} for displayable colours,
+ *       {@code a} (green to red) and {@code b} (blue to yellow) are about {@code [-0.4, 0.4]}.
+ *       Equal steps in Oklab look like equal steps, so mix and make gradients here
+ *       ({@link #mixOklab}), not in RGB.</li>
  *   <li><b>Oklch</b>: Oklab in polar form, chroma {@code C} and hue in degrees.</li>
  * </ul>
  *
- * <p>Oklab and Oklch values outside the sRGB gamut give linear RGB components outside {@code [0, 1]}; clamp them (or reduce the chroma) before display.
+ * <p>Oklab and Oklch values outside the sRGB gamut give linear RGB components outside
+ * {@code [0, 1]}; clamp them (or reduce the chroma) before display.
  *
- * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time. The arrays and buffers you pass in are
- * not synchronised, so two threads must not write the same one.
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the
+ * same time. The arrays and buffers you pass in are not synchronised, so two threads must not write
+ * the same one.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * float[] hsv = new float[3];
+ * ColorSpaces.rgbToHsv(1f, 0.5f, 0f, hsv);                     // hue in degrees
+ * Vec3f lab = ColorSpaces.linearSrgbToOklab(new Vec3f(0.2f, 0.5f, 0.8f));
+ * float[] mixed = new float[3];
+ * ColorSpaces.mixOklab(1f, 0f, 0f, 0f, 0f, 1f, 0.5f, mixed);   // red to blue, perceptually
+ * }</pre>
  */
 @Experimental("the set of helpers may grow")
 public final class ColorSpaces {
@@ -29,19 +48,44 @@ public final class ColorSpaces {
 
     // ---------------------------------------------------------------- luminance
 
-    /** The relative luminance (the Y of CIE XYZ) of a linear sRGB colour: {@code 0.2126 r + 0.7152 g + 0.0722 b}. */
+    /**
+     * Computes the luminance as the dot product of the colour with the Rec. 709 (sRGB) primaries;
+     * the input must be linear, not gamma-encoded.
+     *
+     * @param r the red component of the colour
+     * @param g the green component of the colour
+     * @param b the blue component of the colour
+     * @return the relative luminance (the Y of CIE XYZ) of a linear sRGB colour:
+     *     {@code 0.2126 r + 0.7152 g + 0.0722 b}
+     */
     public static float luminance(float r, float g, float b) {
         return 0.2126f * r + 0.7152f * g + 0.0722f * b;
     }
 
-    /** The relative luminance of a linear sRGB colour, as {@link #luminance(float, float, float)}. */
+    /**
+     * Computes the luminance of a colour held in a vector; a convenience for the three-component
+     * form that does the same arithmetic.
+     *
+     * @param linearRgb the linear rgb; must not be {@code null}
+     * @return the relative luminance of a linear sRGB colour, as
+     *     {@link #luminance(float, float, float)}
+     */
     public static float luminance(Vec3f linearRgb) {
         return luminance(linearRgb.x(), linearRgb.y(), linearRgb.z());
     }
 
     // ---------------------------------------------------------------- HSV and HSL
 
-    /** RGB to HSV: {@code out = (hue in degrees, saturation, value)}. A grey has hue 0 and saturation 0. */
+    /**
+     * Converts RGB to HSV: {@code out = (hue in degrees, saturation, value)}.
+     *
+     * <p>A grey has hue 0 and saturation 0.
+     *
+     * @param r the red component of the colour
+     * @param g the green component of the colour
+     * @param b the blue component of the colour
+     * @param out receives the result in {@code [0, 3)}
+     */
     public static void rgbToHsv(float r, float g, float b, float[] out) {
         float max = Math.max(r, Math.max(g, b)), min = Math.min(r, Math.min(g, b));
         float chroma = max - min;
@@ -50,13 +94,28 @@ public final class ColorSpaces {
         out[2] = max;
     }
 
-    /** HSV to RGB; the hue is taken modulo 360 degrees, saturation and value are used as given. */
+    /**
+     * Converts HSV to RGB; the hue is taken modulo 360 degrees, saturation and value are used as
+     * given.
+     *
+     * @param h the hue in degrees (taken modulo 360)
+     * @param s the saturation
+     * @param v the value (brightness)
+     * @param out receives the result
+     */
     public static void hsvToRgb(float h, float s, float v, float[] out) {
         float c = v * s;
         hueToRgb(h, c, v - c, out);
     }
 
-    /** RGB to HSL: {@code out = (hue in degrees, saturation, lightness)}. */
+    /**
+     * Converts RGB to HSL: {@code out = (hue in degrees, saturation, lightness)}.
+     *
+     * @param r the red component of the colour
+     * @param g the green component of the colour
+     * @param b the blue component of the colour
+     * @param out receives the result in {@code [0, 3)}
+     */
     public static void rgbToHsl(float r, float g, float b, float[] out) {
         float max = Math.max(r, Math.max(g, b)), min = Math.min(r, Math.min(g, b));
         float chroma = max - min;
@@ -66,7 +125,14 @@ public final class ColorSpaces {
         out[2] = l;
     }
 
-    /** HSL to RGB; the hue is taken modulo 360 degrees. */
+    /**
+     * Converts HSL to RGB; the hue is taken modulo 360 degrees.
+     *
+     * @param h the hue in degrees (taken modulo 360)
+     * @param s the saturation
+     * @param l the lightness
+     * @param out receives the result
+     */
     public static void hslToRgb(float h, float s, float l, float[] out) {
         float c = (1f - Math.abs(2f * l - 1f)) * s;
         hueToRgb(h, c, l - 0.5f * c, out);
@@ -136,28 +202,56 @@ public final class ColorSpaces {
         out[2] = b + m;
     }
 
-    /** RGB to HSV as a vector {@code (hue in degrees, saturation, value)}; allocates the result, the array form does not. */
+    /**
+     * Converts a colour from RGB to HSV through the vector form; allocates a result, so hot loops
+     * should use the array form.
+     *
+     * @param rgb the rgb; must not be {@code null}
+     * @return RGB to HSV as a vector {@code (hue in degrees, saturation, value)}; allocates the
+     *     result, the array form does not
+     */
     public static Vec3f rgbToHsv(Vec3f rgb) {
         float[] o = new float[3];
         rgbToHsv(rgb.x(), rgb.y(), rgb.z(), o);
         return new Vec3f(o[0], o[1], o[2]);
     }
 
-    /** HSV (hue in degrees, saturation, value) to RGB as a vector; allocates the result, the array form does not. */
+    /**
+     * Converts a colour from HSV to RGB through the vector form; allocates a result, so hot loops
+     * should use the array form.
+     *
+     * @param hsv the hsv; must not be {@code null}
+     * @return HSV (hue in degrees, saturation, value) to RGB as a vector; allocates the result, the
+     *     array form does not
+     */
     public static Vec3f hsvToRgb(Vec3f hsv) {
         float[] o = new float[3];
         hsvToRgb(hsv.x(), hsv.y(), hsv.z(), o);
         return new Vec3f(o[0], o[1], o[2]);
     }
 
-    /** RGB to HSL as a vector {@code (hue in degrees, saturation, lightness)}; allocates the result, the array form does not. */
+    /**
+     * Converts a colour from RGB to HSL through the vector form; allocates a result, so hot loops
+     * should use the array form.
+     *
+     * @param rgb the rgb; must not be {@code null}
+     * @return RGB to HSL as a vector {@code (hue in degrees, saturation, lightness)}; allocates the
+     *     result, the array form does not
+     */
     public static Vec3f rgbToHsl(Vec3f rgb) {
         float[] o = new float[3];
         rgbToHsl(rgb.x(), rgb.y(), rgb.z(), o);
         return new Vec3f(o[0], o[1], o[2]);
     }
 
-    /** HSL (hue in degrees, saturation, lightness) to RGB as a vector; allocates the result, the array form does not. */
+    /**
+     * Converts a colour from HSL to RGB through the vector form; allocates a result, so hot loops
+     * should use the array form.
+     *
+     * @param hsl the hsl; must not be {@code null}
+     * @return HSL (hue in degrees, saturation, lightness) to RGB as a vector; allocates the result,
+     *     the array form does not
+     */
     public static Vec3f hslToRgb(Vec3f hsl) {
         float[] o = new float[3];
         hslToRgb(hsl.x(), hsl.y(), hsl.z(), o);
@@ -166,7 +260,14 @@ public final class ColorSpaces {
 
     // ---------------------------------------------------------------- Oklab
 
-    /** Linear sRGB to Oklab: {@code out = (L, a, b)}. */
+    /**
+     * Converts linear sRGB to Oklab: {@code out = (L, a, b)}.
+     *
+     * @param r the red component of the colour
+     * @param g the green component of the colour
+     * @param b the blue component of the colour
+     * @param out receives the result in {@code [0, 3)}
+     */
     public static void linearSrgbToOklab(float r, float g, float b, float[] out) {
         float l = 0.4122214708f * r + 0.5363325363f * g + 0.0514459929f * b;
         float m = 0.2119034982f * r + 0.6806995451f * g + 0.1073969566f * b;
@@ -177,7 +278,15 @@ public final class ColorSpaces {
         out[2] = 0.0259040371f * l_ + 0.7827717662f * m_ - 0.8086757660f * s_;
     }
 
-    /** Oklab to linear sRGB; components outside {@code [0, 1]} mean the colour is outside the sRGB gamut. */
+    /**
+     * Converts Oklab to linear sRGB; components outside {@code [0, 1]} mean that the colour is
+     * outside the sRGB gamut.
+     *
+     * @param lightness the lightness
+     * @param a the a axis of Oklab (green to red)
+     * @param b the b axis of Oklab (blue to yellow)
+     * @param out receives the result in {@code [0, 3)}
+     */
     public static void oklabToLinearSrgb(float lightness, float a, float b, float[] out) {
         float l_ = lightness + 0.3963377774f * a + 0.2158037573f * b;
         float m_ = lightness - 0.1055613458f * a - 0.0638541728f * b;
@@ -188,7 +297,14 @@ public final class ColorSpaces {
         out[2] = -0.0041960863f * l - 0.7034186147f * m + 1.7076147010f * s;
     }
 
-    /** Oklab to Oklch: {@code out = (L, chroma, hue in degrees [0, 360))}. */
+    /**
+     * Converts Oklab to Oklch: {@code out = (L, chroma, hue in degrees [0, 360))}.
+     *
+     * @param lightness the lightness
+     * @param a the a axis of Oklab (green to red)
+     * @param b the b axis of Oklab (blue to yellow)
+     * @param out receives the result in {@code [0, 3)}
+     */
     public static void oklabToOklch(float lightness, float a, float b, float[] out) {
         out[0] = lightness;
         out[1] = (float) Math.sqrt((double) a * a + (double) b * b);
@@ -196,7 +312,14 @@ public final class ColorSpaces {
         out[2] = h < 0f ? h + 360f : h;
     }
 
-    /** Oklch to Oklab: {@code out = (L, a, b)}. */
+    /**
+     * Converts Oklch to Oklab: {@code out = (L, a, b)}.
+     *
+     * @param lightness the lightness
+     * @param chroma the chroma
+     * @param hueDegrees the hue degrees
+     * @param out receives the result in {@code [0, 3)}
+     */
     public static void oklchToOklab(float lightness, float chroma, float hueDegrees, float[] out) {
         double h = Math.toRadians(hueDegrees);
         out[0] = lightness;
@@ -205,7 +328,19 @@ public final class ColorSpaces {
     }
 
     /**
-     * Mixes two linear sRGB colours in Oklab: {@code t = 0} is the first, {@code t = 1} the second, and the steps in between look even. The result is in linear sRGB.
+     * Mixes two linear sRGB colours in Oklab: {@code t = 0} is the first, {@code t = 1} the second,
+     * and the steps in between look even.
+     *
+     * <p>The result is in linear sRGB.
+     *
+     * @param r0 the red component of the first colour
+     * @param g0 the green component of the first colour
+     * @param b0 the blue component of the first colour
+     * @param r1 the red component of the second colour
+     * @param g1 the green component of the second colour
+     * @param b1 the blue component of the second colour
+     * @param t the mixing fraction: 0 gives the first colour and 1 the second
+     * @param out receives the result in {@code [0, 3)}
      */
     public static void mixOklab(float r0, float g0, float b0, float r1, float g1, float b1, float t, float[] out) {
         linearSrgbToOklab(r0, g0, b0, out);
@@ -214,14 +349,28 @@ public final class ColorSpaces {
         oklabToLinearSrgb(l0 + (out[0] - l0) * t, a0 + (out[1] - a0) * t, c0 + (out[2] - c0) * t, out);
     }
 
-    /** Linear sRGB to Oklab as a vector {@code (L, a, b)}; allocates the result, the array form does not. */
+    /**
+     * Converts a linear sRGB colour to the perceptual Oklab space through the vector form;
+     * allocates a result, so hot loops should use the array form.
+     *
+     * @param rgb the rgb; must not be {@code null}
+     * @return linear sRGB to Oklab as a vector {@code (L, a, b)}; allocates the result, the array
+     *     form does not
+     */
     public static Vec3f linearSrgbToOklab(Vec3f rgb) {
         float[] o = new float[3];
         linearSrgbToOklab(rgb.x(), rgb.y(), rgb.z(), o);
         return new Vec3f(o[0], o[1], o[2]);
     }
 
-    /** Oklab {@code (L, a, b)} to linear sRGB as a vector; allocates the result, the array form does not. */
+    /**
+     * Converts an Oklab colour back to linear sRGB through the vector form; allocates a result, so
+     * hot loops should use the array form.
+     *
+     * @param lab the lab; must not be {@code null}
+     * @return oklab {@code (L, a, b)} to linear sRGB as a vector; allocates the result, the array
+     *     form does not
+     */
     public static Vec3f oklabToLinearSrgb(Vec3f lab) {
         float[] o = new float[3];
         oklabToLinearSrgb(lab.x(), lab.y(), lab.z(), o);

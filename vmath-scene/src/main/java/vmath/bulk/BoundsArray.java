@@ -4,15 +4,29 @@ import java.util.Arrays;
 import vmath.geo.Aabbf;
 
 /**
- * Axis-aligned bounds of many objects in structure-of-arrays layout: six parallel {@code float[]}, one per component.
- * A culling or BVH kernel that needs one component of every object then streams a single contiguous array, which is
- * what makes those loops cache-friendly and auto-vectorizable. There is no object per element.
+ * Axis-aligned bounds of many objects in structure-of-arrays layout: six parallel {@code float[]},
+ * one per component.
  *
- * <p>The backing arrays are exposed ({@link #minXs()} and friends) for kernels. They are replaced when the container
- * grows, so re-fetch them after {@code add}/{@code ensureCapacity} instead of caching them.
+ * <p>A culling or BVH kernel that needs one component of every object then streams a single
+ * contiguous array, which is what makes those loops cache-friendly and auto-vectorizable. There is
+ * no object per element.
  *
- * <p><b>Thread safety.</b> Not thread-safe: it is mutable, so use one instance per thread or synchronise externally. Concurrent reads are safe only
- * while no thread is writing.
+ * <p>The backing arrays are exposed ({@link #minXs()} and friends) for kernels. They are replaced
+ * when the container grows, so re-fetch them after {@code add}/{@code ensureCapacity} instead of
+ * caching them.
+ *
+ * <p><b>Thread safety.</b> Not thread-safe: it is mutable, so use one instance per thread or
+ * synchronise externally. Concurrent reads are safe only while no thread is writing.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * BoundsArray bounds = new BoundsArray(1024);
+ * int id = bounds.add(-1f, 0f, -1f, 1f, 2f, 1f);
+ * bounds.set(id, Aabbf.of(new Vec3f(0f, 0f, 0f), new Vec3f(2f, 2f, 2f)));
+ * Aabbf all = bounds.union();                                             // the box around every box
+ * float[] minXs = bounds.minXs();                                         // the live arrays: use them in kernels, do not keep them
+ * }</pre>
  */
 public final class BoundsArray {
 
@@ -24,7 +38,12 @@ public final class BoundsArray {
     private float[] maxZ;
     private int size;
 
-    /** An empty array with room for {@code capacity} boxes (at least 4); it grows as boxes are added. */
+    /**
+     * Creates an empty array with room for {@code capacity} boxes (at least 4); it grows as boxes
+     * are added.
+     *
+     * @param capacity the capacity in elements
+     */
     public BoundsArray(int capacity) {
         int c = Math.max(capacity, 4);
         minX = new float[c];
@@ -35,22 +54,39 @@ public final class BoundsArray {
         maxZ = new float[c];
     }
 
-    /** The number of boxes. */
+    /**
+     * Counts the boxes.
+     *
+     * @return the number of boxes
+     */
     public int size() {
         return size;
     }
 
-    /** The number of boxes that fit without growing. */
+    /**
+     * Reports how many boxes fit before the arrays are reallocated.
+     *
+     * @return the number of boxes that fit without growing
+     */
     public int capacity() {
         return minX.length;
     }
 
-    /** Removes all boxes; the capacity is kept. */
+    /**
+     * Removes all boxes; the capacity is kept.
+     */
     public void clear() {
         size = 0;
     }
 
-    /** Sets the element count after writing into the backing arrays directly. Must not exceed the capacity. */
+    /**
+     * Sets the element count after writing into the backing arrays directly.
+     *
+     * <p>Must not exceed the capacity.
+     *
+     * @param n the number of elements
+     * @throws IllegalArgumentException if {@code n} is not in {@code [0, capacity()]}
+     */
     public void setSize(int n) {
         if (n < 0 || n > capacity()) {
             throw new IllegalArgumentException("size " + n + " outside 0.." + capacity());
@@ -58,7 +94,12 @@ public final class BoundsArray {
         size = n;
     }
 
-    /** Makes room for {@code n} boxes; the arrays at least double when they have to grow, and the contents are kept. */
+    /**
+     * Makes room for {@code n} boxes; the arrays at least double when they have to grow, and the
+     * contents are kept.
+     *
+     * @param n the number of elements
+     */
     public void ensureCapacity(int n) {
         if (n > minX.length) {
             int c = Math.max(n, minX.length * 2);
@@ -71,7 +112,17 @@ public final class BoundsArray {
         }
     }
 
-    /** Appends a box and returns its index. */
+    /**
+     * Appends a box and returns its index.
+     *
+     * @param x0 the smallest x of the box
+     * @param y0 the smallest y of the box
+     * @param z0 the smallest z of the box
+     * @param x1 the largest x of the box
+     * @param y1 the largest y of the box
+     * @param z1 the largest z of the box
+     * @return its index
+     */
     public int add(float x0, float y0, float z0, float x1, float y1, float z1) {
         ensureCapacity(size + 1);
         int i = size++;
@@ -84,12 +135,28 @@ public final class BoundsArray {
         return i;
     }
 
-    /** Appends a box and returns its index. */
+    /**
+     * Appends a box and returns its index.
+     *
+     * @param b the second box; must not be {@code null}
+     * @return its index
+     */
     public int add(Aabbf b) {
         return add(b.minX(), b.minY(), b.minZ(), b.maxX(), b.maxY(), b.maxZ());
     }
 
-    /** Replaces box {@code i}; {@link IndexOutOfBoundsException} for an index that is not below {@link #size()}. */
+    /**
+     * Replaces box {@code i}; {@link IndexOutOfBoundsException} for an index that is not below
+     * {@link #size()}.
+     *
+     * @param i the index
+     * @param x0 the smallest x of the box
+     * @param y0 the smallest y of the box
+     * @param z0 the smallest z of the box
+     * @param x1 the largest x of the box
+     * @param y1 the largest y of the box
+     * @param z1 the largest z of the box
+     */
     public void set(int i, float x0, float y0, float z0, float x1, float y1, float z1) {
         checkIndex(i);
         minX[i] = x0;
@@ -100,12 +167,24 @@ public final class BoundsArray {
         maxZ[i] = z1;
     }
 
-    /** Replaces box {@code i}; {@link IndexOutOfBoundsException} for an index that is not below {@link #size()}. */
+    /**
+     * Replaces box {@code i}; {@link IndexOutOfBoundsException} for an index that is not below
+     * {@link #size()}.
+     *
+     * @param i the index
+     * @param b the second box; must not be {@code null}
+     */
     public void set(int i, Aabbf b) {
         set(i, b.minX(), b.minY(), b.minZ(), b.maxX(), b.maxY(), b.maxZ());
     }
 
-    /** Box {@code i} as a value (allocates); {@link IndexOutOfBoundsException} for an index that is not below {@link #size()}. */
+    /**
+     * Reads a box as an object; allocates, so use the per-component accessors in loops.
+     *
+     * @param i the index
+     * @return box {@code i} as a value (allocates); {@link IndexOutOfBoundsException} for an index
+     *     that is not below {@link #size()}
+     */
     public Aabbf get(int i) {
         checkIndex(i);
         return new Aabbf(minX[i], minY[i], minZ[i], maxX[i], maxY[i], maxZ[i]);
@@ -117,67 +196,133 @@ public final class BoundsArray {
         }
     }
 
-    /** The minimum x of box {@code i}. The single-component getters do not check the index against the size. */
+    /**
+     * Reads the minimum x of a box without allocating.
+     *
+     * <p>The single-component getters do not check the index against the size.
+     *
+     * @param i the index
+     * @return the minimum x of box {@code i}
+     */
     public float minX(int i) {
         return minX[i];
     }
 
-    /** The minimum y of box {@code i}. */
+    /**
+     * Reads the minimum y of a box without allocating.
+     *
+     * @param i the index
+     * @return the minimum y of box {@code i}
+     */
     public float minY(int i) {
         return minY[i];
     }
 
-    /** The minimum z of box {@code i}. */
+    /**
+     * Reads the minimum z of a box without allocating.
+     *
+     * @param i the index
+     * @return the minimum z of box {@code i}
+     */
     public float minZ(int i) {
         return minZ[i];
     }
 
-    /** The maximum x of box {@code i}. */
+    /**
+     * Reads the maximum x of a box without allocating.
+     *
+     * @param i the index
+     * @return the maximum x of box {@code i}
+     */
     public float maxX(int i) {
         return maxX[i];
     }
 
-    /** The maximum y of box {@code i}. */
+    /**
+     * Reads the maximum y of a box without allocating.
+     *
+     * @param i the index
+     * @return the maximum y of box {@code i}
+     */
     public float maxY(int i) {
         return maxY[i];
     }
 
-    /** The maximum z of box {@code i}. */
+    /**
+     * Reads the maximum z of a box without allocating.
+     *
+     * @param i the index
+     * @return the maximum z of box {@code i}
+     */
     public float maxZ(int i) {
         return maxZ[i];
     }
 
-    /** The live array of minimum x values, one per box; replaced when the array grows. */
+    /**
+     * Exposes the minimum x values as the live array of the structure-of-arrays layout, which is
+     * replaced when the container grows, so do not cache it.
+     *
+     * @return the live array of minimum x values, one per box; replaced when the array grows
+     */
     public float[] minXs() {
         return minX;
     }
 
-    /** The live array of minimum y values, one per box; replaced when the array grows. */
+    /**
+     * Exposes the minimum y values as the live array of the structure-of-arrays layout, which is
+     * replaced when the container grows, so do not cache it.
+     *
+     * @return the live array of minimum y values, one per box; replaced when the array grows
+     */
     public float[] minYs() {
         return minY;
     }
 
-    /** The live array of minimum z values, one per box; replaced when the array grows. */
+    /**
+     * Exposes the minimum z values as the live array of the structure-of-arrays layout, which is
+     * replaced when the container grows, so do not cache it.
+     *
+     * @return the live array of minimum z values, one per box; replaced when the array grows
+     */
     public float[] minZs() {
         return minZ;
     }
 
-    /** The live array of maximum x values, one per box; replaced when the array grows. */
+    /**
+     * Exposes the maximum x values as the live array of the structure-of-arrays layout, which is
+     * replaced when the container grows, so do not cache it.
+     *
+     * @return the live array of maximum x values, one per box; replaced when the array grows
+     */
     public float[] maxXs() {
         return maxX;
     }
 
-    /** The live array of maximum y values, one per box; replaced when the array grows. */
+    /**
+     * Exposes the maximum y values as the live array of the structure-of-arrays layout, which is
+     * replaced when the container grows, so do not cache it.
+     *
+     * @return the live array of maximum y values, one per box; replaced when the array grows
+     */
     public float[] maxYs() {
         return maxY;
     }
 
-    /** The live array of maximum z values, one per box; replaced when the array grows. */
+    /**
+     * Exposes the maximum z values as the live array of the structure-of-arrays layout, which is
+     * replaced when the container grows, so do not cache it.
+     *
+     * @return the live array of maximum z values, one per box; replaced when the array grows
+     */
     public float[] maxZs() {
         return maxZ;
     }
 
-    /** The union of all boxes; {@link Aabbf#EMPTY} when there are none. */
+    /**
+     * Merges all boxes into one by a linear scan.
+     *
+     * @return the union of all boxes; {@link Aabbf#EMPTY} when there are none
+     */
     public Aabbf union() {
         float x0 = Float.POSITIVE_INFINITY, y0 = x0, z0 = x0;
         float x1 = Float.NEGATIVE_INFINITY, y1 = x1, z1 = x1;
@@ -193,8 +338,14 @@ public final class BoundsArray {
     }
 
     /**
-     * Sets this array to {@code local[i]} transformed by {@code matrices[i]} (exact for affine matrices), for every
-     * element of {@code local}. The kernel for turning per-object local bounds into world bounds each frame.
+     * Sets this array to {@code local[i]} transformed by {@code matrices[i]} (exact for affine
+     * matrices), for every element of {@code local}.
+     *
+     * <p>The kernel for turning per-object local bounds into world bounds each frame.
+     *
+     * @param local the local; must not be {@code null}
+     * @param matrices the matrices; must not be {@code null}
+     * @throws IllegalArgumentException if there are fewer matrices than boxes
      */
     public void transformFrom(BoundsArray local, Mat4fArray matrices) {
         int n = local.size;
@@ -229,7 +380,13 @@ public final class BoundsArray {
         }
     }
 
-    /** Writes {@code minX, minY, minZ, maxX, maxY, maxZ} for each element, interleaved, e.g. for a GPU culling buffer. */
+    /**
+     * Writes {@code minX, minY, minZ, maxX, maxY, maxZ} for each element, interleaved, e.g. for a
+     * GPU culling buffer.
+     *
+     * @param dst receives the result
+     * @param off the index of the first element to read or write
+     */
     public void writeInterleaved(float[] dst, int off) {
         for (int i = 0, o = off; i < size; i++, o += 6) {
             dst[o] = minX[i];
@@ -244,8 +401,15 @@ public final class BoundsArray {
     // ---------------------------------------------------------------- compaction
 
     /**
-     * Removes box {@code i} by moving the last box into its place: O(1), the order of the others is kept except for that one. Returns the index the moved box had
-     * before (the old last index), or -1 if {@code i} was the last box.
+     * Removes box {@code i} by moving the last box into its place: O(1), the order of the others is
+     * kept except for that one.
+     *
+     * <p>Returns the index the moved box had before (the old last index), or -1 if {@code i} was
+     * the last box.
+     *
+     * @param i the index
+     * @return the index the moved box had before (the old last index), or -1 if {@code i} was the
+     *     last box
      */
     public int removeSwap(int i) {
         checkIndex(i);
@@ -259,7 +423,14 @@ public final class BoundsArray {
         return moved;
     }
 
-    /** Keeps only the boxes whose bit is set in {@code keep}, in their original order. Returns the new size. */
+    /**
+     * Keeps only the boxes whose bit is set in {@code keep}, in their original order.
+     *
+     * <p>Returns the new size.
+     *
+     * @param keep the keep; must not be {@code null}
+     * @return the new size
+     */
     public int compact(VisibilitySet keep) {
         int n = Compaction.stable(minX, 1, size, keep);
         Compaction.stable(minY, 1, size, keep);

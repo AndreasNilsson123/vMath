@@ -5,72 +5,134 @@ import vmath.core.Quatd;
 import vmath.core.Vec3d;
 
 /**
- * The state of one rigid body and its integration in time: the position of its centre of mass, its orientation, its linear and angular velocity (both in the world frame), and the
- * forces and torques collected for the next step. All numbers are {@code double}; the fields are public in the way of a struct, since an engine reads and writes them for every body every
- * frame.
+ * The state of one rigid body and its integration in time: the position of its centre of mass, its
+ * orientation, its linear and angular velocity (both in the world frame), and the forces and
+ * torques collected for the next step.
  *
- * <p><b>Integration</b> ({@link #integrate}) is by <em>semi-implicit (symplectic) Euler</em>: the velocities are updated from the forces first and the positions from the new velocities. The
- * angular velocity is advanced with the <b>implicit gyroscopic step</b> of Catto ("Numerical Methods", GDC 2015): in the body frame a body that is not a sphere would gain energy and
- * tumble out of control under the explicit equation {@code I dw/dt = tau - w x I w}; one Newton step of the implicit equation {@code I (w' - w) + dt w' x I w' = dt tau} keeps it stable at any
- * step size (at the price of a small loss of energy that shows in the tests). The orientation is advanced by the exact rotation about the angular velocity, {@code q' = exp(w dt / 2) q}, and
- * renormalised.
+ * <p>All numbers are {@code double}; the fields are public in the way of a struct, since an engine
+ * reads and writes them for every body every frame.
  *
- * <p>A body with an inverse mass of zero (<b>static</b> or kinematic) does not respond to forces or impulses and keeps its velocities. The shape is positioned by the centre of mass:
- * offset the shape by {@link MassProperties#centerOfMass()} when drawing.
+ * <p><b>Integration</b> ({@link #integrate}) is by <em>semi-implicit (symplectic) Euler</em>: the
+ * velocities are updated from the forces first and the positions from the new velocities. The
+ * angular velocity is advanced with the <b>implicit gyroscopic step</b> of Catto ("Numerical
+ * Methods", GDC 2015): in the body frame a body that is not a sphere would gain energy and tumble
+ * out of control under the explicit equation {@code I dw/dt = tau - w x I w}; one Newton step of
+ * the implicit equation {@code I (w' - w) + dt w' x I w' = dt tau} keeps it stable at any step size
+ * (at the price of a small loss of energy that shows in the tests). The orientation is advanced by
+ * the exact rotation about the angular velocity, {@code q' = exp(w dt / 2) q}, and renormalised.
+ *
+ * <p>A body with an inverse mass of zero (<b>static</b> or kinematic) does not respond to forces or
+ * impulses and keeps its velocities. The shape is positioned by the centre of mass: offset the
+ * shape by {@link MassProperties#centerOfMass()} when drawing.
  *
  * <p><b>Thread safety.</b> Not thread-safe: a mutable struct.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * RigidBody body = new RigidBody(MassProperties.box(0.5, 0.5, 0.5, 2.0));
+ * body.setPose(0.0, 5.0, 0.0, 0.0, 0.0, 0.0, 1.0);
+ * for (int i = 0; i < 60; i++) {
+ *     body.applyForce(0.0, -9.81 * body.mass(), 0.0);                       // forces are cleared by every step
+ *     body.integrate(1.0 / 60);
+ * }
+ * Vec3d position = body.position();
+ * }</pre>
  */
 public final class RigidBody {
 
-    /** The position of the centre of mass in the world. */
+    /**
+     * The position of the centre of mass in the world.
+     */
     public double px, py, pz;
-    /** The orientation as a unit quaternion {@code (x, y, z, w)}. */
+    /**
+     * The orientation as a unit quaternion {@code (x, y, z, w)}.
+     */
     public double qx, qy, qz, qw = 1;
-    /** The linear velocity of the centre of mass. */
+    /**
+     * The linear velocity of the centre of mass.
+     */
     public double vx, vy, vz;
-    /** The angular velocity in the world frame, in radians per second. */
+    /**
+     * The angular velocity in the world frame, in radians per second.
+     */
     public double wx, wy, wz;
-    /** The force accumulated for the next {@link #integrate}, applied at the centre of mass (cleared by it). */
+    /**
+     * The force accumulated for the next {@link #integrate}, applied at the centre of mass (cleared
+     * by it).
+     */
     public double fx, fy, fz;
     /**
-     * The bias (pseudo) velocity: a velocity that moves the body for one step and is then discarded. The contact solver uses it to push penetrating bodies apart without adding
-     * the energy of the correction to the real velocity (split impulses). Cleared by {@link #integrate}.
+     * The bias (pseudo) velocity: a velocity that moves the body for one step and is then
+     * discarded.
+     *
+     * <p>The contact solver uses it to push penetrating bodies apart without adding the energy of
+     * the correction to the real velocity (split impulses). Cleared by {@link #integrate}.
      */
     public double bvx, bvy, bvz;
-    /** The bias angular velocity, see {@link #bvx}. */
+    /**
+     * The bias angular velocity, see {@link #bvx}.
+     */
     public double bwx, bwy, bwz;
-    /** The torque accumulated for the next {@link #integrate} (cleared by it). */
+    /**
+     * The torque accumulated for the next {@link #integrate} (cleared by it).
+     */
     public double tx, ty, tz;
-    /** Scratch for the world-frame inverse inertia, so that impulses do not allocate (a body is not shared between threads). */
+    /**
+     * Scratch for the world-frame inverse inertia, so that impulses do not allocate (a body is not
+     * shared between threads).
+     */
     private final double[] scratch6 = new double[6];
     private final double[] scratch9 = new double[9];
-    /** The world-frame inverse inertia for the orientation {@code cacheQ*}: it is only recomputed when the orientation changes (NaN never equals, so the first call computes). */
+    /**
+     * The world-frame inverse inertia for the orientation {@code cacheQ*}: it is only recomputed
+     * when the orientation changes (NaN never equals, so the first call computes).
+     */
     private final double[] worldCache = new double[6];
     private double cacheQx = Double.NaN, cacheQy, cacheQz, cacheQw;
 
-    /** The scratch array of six values for the solver (package-private: not for general use). */
+    /**
+     * The scratch array of six values for the solver (package-private: not for general use).
+     */
     double[] scratch() {
         return scratch6;
     }
-    /** Damping of the linear velocity: the velocity is divided by {@code 1 + linearDamping * dt} each step. */
+    /**
+     * Damping of the linear velocity: the velocity is divided by {@code 1 + linearDamping * dt}
+     * each step.
+     */
     public double linearDamping;
-    /** Damping of the angular velocity, like {@link #linearDamping}. */
+    /**
+     * Damping of the angular velocity, like {@link #linearDamping}.
+     */
     public double angularDamping;
 
     private double invMass;
     // the inertia tensor in the body frame and its inverse, as xx, yy, zz, xy, xz, yz
     private final double[] inertia = new double[6], inverseInertia = new double[6];
 
-    /** A static body: infinite mass, at the origin, not rotated. */
+    /**
+     * Creates a static body: infinite mass, at the origin, not rotated.
+     */
     public RigidBody() {
     }
 
-    /** A dynamic body with the mass and inertia of {@code properties}, at the origin, not rotated. */
+    /**
+     * Creates a dynamic body with the mass and inertia of {@code properties}, at the origin, not
+     * rotated.
+     *
+     * @param properties the properties; must not be {@code null}
+     */
     public RigidBody(MassProperties properties) {
         setMassProperties(properties);
     }
 
-    /** Gives the body the mass and the inertia tensor of {@code properties} (the tensor about the centre of mass, in the body frame). */
+    /**
+     * Gives the body the mass and the inertia tensor of {@code properties} (the tensor about the
+     * centre of mass, in the body frame).
+     *
+     * @param properties the properties; must not be {@code null}
+     */
     public void setMassProperties(MassProperties properties) {
         invMass = 1.0 / properties.mass();
         cacheQx = Double.NaN; // the cached world inertia is for the old tensor
@@ -90,7 +152,9 @@ public final class RigidBody {
         inverseInertia[5] = inv.m21();
     }
 
-    /** Makes the body static: it no longer responds to forces and impulses. */
+    /**
+     * Makes the body static: it no longer responds to forces and impulses.
+     */
     public void makeStatic() {
         invMass = 0;
         cacheQx = Double.NaN;
@@ -98,22 +162,46 @@ public final class RigidBody {
         java.util.Arrays.fill(inverseInertia, 0);
     }
 
-    /** Whether the body is static (zero inverse mass). */
+    /**
+     * Returns whether the body is static (zero inverse mass).
+     *
+     * @return {@code true} if the body is static (zero inverse mass)
+     */
     public boolean isStatic() {
         return invMass == 0;
     }
 
-    /** The inverse of the mass; 0 for a static body. */
+    /**
+     * Exposes the inverse of the mass, which is zero for a static body and so lets the solver treat
+     * static and dynamic bodies uniformly.
+     *
+     * @return the inverse of the mass; 0 for a static body
+     */
     public double inverseMass() {
         return invMass;
     }
 
-    /** The mass, or infinity for a static body. */
+    /**
+     * Exposes the mass, which is infinite for a static body.
+     *
+     * @return the mass, or infinity for a static body
+     */
     public double mass() {
         return invMass == 0 ? Double.POSITIVE_INFINITY : 1.0 / invMass;
     }
 
-    /** Places the body: the centre of mass at {@code (x, y, z)} with the orientation {@code (qx, qy, qz, qw)}, which is normalised. */
+    /**
+     * Places the body: the centre of mass at {@code (x, y, z)} with the orientation
+     * {@code (qx, qy, qz, qw)}, which is normalised.
+     *
+     * @param x the x component
+     * @param y the y component
+     * @param z the z component
+     * @param qx the x component of the orientation quaternion
+     * @param qy the y component of the orientation quaternion
+     * @param qz the z component of the orientation quaternion
+     * @param qw the w component of the orientation quaternion
+     */
     public void setPose(double x, double y, double z, double qx, double qy, double qz, double qw) {
         px = x;
         py = y;
@@ -125,26 +213,50 @@ public final class RigidBody {
         this.qw = qw / n;
     }
 
-    /** The orientation as a quaternion. */
+    /**
+     * Exposes the orientation of the body.
+     *
+     * @return the orientation as a quaternion
+     */
     public Quatd orientation() {
         return new Quatd(qx, qy, qz, qw);
     }
 
-    /** The position of the centre of mass. */
+    /**
+     * Exposes the position of the centre of mass.
+     *
+     * @return the position of the centre of mass
+     */
     public Vec3d position() {
         return new Vec3d(px, py, pz);
     }
 
     // ------------------------------------------------------------ forces and impulses
 
-    /** Adds a force at the centre of mass for the next step. */
+    /**
+     * Adds a force at the centre of mass for the next step.
+     *
+     * @param x the x component
+     * @param y the y component
+     * @param z the z component
+     */
     public void applyForce(double x, double y, double z) {
         fx += x;
         fy += y;
         fz += z;
     }
 
-    /** Adds a force at the world point {@code (x, y, z)}: the force, and its torque about the centre of mass, for the next step. */
+    /**
+     * Adds a force at the world point {@code (x, y, z)}: the force, and its torque about the centre
+     * of mass, for the next step.
+     *
+     * @param fxIn the fx in
+     * @param fyIn the fy in
+     * @param fzIn the fz in
+     * @param x the x component
+     * @param y the y component
+     * @param z the z component
+     */
     public void applyForceAtPoint(double fxIn, double fyIn, double fzIn, double x, double y, double z) {
         fx += fxIn;
         fy += fyIn;
@@ -155,21 +267,44 @@ public final class RigidBody {
         tz += rx * fyIn - ry * fxIn;
     }
 
-    /** Adds a torque for the next step. */
+    /**
+     * Adds a torque for the next step.
+     *
+     * @param x the x component
+     * @param y the y component
+     * @param z the z component
+     */
     public void applyTorque(double x, double y, double z) {
         tx += x;
         ty += y;
         tz += z;
     }
 
-    /** Changes the velocities at once by an impulse {@code J} at the centre of mass: {@code v += J / m}. */
+    /**
+     * Changes the velocities at once by an impulse {@code J} at the centre of mass:
+     * {@code v += J / m}.
+     *
+     * @param x the x component
+     * @param y the y component
+     * @param z the z component
+     */
     public void applyImpulse(double x, double y, double z) {
         vx += x * invMass;
         vy += y * invMass;
         vz += z * invMass;
     }
 
-    /** Changes the velocities at once by an impulse at the world point {@code (x, y, z)}: {@code v += J / m} and {@code w += I^-1 (r x J)}. */
+    /**
+     * Changes the velocities at once by an impulse at the world point {@code (x, y, z)}:
+     * {@code v += J / m} and {@code w += I^-1 (r x J)}.
+     *
+     * @param jx the x component of the impulse
+     * @param jy the y component of the impulse
+     * @param jz the z component of the impulse
+     * @param x the x component
+     * @param y the y component
+     * @param z the z component
+     */
     public void applyImpulseAtPoint(double jx, double jy, double jz, double x, double y, double z) {
         vx += jx * invMass;
         vy += jy * invMass;
@@ -178,7 +313,14 @@ public final class RigidBody {
         applyAngularImpulse(ry * jz - rz * jy, rz * jx - rx * jz, rx * jy - ry * jx);
     }
 
-    /** Changes the angular velocity at once by an angular impulse: {@code w += I^-1 L} with the inverse tensor in the world frame. */
+    /**
+     * Changes the angular velocity at once by an angular impulse: {@code w += I^-1 L} with the
+     * inverse tensor in the world frame.
+     *
+     * @param lx the x component of the angular impulse
+     * @param ly the y component of the angular impulse
+     * @param lz the z component of the angular impulse
+     */
     public void applyAngularImpulse(double lx, double ly, double lz) {
         double[] iw = worldInverseInertia(scratch6);
         wx += iw[0] * lx + iw[3] * ly + iw[4] * lz;
@@ -186,7 +328,17 @@ public final class RigidBody {
         wz += iw[4] * lx + iw[5] * ly + iw[2] * lz;
     }
 
-    /** Like {@link #applyImpulseAtPoint} but changes the bias velocities, which move the body for the next step only. */
+    /**
+     * Changes the bias velocities like {@link #applyImpulseAtPoint}; they move the body for the
+     * next step only.
+     *
+     * @param jx the x component of the impulse
+     * @param jy the y component of the impulse
+     * @param jz the z component of the impulse
+     * @param x the x component
+     * @param y the y component
+     * @param z the z component
+     */
     public void applyBiasImpulseAtPoint(double jx, double jy, double jz, double x, double y, double z) {
         bvx += jx * invMass;
         bvy += jy * invMass;
@@ -201,7 +353,15 @@ public final class RigidBody {
 
     // ------------------------------------------------------------ queries
 
-    /** The velocity of the point of the body that is at the world point {@code (x, y, z)}: {@code v + w x r}, written to {@code out[0 .. 3)}. */
+    /**
+     * Computes the velocity of the point of the body that is at the world point {@code (x, y, z)}:
+     * {@code v + w x r}, written to {@code out[0 .. 3)}.
+     *
+     * @param x the x component
+     * @param y the y component
+     * @param z the z component
+     * @param out receives the result in {@code [0, 3)}
+     */
     public void pointVelocity(double x, double y, double z, double[] out) {
         double rx = x - px, ry = y - py, rz = z - pz;
         out[0] = vx + wy * rz - wz * ry;
@@ -209,7 +369,12 @@ public final class RigidBody {
         out[2] = vz + wx * ry - wy * rx;
     }
 
-    /** The kinetic energy: {@code m |v|^2 / 2 + w . I w / 2} (infinite mass bodies report 0: they take no part in the energy). */
+    /**
+     * Sums the translational and the rotational kinetic energy; static bodies contribute zero.
+     *
+     * @return the kinetic energy: {@code m |v|^2 / 2 + w . I w / 2} (infinite mass bodies report 0:
+     *     they take no part in the energy)
+     */
     public double kineticEnergy() {
         if (invMass == 0) {
             return 0;
@@ -219,7 +384,12 @@ public final class RigidBody {
         return 0.5 * (vx * vx + vy * vy + vz * vz) / invMass + rot;
     }
 
-    /** The angular momentum about the centre of mass in the world frame, {@code R I R^T w}, written to {@code out[0 .. 3)}. */
+    /**
+     * Computes the angular momentum about the centre of mass in the world frame, {@code R I R^T w},
+     * written to {@code out[0 .. 3)}.
+     *
+     * @param out receives the result
+     */
     public void angularMomentum(double[] out) {
         double[] w = bodyAngularVelocity(new double[3]);
         double lx = inertia[0] * w[0] + inertia[3] * w[1] + inertia[4] * w[2];
@@ -228,7 +398,14 @@ public final class RigidBody {
         toWorld(lx, ly, lz, out);
     }
 
-    /** The inverse inertia tensor in the world frame, {@code R I^-1 R^T}, as {@code xx, yy, zz, xy, xz, yz} into {@code out} (and returned). */
+    /**
+     * Rotates the inverse inertia tensor from the body frame into the world frame and writes its
+     * six distinct elements to a caller-supplied array, so that nothing is allocated.
+     *
+     * @param out receives the result
+     * @return the inverse inertia tensor in the world frame, {@code R I^-1 R^T}, as
+     *     {@code xx, yy, zz, xy, xz, yz} into {@code out} (and returned)
+     */
     public double[] worldInverseInertia(double[] out) {
         double[] c = worldCache;
         if (qx != cacheQx || qy != cacheQy || qz != cacheQz || qw != cacheQw) { // the orientation is a public field: the cache is keyed by its value
@@ -257,7 +434,14 @@ public final class RigidBody {
         out[5] = m10 * r[6] + m11 * r[7] + m12 * r[8];
     }
 
-    /** The rotation matrix of the orientation, row-major, into {@code out[0 .. 9)} (and returned). */
+    /**
+     * Converts the orientation to a row-major rotation matrix and writes it to a caller-supplied
+     * array, so that nothing is allocated.
+     *
+     * @param out receives the result in {@code [0, 9)}
+     * @return the rotation matrix of the orientation, row-major, into {@code out[0 .. 9)} (and
+     *     returned)
+     */
     public double[] rotationMatrix(double[] out) {
         double xx = qx * qx, yy = qy * qy, zz = qz * qz, xy = qx * qy, xz = qx * qz, yz = qy * qz, wx2 = qw * qx, wy2 = qw * qy, wz2 = qw * qz;
         out[0] = 1 - 2 * (yy + zz);
@@ -291,8 +475,12 @@ public final class RigidBody {
     // ------------------------------------------------------------ integration
 
     /**
-     * Advances the body by {@code dt} seconds under the accumulated force and torque (which are then cleared) and the damping. A static body only has its accumulators cleared. See the class
-     * comment for the method.
+     * Advances the body by {@code dt} seconds under the accumulated force and torque (which are
+     * then cleared) and the damping.
+     *
+     * <p>A static body only has its accumulators cleared. See the class comment for the method.
+     *
+     * @param dt the time step in seconds
      */
     public void integrate(double dt) {
         if (invMass == 0) {

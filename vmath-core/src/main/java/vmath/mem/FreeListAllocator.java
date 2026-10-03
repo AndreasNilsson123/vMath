@@ -5,26 +5,54 @@ import java.util.Arrays;
 import vmath.annotations.Experimental;
 
 /**
- * A general-purpose allocator for pieces of any size that are freed in any order, over a range of bytes: vertex and index buffer sub-allocation, mesh streaming,
- * per-asset blocks. The bookkeeping is a sorted array of blocks that tiles the range exactly (each block free or allocated); {@link #free} merges a freed block with
- * free neighbours, so freeing everything restores one block. Allocation scans the blocks, {@link Strategy#FIRST_FIT} stopping at the first that fits and
- * {@link Strategy#BEST_FIT} choosing the one that leaves the least over, so it costs O(number of blocks) and is meant for hundreds to thousands of live
- * allocations, not millions (use {@link SlabAllocator} for those). Alignment is honoured by splitting off the padding in front as a free block, so no bytes are wasted.
+ * A general-purpose allocator for pieces of any size that are freed in any order, over a range of
+ * bytes: vertex and index buffer sub-allocation, mesh streaming, per-asset blocks.
  *
- * <p>Returns byte offsets and {@link #NONE} when nothing fits ({@link #largestFree()} says whether defragmenting could help). The bookkeeping is in arrays outside the
- * managed range. Allocation of the bookkeeping happens only when the block count outgrows the arrays. Not thread-safe.
+ * <p>The bookkeeping is a sorted array of blocks that tiles the range exactly (each block free or
+ * allocated); {@link #free} merges a freed block with free neighbours, so freeing everything
+ * restores one block. Allocation scans the blocks, {@link Strategy#FIRST_FIT} stopping at the first
+ * that fits and {@link Strategy#BEST_FIT} choosing the one that leaves the least over, so it costs
+ * O(number of blocks) and is meant for hundreds to thousands of live allocations, not millions (use
+ * {@link SlabAllocator} for those). Alignment is honoured by splitting off the padding in front as
+ * a free block, so no bytes are wasted.
+ *
+ * <p>Returns byte offsets and {@link #NONE} when nothing fits ({@link #largestFree()} says whether
+ * defragmenting could help). The bookkeeping is in arrays outside the managed range. Allocation of
+ * the bookkeeping happens only when the block count outgrows the arrays. Not thread-safe.
+ *
+ * <p><b>Thread safety.</b> Not thread-safe: use one allocator per thread, or synchronize
+ * externally. No method blocks.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * FreeListAllocator heap = new FreeListAllocator(1 << 20, FreeListAllocator.Strategy.BEST_FIT);
+ * long a = heap.allocate(4096, 256);
+ * long b = heap.allocate(1024, 16);
+ * heap.free(a);
+ * long freeBytes = heap.freeBytes();
+ * String problem = heap.validate();                            // null when the bookkeeping is consistent
+ * }</pre>
  */
 @Experimental("the allocator set and their signatures may change")
 public final class FreeListAllocator {
 
-    /** Returned when no free block is large enough. */
+    /**
+     * Returned when no free block is large enough.
+     */
     public static final long NONE = -1L;
 
-    /** How a free block is chosen. */
+    /**
+     * How a free block is chosen.
+     */
     public enum Strategy {
-        /** The first block that fits: fastest, slightly more fragmentation. */
+        /**
+         * The first block that fits: fastest, slightly more fragmentation.
+         */
         FIRST_FIT,
-        /** The block that leaves the smallest remainder: slower scan, usually less fragmentation. */
+        /**
+         * The block that leaves the smallest remainder: slower scan, usually less fragmentation.
+         */
         BEST_FIT
     }
 
@@ -37,12 +65,23 @@ public final class FreeListAllocator {
     private int blocks;
     private long freeBytes;
 
-    /** An allocator over {@code capacity} bytes of offsets with no memory behind them ({@link #segment()} is {@code null}). */
+    /**
+     * Creates an allocator over {@code capacity} bytes of offsets with no memory behind them
+     * ({@link #segment()} is {@code null}).
+     *
+     * @param capacity the capacity in elements
+     * @param strategy the strategy; must not be {@code null}
+     */
     public FreeListAllocator(long capacity, Strategy strategy) {
         this(capacity, strategy, null);
     }
 
-    /** An allocator over the whole of {@code backing}. */
+    /**
+     * Creates an allocator over the whole of {@code backing}.
+     *
+     * @param backing the backing; must not be {@code null}
+     * @param strategy the strategy; must not be {@code null}
+     */
     public FreeListAllocator(MemorySegment backing, Strategy strategy) {
         this(backing.byteSize(), strategy, backing);
     }
@@ -57,27 +96,51 @@ public final class FreeListAllocator {
         reset();
     }
 
-    /** The size of the range in bytes. */
+    /**
+     * Reports the total size of the managed range; fixed for the lifetime of the allocator.
+     *
+     * @return the size of the range in bytes
+     */
     public long capacity() {
         return capacity;
     }
 
-    /** The bytes in free blocks; they may be split over several blocks, so a request this large can still fail. */
+    /**
+     * Reports the sum of all free blocks; because of fragmentation a request of this size can still
+     * fail, so use {@link #largestFree()} to decide whether an allocation can succeed.
+     *
+     * @return the bytes in free blocks; they may be split over several blocks, so a request this
+     *     large can still fail
+     */
     public long freeBytes() {
         return freeBytes;
     }
 
-    /** The bytes in allocated blocks: {@code capacity() - freeBytes()}. */
+    /**
+     * Reports the space held by live allocations, derived from the free total.
+     *
+     * @return the bytes in allocated blocks: {@code capacity() - freeBytes()}
+     */
     public long allocatedBytes() {
         return capacity - freeBytes;
     }
 
-    /** The number of blocks (free and allocated) the range is split into right now. */
+    /**
+     * Counts the blocks that currently partition the range, free and allocated; a high count
+     * relative to the allocations signals fragmentation.
+     *
+     * @return the number of blocks (free and allocated) the range is split into right now
+     */
     public int blockCount() {
         return blocks;
     }
 
-    /** The size of the largest single free block: the biggest request that can succeed. */
+    /**
+     * Scans the free blocks for the biggest one, which is the largest request that can succeed; a
+     * linear scan, so not for hot paths.
+     *
+     * @return the size of the largest single free block: the biggest request that can succeed
+     */
     public long largestFree() {
         long best = 0;
         for (int w = 0; w < freeBits.length; w++) {
@@ -103,7 +166,10 @@ public final class FreeListAllocator {
         }
     }
 
-    /** Makes room for a bit at index {@code at} (the new bit is clear): the bits from {@code at} up move one place up. */
+    /**
+     * Makes room for a bit at index {@code at} (the new bit is clear): the bits from {@code at} up
+     * move one place up.
+     */
     private void insertBit(int at) {
         int words = (blocks + 1 + 63) >>> 6;
         if (words > freeBits.length) {
@@ -118,7 +184,9 @@ public final class FreeListAllocator {
         freeBits[w] = low | (high << 1);
     }
 
-    /** Removes the bit at index {@code at}: the bits above it move one place down. */
+    /**
+     * Removes the bit at index {@code at}: the bits above it move one place down.
+     */
     private void removeBit(int at) {
         int w = at >>> 6, b = at & 63;
         long low = freeBits[w] & ((1L << b) - 1);
@@ -130,7 +198,9 @@ public final class FreeListAllocator {
         }
     }
 
-    /** Frees everything. */
+    /**
+     * Frees everything.
+     */
     public void reset() {
         blocks = capacity == 0 ? 0 : 1;
         Arrays.fill(freeBits, 0L);
@@ -161,7 +231,11 @@ public final class FreeListAllocator {
         blocks--;
     }
 
-    /** The free block the strategy picks for a request, or -1. Walks the free blocks only: the bitmap lets it step over allocated ones 64 at a time. */
+    /**
+     * The free block the strategy picks for a request, or -1.
+     *
+     * <p>Walks the free blocks only: the bitmap lets it step over allocated ones 64 at a time.
+     */
     private int choose(long size, long alignment) {
         int chosen = -1;
         long chosenWaste = Long.MAX_VALUE;
@@ -193,7 +267,15 @@ public final class FreeListAllocator {
     }
 
     /**
-     * The offset of a new block of {@code size} bytes (positive) aligned to {@code alignment} (a power of two; relative to the start of the range), or {@link #NONE}.
+     * Allocates a block from the free list using a search over the free blocks, splitting the
+     * chosen block and tracking neighbours so that frees can coalesce; cost depends on the number
+     * of free blocks.
+     *
+     * @param size the size
+     * @param alignment the alignment
+     * @return the offset of a new block of {@code size} bytes (positive) aligned to
+     *     {@code alignment} (a power of two; relative to the start of the range), or {@link #NONE}
+     * @throws IllegalArgumentException if {@code size} is not positive
      */
     public long allocate(long size, long alignment) {
         ArenaAllocator.checkAlignment(alignment);
@@ -244,7 +326,14 @@ public final class FreeListAllocator {
         return -1;
     }
 
-    /** The size of the allocated block at {@code offset}, or -1 if no allocated block starts there. */
+    /**
+     * Looks up the size of a live allocation from its offset; offsets that do not start an
+     * allocation are reported as unknown.
+     *
+     * @param offset the index of the first element to read or write
+     * @return the size of the allocated block at {@code offset}, or -1 if no allocated block starts
+     *     there
+     */
     public long sizeOf(long offset) {
         int i = find(offset);
         return i >= 0 && !isFree(i) ? length[i] : -1L;
@@ -253,7 +342,10 @@ public final class FreeListAllocator {
     /**
      * Frees the block at {@code offset} and returns its size.
      *
-     * @throws IllegalArgumentException if no allocated block starts at {@code offset} (a double free, or a wrong value)
+     * @param offset the index of the first element to read or write
+     * @return its size
+     * @throws IllegalArgumentException if no allocated block starts at {@code offset} (a double
+     *     free, or a wrong value)
      */
     public long free(long offset) {
         int i = find(offset);
@@ -274,12 +366,24 @@ public final class FreeListAllocator {
         return size;
     }
 
-    /** The memory behind the offsets, or {@code null} for an allocator made from a capacity only. */
+    /**
+     * Exposes the memory the offsets refer to, when the allocator was built over a segment.
+     *
+     * @return the memory behind the offsets, or {@code null} for an allocator made from a capacity
+     *     only
+     */
     public MemorySegment segment() {
         return backing;
     }
 
-    /** A view of the allocated block at {@code offset} (allocates the view object). */
+    /**
+     * Creates a view of an allocated block; allocates the view object, so keep it off hot paths.
+     *
+     * @param offset the index of the first element to read or write
+     * @return a view of the allocated block at {@code offset} (allocates the view object)
+     * @throws IllegalStateException if this allocator has no backing segment
+     * @throws IllegalArgumentException if {@code offset} is not the start of an allocated block
+     */
     public MemorySegment slice(long offset) {
         if (backing == null) {
             throw new IllegalStateException("this allocator has no backing segment");
@@ -291,7 +395,14 @@ public final class FreeListAllocator {
         return backing.asSlice(offset, size);
     }
 
-    /** Checks that the blocks tile the range, no two free blocks are adjacent and the free total adds up; for tests and debugging. Returns a problem or {@code null}. */
+    /**
+     * Checks that the blocks tile the range, no two free blocks are adjacent and the free total
+     * adds up; for tests and debugging.
+     *
+     * <p>Returns a problem or {@code null}.
+     *
+     * @return a problem or {@code null}
+     */
     public String validate() {
         long position = 0, freeSum = 0;
         for (int i = 0; i < blocks; i++) {

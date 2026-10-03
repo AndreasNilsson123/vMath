@@ -1,8 +1,9 @@
 package vmath.spatial;
 
 /**
- * The per-node tests that the static BVH ({@link BvhQuery}) and the dynamic tree ({@link DynamicAabbTree}) share, so that the two cannot drift apart: both are
- * called in the innermost loop of a traversal, take plain arrays and allocate nothing.
+ * The per-node tests that the static BVH ({@link BvhQuery}) and the dynamic tree
+ * ({@link DynamicAabbTree}) share, so that the two cannot drift apart: both are called in the
+ * innermost loop of a traversal, take plain arrays and allocate nothing.
  */
 final class NodeTests {
 
@@ -10,9 +11,13 @@ final class NodeTests {
     }
 
     /**
-     * Tests the node box at {@code b[o .. o+5]} ({@code minX, minY, minZ, maxX, maxY, maxZ}) against the frustum {@code planes} (six planes of {@code nx, ny, nz, d}, a
-     * point is inside when {@code n.p + d >= 0}) that are still undecided in {@code mask}. Returns -1 when the box is entirely outside one of them, otherwise the
-     * mask of the planes the box is not entirely inside (0: the whole subtree is visible, no further plane tests needed).
+     * Tests the node box at {@code b[o .. o+5]} ({@code minX, minY, minZ, maxX, maxY, maxZ})
+     * against the frustum {@code planes} (six planes of {@code nx, ny, nz, d}, a point is inside
+     * when {@code n.p + d >= 0}) that are still undecided in {@code mask}.
+     *
+     * <p>Returns -1 when the box is entirely outside one of them, otherwise the mask of the planes
+     * the box is not entirely inside (0: the whole subtree is visible, no further plane tests
+     * needed).
      */
     static int frustumMask(float[] planes, float[] b, int o, int mask) {
         float cx = (b[o] + b[o + 3]) * 0.5f, cy = (b[o + 1] + b[o + 4]) * 0.5f, cz = (b[o + 2] + b[o + 5]) * 0.5f;
@@ -36,8 +41,11 @@ final class NodeTests {
     }
 
     /**
-     * Reciprocal of a ray direction component for {@link #entry}: {@code +Infinity} for a component that is zero (or so small that its reciprocal overflows), which
-     * {@code entry} reads as "the ray is parallel to this slab". Never used in a product, so no NaN can arise from {@code 0 * Infinity}.
+     * Reciprocal of a ray direction component for {@link #entry}: {@code +Infinity} for a component
+     * that is zero (or so small that its reciprocal overflows), which {@code entry} reads as "the
+     * ray is parallel to this slab".
+     *
+     * <p>Never used in a product, so no NaN can arise from {@code 0 * Infinity}.
      */
     static float inverse(float d) {
         float inv = 1f / d;
@@ -45,14 +53,21 @@ final class NodeTests {
     }
 
     /**
-     * Slab test against node bounds; returns the entry distance, or +Infinity for a miss or an entry beyond tMax. An axis the ray is parallel to ({@code i == +Infinity})
-     * only checks that the origin lies between the two faces, <em>inclusive</em>: a ray that runs exactly along a face touches the box, as {@code Intersectionf.rayAabb} says.
+     * Slab test against node bounds; returns the entry distance, or +Infinity for a miss or an
+     * entry beyond tMax.
+     *
+     * <p>An axis the ray is parallel to ({@code i == +Infinity}) only checks that the origin lies
+     * between the two faces, <em>inclusive</em>: a ray that runs exactly along a face touches the
+     * box, as {@code Intersectionf.rayAabb} says.
      */
     static float entry(float[] b, int o, float ox, float oy, float oz, float ix, float iy, float iz, float tMax) {
         return entry(b[o], b[o + 1], b[o + 2], b[o + 3], b[o + 4], b[o + 5], ox, oy, oz, ix, iy, iz, tMax);
     }
 
-    /** {@link #entry(float[], int, float, float, float, float, float, float, float)} for a box given by its six bounds. */
+    /**
+     * {@link #entry(float[], int, float, float, float, float, float, float, float)} for a box given
+     * by its six bounds.
+     */
     static float entry(float minX, float minY, float minZ, float maxX, float maxY, float maxZ,
                        float ox, float oy, float oz, float ix, float iy, float iz, float tMax) {
         float tNear = 0f, tFar = tMax;
@@ -86,7 +101,10 @@ final class NodeTests {
         return tNear <= tFar ? tNear : Float.POSITIVE_INFINITY;
     }
 
-    /** Squared distance from the point to the box at {@code b[o .. o+5]}; 0 when the point is inside. */
+    /**
+     * Squared distance from the point to the box at {@code b[o .. o+5]}; 0 when the point is
+     * inside.
+     */
     static float boxDistanceSquared(float[] b, int o, float px, float py, float pz) {
         float dx = Math.max(Math.max(b[o] - px, 0f), px - b[o + 3]);
         float dy = Math.max(Math.max(b[o + 1] - py, 0f), py - b[o + 4]);

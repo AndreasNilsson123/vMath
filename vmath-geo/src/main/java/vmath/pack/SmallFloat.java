@@ -3,22 +3,36 @@ package vmath.pack;
 import vmath.core.Vec3f;
 
 /**
- * The two packed HDR color formats: {@code R11G11B10F} (three unsigned small floats in 32 bits) and {@code RGB9E5} (three 9-bit
- * mantissas sharing one 5-bit exponent). Both store non-negative values only, in far less space than three half floats, which is why
+ * The two packed HDR color formats: {@code R11G11B10F} (three unsigned small floats in 32 bits) and
+ * {@code RGB9E5} (three 9-bit mantissas sharing one 5-bit exponent).
+ *
+ * <p>Both store non-negative values only, in far less space than three half floats, which is why
  * they are the usual choice for HDR render targets and light probes.
  *
  * <ul>
- *   <li><b>R11G11B10F</b> ({@code GL_R11F_G11F_B10F}, Vulkan {@code B10G11R11_UFLOAT_PACK32}): red is 5 exponent bits and 6
- *       mantissa bits, green the same, blue 5 and 5. Red occupies bits 0 to 10, green 11 to 21, blue 22 to 31. Negative values
- *       clamp to 0, values above the largest finite number (65024 for red and green, 64512 for blue) clamp to it, infinity stays
+ *   <li><b>R11G11B10F</b> ({@code GL_R11F_G11F_B10F}, Vulkan {@code B10G11R11_UFLOAT_PACK32}): red
+ *       is 5 exponent bits and 6 mantissa bits, green the same, blue 5 and 5. Red occupies bits 0
+ *       to 10, green 11 to 21, blue 22 to 31. Negative values clamp to 0, values above the largest
+ *       finite number (65024 for red and green, 64512 for blue) clamp to it, infinity stays
  *       infinity and NaN stays NaN.</li>
- *   <li><b>RGB9E5</b> ({@code GL_RGB9_E5}, Vulkan {@code E5B9G9R9_UFLOAT_PACK32}): red in bits 0 to 8, green 9 to 17, blue 18 to 26 and
- *       the shared exponent in 27 to 31. All three channels share the exponent of the largest, so small channels next to a large one
- *       lose precision. The largest value is 65408. Negative, NaN and out-of-range inputs clamp to {@code [0, 65408]}.</li>
+ *   <li><b>RGB9E5</b> ({@code GL_RGB9_E5}, Vulkan {@code E5B9G9R9_UFLOAT_PACK32}): red in bits 0 to
+ *       8, green 9 to 17, blue 18 to 26 and the shared exponent in 27 to 31. All three channels
+ *       share the exponent of the largest, so small channels next to a large one lose precision.
+ *       The largest value is 65408. Negative, NaN and out-of-range inputs clamp to
+ *       {@code [0, 65408]}.</li>
  * </ul>
  *
- * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time. The arrays and buffers you pass in are
- * not synchronised, so two threads must not write the same one.
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the
+ * same time. The arrays and buffers you pass in are not synchronised, so two threads must not write
+ * the same one.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * int r11g11b10 = SmallFloat.packR11G11B10F(1.5f, 0.25f, 4f);            // for HDR render targets
+ * Vec3f back = SmallFloat.unpackR11G11B10F(r11g11b10);
+ * int shared = SmallFloat.packRgb9E5(new Vec3f(1.5f, 0.25f, 4f));        // three 9-bit mantissas and a shared exponent
+ * }</pre>
  */
 public final class SmallFloat {
 
@@ -31,7 +45,10 @@ public final class SmallFloat {
     private static final int EXP_BIAS = 15;
     private static final int MIN_EXP = 1 - EXP_BIAS; // exponent of the smallest normal number, -14
 
-    /** Encodes {@code v} as an unsigned float with a 5-bit exponent and {@code mantBits} mantissa bits, rounding to nearest even. */
+    /**
+     * Encodes {@code v} as an unsigned float with a 5-bit exponent and {@code mantBits} mantissa
+     * bits, rounding to nearest even.
+     */
     static int encodeUnsigned(float v, int mantBits) {
         int infinity = ((1 << EXP_BITS) - 1) << mantBits;
         if (v != v) {
@@ -73,26 +90,51 @@ public final class SmallFloat {
         return (float) ((1.0 + mant / (double) (1 << mantBits)) * Math.scalb(1.0, exp - EXP_BIAS));
     }
 
-    /** Largest finite value of the 11-bit float used for red and green: 65024. */
+    /**
+     * Largest finite value of the 11-bit float used for red and green: 65024.
+     */
     public static final float MAX_R11 = 65024f;
-    /** Largest finite value of the 10-bit float used for blue: 64512. */
+    /**
+     * Largest finite value of the 10-bit float used for blue: 64512.
+     */
     public static final float MAX_B10 = 64512f;
 
     // ---------------------------------------------------------------- R11G11B10F
 
     /**
-     * Packs three non-negative floats into 11-11-10 bit floats: red in bits 0 to 10, green 11 to 21, blue 22 to 31. Negative values become 0, large finite ones clamp to {@link #MAX_R11} and {@link #MAX_B10}, infinity and NaN are kept.
+     * Packs three non-negative floats into 11-11-10 bit floats: red in bits 0 to 10, green 11 to
+     * 21, blue 22 to 31.
+     *
+     * <p>Negative values become 0, large finite ones clamp to {@link #MAX_R11} and
+     * {@link #MAX_B10}, infinity and NaN are kept.
+     *
+     * @param r the red channel; must not be negative
+     * @param g the green channel; must not be negative
+     * @param b the blue channel; must not be negative
+     * @return the packed 11-11-10 value
      */
     public static int packR11G11B10F(float r, float g, float b) {
         return encodeUnsigned(r, 6) | (encodeUnsigned(g, 6) << 11) | (encodeUnsigned(b, 5) << 22);
     }
 
-    /** {@link #packR11G11B10F(float, float, float)} for a vector. */
+    /**
+     * Packs a colour into the 11-11-10 floating-point format through the vector form; the format
+     * has no sign bit, so negative values clamp to zero.
+     *
+     * @param rgb the rgb; must not be {@code null}
+     * @return {@link #packR11G11B10F(float, float, float)} for a vector
+     */
     public static int packR11G11B10F(Vec3f rgb) {
         return packR11G11B10F(rgb.x(), rgb.y(), rgb.z());
     }
 
-    /** The three floats stored in a value made by {@link #packR11G11B10F(float, float, float)}. */
+    /**
+     * Unpacks a colour from the 11-11-10 floating-point format.
+     *
+     * @param packed the packed value
+     * @return the three floats stored in a value made by
+     *     {@link #packR11G11B10F(float, float, float)}
+     */
     public static Vec3f unpackR11G11B10F(int packed) {
         return new Vec3f(decodeUnsigned(packed & 0x7FF, 6), decodeUnsigned((packed >>> 11) & 0x7FF, 6),
                 decodeUnsigned((packed >>> 22) & 0x3FF, 5));
@@ -103,7 +145,9 @@ public final class SmallFloat {
     private static final int E5_MANTISSA_BITS = 9;
     private static final int E5_BIAS = 15;
     private static final int E5_MAX_EXPONENT = 31;
-    /** Largest value RGB9E5 can hold: {@code (511 / 512) * 2^16}. */
+    /**
+     * Largest value RGB9E5 can hold: {@code (511 / 512) * 2^16}.
+     */
     public static final float MAX_RGB9E5 = 65408f;
 
     private static double clampE5(float v) {
@@ -113,7 +157,15 @@ public final class SmallFloat {
         return Math.min(v, MAX_RGB9E5);
     }
 
-    /** Packs to RGB9E5 following the {@code EXT_texture_shared_exponent} algorithm: the exponent is chosen from the largest channel. */
+    /**
+     * Packs to RGB9E5 following the {@code EXT_texture_shared_exponent} algorithm: the exponent is
+     * chosen from the largest channel.
+     *
+     * @param r the red channel; must not be negative
+     * @param g the green channel; must not be negative
+     * @param b the blue channel; must not be negative
+     * @return the packed RGB9E5 value
+     */
     public static int packRgb9E5(float r, float g, float b) {
         double rc = clampE5(r), gc = clampE5(g), bc = clampE5(b);
         double max = Math.max(rc, Math.max(gc, bc));
@@ -132,13 +184,23 @@ public final class SmallFloat {
         return rm | (gm << 9) | (bm << 18) | (Math.min(shared, E5_MAX_EXPONENT) << 27);
     }
 
-    /** {@link #packRgb9E5(float, float, float)} for a vector. */
+    /**
+     * Packs a colour into the shared-exponent 9-9-9-5 format through the vector form; the format
+     * has no sign bit, and all three channels lose precision relative to the largest.
+     *
+     * @param rgb the rgb; must not be {@code null}
+     * @return {@link #packRgb9E5(float, float, float)} for a vector
+     */
     public static int packRgb9E5(Vec3f rgb) {
         return packRgb9E5(rgb.x(), rgb.y(), rgb.z());
     }
 
     /**
-     * The three floats stored in a value made by {@link #packRgb9E5(float, float, float)}: three 9-bit mantissas in bits 0 to 26 and the shared 5-bit exponent in bits 27 to 31.
+     * Unpacks a colour from the shared-exponent 9-9-9-5 format.
+     *
+     * @param packed the packed value
+     * @return the three floats stored in a value made by {@link #packRgb9E5(float, float, float)}:
+     *     three 9-bit mantissas in bits 0 to 26 and the shared 5-bit exponent in bits 27 to 31
      */
     public static Vec3f unpackRgb9E5(int packed) {
         int shared = packed >>> 27;

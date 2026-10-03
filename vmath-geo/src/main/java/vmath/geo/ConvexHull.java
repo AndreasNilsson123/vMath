@@ -9,23 +9,40 @@ import vmath.annotations.Experimental;
 import vmath.core.Predicates;
 
 /**
- * The convex hull of a set of 3D points, by quickhull: start from a tetrahedron of extreme points, then repeatedly take the point farthest above a face, remove every face
- * that can see it and join the hole's rim to the point.
+ * The convex hull of a set of 3D points, by quickhull: start from a tetrahedron of extreme points,
+ * then repeatedly take the point farthest above a face, remove every face that can see it and join
+ * the hole's rim to the point.
  *
- * <p>Every decision that changes the shape (is this point above that face, which faces form the horizon) is made with the exact {@link Predicates#orient3d}, so the result is
- * always a closed, convex, consistently oriented triangle mesh: a point that is exactly on a face's plane is <em>not</em> above it, the vertices of the result are exactly the extreme points of the input (a point in the middle
- * of an edge or a face, as in a lattice or on the sides of a cube, is not listed: quickhull's first result is checked for such points with exact arithmetic and the hull is built again
- * without them), and nearly coplanar or nearly cospherical input cannot produce a hull with a dent or a hole. Only the choice of the farthest point uses approximate
- * distances (it affects speed, not correctness). A face that is planar with more than three points is made of several triangles; collinear and coplanar points on the
- * surface are never vertices of the hull.
+ * <p>Every decision that changes the shape (is this point above that face, which faces form the
+ * horizon) is made with the exact {@link Predicates#orient3d}, so the result is always a closed,
+ * convex, consistently oriented triangle mesh: a point that is exactly on a face's plane is
+ * <em>not</em> above it, the vertices of the result are exactly the extreme points of the input (a
+ * point in the middle of an edge or a face, as in a lattice or on the sides of a cube, is not
+ * listed: quickhull's first result is checked for such points with exact arithmetic and the hull is
+ * built again without them), and nearly coplanar or nearly cospherical input cannot produce a hull
+ * with a dent or a hole. Only the choice of the farthest point uses approximate distances (it
+ * affects speed, not correctness). A face that is planar with more than three points is made of
+ * several triangles; collinear and coplanar points on the surface are never vertices of the hull.
  *
- * <p>Degenerate input is reported, not rejected: {@link #dimension()} is 3 for a solid hull, 2 when all points are coplanar (the hull is then a convex polygon, given as a
- * triangle fan), 1 when they are collinear (two end points) and 0 when they coincide (one point). Fewer than one point is an {@link IllegalArgumentException}.
+ * <p>Degenerate input is reported, not rejected: {@link #dimension()} is 3 for a solid hull, 2 when
+ * all points are coplanar (the hull is then a convex polygon, given as a triangle fan), 1 when they
+ * are collinear (two end points) and 0 when they coincide (one point). Fewer than one point is an
+ * {@link IllegalArgumentException}.
  *
- * <p>The cost is O(n log n) on average for random points and O(n^2) in the worst case; the points are a flat {@code float[]} of {@code x, y, z} triples and are converted to
- * double exactly. Every index in the result refers to the input array (the n-th point is {@code n}).
+ * <p>The cost is O(n log n) on average for random points and O(n^2) in the worst case; the points
+ * are a flat {@code float[]} of {@code x, y, z} triples and are converted to double exactly. Every
+ * index in the result refers to the input array (the n-th point is {@code n}).
  *
  * <p><b>Thread safety.</b> The result is immutable and may be shared; {@link #of} is stateless.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * float[] points = {0f, 0f, 0f, 1f, 0f, 0f, 0f, 1f, 0f, 0f, 0f, 1f, 0.1f, 0.1f, 0.1f};
+ * ConvexHull hull = ConvexHull.of(points, 5);
+ * int[] hullVertices = hull.vertices();                               // indices of the points on the hull: the inner one is not there
+ * double volume = hull.volume();                                      // 1/6
+ * }</pre>
  */
 @Experimental("the result type and the handling of degenerate input may change with the polytope and collision code built on it")
 public final class ConvexHull {
@@ -44,47 +61,97 @@ public final class ConvexHull {
         this.area = area;
     }
 
-    /** 3 for a solid hull, 2 for a convex polygon, 1 for a segment, 0 for a single point. */
+    /**
+     * Classifies the hull by the dimension of the point set, which determines how to read the other
+     * accessors: a flat input yields a polygon, segment or point instead of a solid.
+     *
+     * @return 3 for a solid hull, 2 for a convex polygon, 1 for a segment, 0 for a single point
+     */
     public int dimension() {
         return dimension;
     }
 
-    /** The indices of the points that are vertices of the hull, in increasing order. Points on faces, edges or inside are not listed. */
+    /**
+     * Lists the input points that are vertices of the hull, which excludes interior and coplanar
+     * points.
+     *
+     * <p>Points on faces, edges or inside are not listed.
+     *
+     * @return the indices of the points that are vertices of the hull, in increasing order
+     */
     public int[] vertices() {
         return vertices.clone();
     }
 
-    /** The number of vertices of the hull. */
+    /**
+     * Counts the points that are vertices of the hull.
+     *
+     * @return the number of vertices of the hull
+     */
     public int vertexCount() {
         return vertices.length;
     }
 
     /**
-     * The faces as triples of point indices, counter-clockwise seen from outside (so {@code (b - a) x (c - a)} points out of the hull). Empty when the dimension is below 2; for
-     * dimension 2 the triangles fan the polygon and are counter-clockwise seen from the side that the normal's dominant axis (the one with the largest component) points to, with the axis pointing toward the viewer: z for a plane that is mostly horizontal, x or y for the others.
+     * Lists the hull faces as triangles that index into the input points, wound counter-clockwise
+     * seen from outside; empty below dimension 3.
+     *
+     * <p>Empty when the dimension is below 2; for dimension 2 the triangles fan the polygon and are
+     * counter-clockwise seen from the side that the normal's dominant axis (the one with the
+     * largest component) points to, with the axis pointing toward the viewer: z for a plane that is
+     * mostly horizontal, x or y for the others.
+     *
+     * @return the faces as triples of point indices, counter-clockwise seen from outside (so
+     *     {@code (b - a) x (c - a)} points out of the hull)
      */
     public int[] triangles() {
         return triangles.clone();
     }
 
-    /** The number of triangles. */
+    /**
+     * Counts the triangles of the hull.
+     *
+     * @return the number of triangles
+     */
     public int triangleCount() {
         return triangles.length / 3;
     }
 
-    /** The volume (0 below dimension 3). Computed in double from the exact topology; the rounding is that of the float input converted to double. */
+    /**
+     * Measures the enclosed volume, which is zero when the point set does not span three
+     * dimensions.
+     *
+     * <p>Computed in double from the exact topology; the rounding is that of the float input
+     * converted to double.
+     *
+     * @return the volume (0 below dimension 3)
+     */
     public double volume() {
         return volume;
     }
 
-    /** The surface area (for dimension 2 the area of the polygon, for lower dimensions 0). */
+    /**
+     * Measures the surface area; for a flat polygon this is its area.
+     *
+     * @return the surface area (for dimension 2 the area of the polygon, for lower dimensions 0)
+     */
     public double surfaceArea() {
         return area;
     }
 
     // ---------------------------------------------------------------- construction
 
-    /** The hull of the {@code count} points in {@code xyz}. */
+    /**
+     * Builds the hull of a point cloud by quickhull with exact orientation tests; O(n log n) on
+     * average and O(n^2) in the worst case, and degenerate input (coplanar, collinear, coincident)
+     * is reported through {@link #dimension()} rather than rejected.
+     *
+     * @param xyz the three components
+     * @param count the number of elements
+     * @return the hull of the {@code count} points in {@code xyz}
+     * @throws IllegalArgumentException if {@code count} is not in {@code [1, xyz.length / 3]} or a
+     *     coordinate is not finite
+     */
     public static ConvexHull of(float[] xyz, int count) {
         if (count < 1 || (long) count * 3 > xyz.length) {
             throw new IllegalArgumentException("need between 1 and " + xyz.length / 3 + " points: " + count);
@@ -139,7 +206,10 @@ public final class ConvexHull {
             return p[3 * i + 2];
         }
 
-        /** Orientation of the four points as {@link Predicates#orient3d}: negative when d is above the plane of a, b, c (the side of their counter-clockwise normal). */
+        /**
+         * Orientation of the four points as {@link Predicates#orient3d}: negative when d is above
+         * the plane of a, b, c (the side of their counter-clockwise normal).
+         */
         double orient(int a, int b, int c, int d) {
             return Predicates.orient3d(x(a), y(a), z(a), x(b), y(b), z(b), x(c), y(c), z(c), x(d), y(d), z(d));
         }
@@ -148,7 +218,10 @@ public final class ConvexHull {
             return orient(fa[f], fb[f], fc[f], q) < 0.0;
         }
 
-        /** Approximate height of point q above face f (positive outside): used only to choose the farthest point. */
+        /**
+         * Approximate height of point q above face f (positive outside): used only to choose the
+         * farthest point.
+         */
         double height(int f, int q) {
             int a = fa[f], b = fb[f], c = fc[f];
             double ux = x(b) - x(a), uy = y(b) - y(a), uz = z(b) - z(a);
@@ -238,8 +311,12 @@ public final class ConvexHull {
         }
 
         /**
-         * The vertices of the hull that are extreme points: those whose incident face normals span space. When the normals of all faces at a vertex lie in a plane (or are
-         * parallel) the vertex is in the middle of an edge or inside a facet. Exact: the coordinates are doubles and the arithmetic is {@link BigDecimal}.
+         * The vertices of the hull that are extreme points: those whose incident face normals span
+         * space.
+         *
+         * <p>When the normals of all faces at a vertex lie in a plane (or are parallel) the vertex
+         * is in the middle of an edge or inside a facet. Exact: the coordinates are doubles and the
+         * arithmetic is {@link BigDecimal}.
          */
         int[] extremeVertices(ConvexHull h) {
             int f = h.triangles.length / 3;
@@ -312,7 +389,10 @@ public final class ConvexHull {
             return cx * cx + cy * cy + cz * cz;
         }
 
-        /** Whether a, b, q are exactly collinear: the three coordinate-plane projections all have orientation zero. */
+        /**
+         * Whether a, b, q are exactly collinear: the three coordinate-plane projections all have
+         * orientation zero.
+         */
         boolean collinear(int a, int b, int q) {
             return Predicates.orient2d(x(a), y(a), x(b), y(b), x(q), y(q)) == 0.0 && Predicates.orient2d(y(a), z(a), y(b), z(b), y(q), z(q)) == 0.0
                     && Predicates.orient2d(z(a), x(a), z(b), x(b), z(q), x(q)) == 0.0;

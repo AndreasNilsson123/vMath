@@ -3,34 +3,64 @@ package vmath.anim;
 import vmath.bulk.Mat4fArray;
 
 /**
- * Skinning: turning a {@link Pose} into the joint matrices a skinned mesh needs, plus a CPU reference of what the GPU does with them.
+ * Skinning: turning a {@link Pose} into the joint matrices a skinned mesh needs, plus a CPU
+ * reference of what the GPU does with them.
  *
- * <p><b>Joint matrices.</b> For each joint the skinning matrix is {@code world * inverseBind}: it takes a vertex from bind space to its
- * place in the posed skeleton. At the bind pose every one of them is the identity. They are written to a {@link Mat4fArray} (16 floats
- * per joint, column-major) that uploads as a {@code mat4[]} storage or uniform buffer: in std430 and std140 alike a {@code mat4} array
- * has a stride of {@link #JOINT_MATRIX_BYTES} bytes, so it needs no padding.
+ * <p><b>Joint matrices.</b> For each joint the skinning matrix is {@code world * inverseBind}: it
+ * takes a vertex from bind space to its place in the posed skeleton. At the bind pose every one of
+ * them is the identity. They are written to a {@link Mat4fArray} (16 floats per joint,
+ * column-major) that uploads as a {@code mat4[]} storage or uniform buffer: in std430 and std140
+ * alike a {@code mat4} array has a stride of {@link #JOINT_MATRIX_BYTES} bytes, so it needs no
+ * padding.
  *
- * <p><b>Vertex data.</b> Each vertex has up to four joint indices and four weights. {@link #packWeights} stores weights as four unsigned
- * bytes that sum to exactly 255 (a {@code unorm8x4} attribute), and the joint indices fit in one {@code uvec4} or in four bytes.
+ * <p><b>Vertex data.</b> Each vertex has up to four joint indices and four weights.
+ * {@link #packWeights} stores weights as four unsigned bytes that sum to exactly 255 (a
+ * {@code unorm8x4} attribute), and the joint indices fit in one {@code uvec4} or in four bytes.
  *
- * <p><b>The reference.</b> {@link #skinPositions} and {@link #skinNormals} compute linear blend skinning on the CPU, the definition the
- * GPU shader has to match; use them as the oracle when checking one. Normals use the joint matrices' rotation part, which is exact for
- * rotation and uniform scale and approximate for non-uniform scale (the exact method needs the inverse transpose).
+ * <p><b>The reference.</b> {@link #skinPositions} and {@link #skinNormals} compute linear blend
+ * skinning on the CPU, the definition the GPU shader has to match; use them as the oracle when
+ * checking one. Normals use the joint matrices' rotation part, which is exact for rotation and
+ * uniform scale and approximate for non-uniform scale (the exact method needs the inverse
+ * transpose).
  *
- * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time. The arrays and buffers you pass in are
- * not synchronised, so two threads must not write the same one.
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the
+ * same time. The arrays and buffers you pass in are not synchronised, so two threads must not write
+ * the same one.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * Skeleton skeleton = new Skeleton(new int[] {-1}, new float[] {0f, 0f, 0f, 0f, 0f, 0f, 1f, 1f, 1f, 1f});
+ * Pose pose = new Pose(skeleton);
+ * Mat4fArray joints = new Mat4fArray(1);
+ * joints.add(Mat4f.IDENTITY);
+ * Skinning.jointMatrices(skeleton, pose, new float[16], joints);          // world * inverse bind, one matrix per joint
+ * float[] jointData = new float[16];
+ * joints.get(0).writeTo(jointData, 0);                                     // 16 floats per joint
+ * float[] positions = {1f, 2f, 3f};
+ * int[] jointIndices = {0, 0, 0, 0};                                       // four joints per vertex
+ * float[] weights = {1f, 0f, 0f, 0f};
+ * float[] skinned = new float[3];
+ * Skinning.skinPositions(jointData, positions, jointIndices, weights, 1, skinned);
+ * }</pre>
  */
 public final class Skinning {
 
-    /** Bytes of one joint matrix in a {@code mat4[]} buffer (std140 and std430 agree). */
+    /**
+     * Bytes of one joint matrix in a {@code mat4[]} buffer (std140 and std430 agree).
+     */
     public static final int JOINT_MATRIX_BYTES = 64;
 
     private Skinning() {
     }
 
     /**
-     * Computes the world matrix of every joint of {@code pose} into {@code worldOut} (16 floats per joint, at least
-     * {@code 16 * jointCount}), in one forward pass.
+     * Computes the world matrix of every joint of {@code pose} into {@code worldOut} (16 floats per
+     * joint, at least {@code 16 * jointCount}), in one forward pass.
+     *
+     * @param skeleton the skeleton; must not be {@code null}
+     * @param pose the pose; must not be {@code null}
+     * @param worldOut the world out
      */
     public static void worldMatrices(Skeleton skeleton, Pose pose, float[] worldOut) {
         int n = skeleton.jointCount();
@@ -43,9 +73,14 @@ public final class Skinning {
     }
 
     /**
-     * Computes {@code world * inverseBind} for every joint into {@code out} ({@code out} is resized to the joint count).
+     * Computes {@code world * inverseBind} for every joint into {@code out} ({@code out} is resized
+     * to the joint count).
      *
-     * @param worldScratch scratch of at least {@code 16 * jointCount} floats, reused between calls so nothing is allocated
+     * @param skeleton the skeleton; must not be {@code null}
+     * @param pose the pose; must not be {@code null}
+     * @param worldScratch scratch of at least {@code 16 * jointCount} floats, reused between calls
+     *     so nothing is allocated
+     * @param out receives the result; must not be {@code null}
      */
     public static void jointMatrices(Skeleton skeleton, Pose pose, float[] worldScratch, Mat4fArray out) {
         int n = skeleton.jointCount();
@@ -71,12 +106,17 @@ public final class Skinning {
     // ---------------------------------------------------------------- CPU reference
 
     /**
-     * Linear blend skinning of {@code vertexCount} positions ({@code x, y, z} each): the sum over the vertex's four joints of
-     * {@code weight * (jointMatrix * position)}. Weights are used as given (they should sum to 1).
+     * Skins {@code vertexCount} positions ({@code x, y, z} each) with linear blend skinning: the
+     * sum over the vertex's four joints of {@code weight * (jointMatrix * position)}.
+     *
+     * <p>Weights are used as given (they should sum to 1).
      *
      * @param jointMatrices the array of {@link #jointMatrices}, 16 floats per joint
+     * @param positions the positions
      * @param joints        four joint indices per vertex
      * @param weights       four weights per vertex
+     * @param vertexCount the number of vertices
+     * @param out receives the result
      */
     public static void skinPositions(float[] jointMatrices, float[] positions, int[] joints, float[] weights, int vertexCount, float[] out) {
         for (int v = 0; v < vertexCount; v++) {
@@ -99,8 +139,17 @@ public final class Skinning {
     }
 
     /**
-     * Skins unit normals with the rotation part of the joint matrices and renormalises the result (a zero result stays zero). See the
-     * class comment for the non-uniform scale caveat.
+     * Skins unit normals with the rotation part of the joint matrices and renormalises the result
+     * (a zero result stays zero).
+     *
+     * <p>See the class comment for the non-uniform scale caveat.
+     *
+     * @param jointMatrices the joint matrices (at least 11 elements)
+     * @param normals the normals
+     * @param joints the joints
+     * @param weights the weights
+     * @param vertexCount the number of vertices
+     * @param out receives the result
      */
     public static void skinNormals(float[] jointMatrices, float[] normals, int[] joints, float[] weights, int vertexCount, float[] out) {
         for (int v = 0; v < vertexCount; v++) {
@@ -131,9 +180,15 @@ public final class Skinning {
     // ---------------------------------------------------------------- weight packing
 
     /**
-     * Packs four weights (renormalised to sum to 1; negative or NaN weights count as 0) into one int of four unsigned bytes, weight 0 in the
-     * lowest byte. The four bytes sum to exactly 255, so the unpacked weights sum to 1 again. All-zero weights pack as full weight on the
-     * first joint.
+     * Packs four weights (renormalised to sum to 1; negative or NaN weights count as 0) into one
+     * int of four unsigned bytes, weight 0 in the lowest byte.
+     *
+     * <p>The four bytes sum to exactly 255, so the unpacked weights sum to 1 again. All-zero
+     * weights pack as full weight on the first joint.
+     *
+     * @param weights the weights
+     * @param offset the index of the first element to read or write
+     * @return the four weights packed into one int
      */
     public static int packWeights(float[] weights, int offset) {
         float sum = 0f;
@@ -161,7 +216,13 @@ public final class Skinning {
         return q[0] | (q[1] << 8) | (q[2] << 16) | (q[3] << 24);
     }
 
-    /** Unpacks four weights packed by {@link #packWeights} into {@code out[offset..offset+3]}. */
+    /**
+     * Unpacks four weights packed by {@link #packWeights} into {@code out[offset..offset+3]}.
+     *
+     * @param packed the packed value
+     * @param out receives the result
+     * @param offset the index of the first element to read or write
+     */
     public static void unpackWeights(int packed, float[] out, int offset) {
         for (int k = 0; k < 4; k++) {
             out[offset + k] = ((packed >>> (8 * k)) & 0xFF) / 255f;

@@ -8,30 +8,56 @@ import vmath.bulk.VisibilitySet;
 import vmath.geo.Frustumf;
 
 /**
- * Runs a {@link FrustumKernel} on several threads. The object range is cut into chunks that start at multiples of 64, so every
- * chunk writes its own words of the {@link VisibilitySet} and no synchronisation is needed while culling; the result is
- * <b>bit-identical</b> to the serial kernel.
+ * Runs a {@link FrustumKernel} on several threads.
  *
- * <p>The caller supplies the {@link Executor} (a fixed pool or {@code ForkJoinPool.commonPool()}); this class never creates
- * threads. The calling thread does one chunk itself, so {@code parts} chunks need only {@code parts - 1} pool threads. Each
- * chunk has its own kernel instance (kernels own scratch memory). The driver itself allocates nothing per call; the executor
- * may (a {@code ThreadPoolExecutor} queues a node of about 50 bytes per handed-out chunk).
+ * <p>The object range is cut into chunks that start at multiples of 64, so every chunk writes its
+ * own words of the {@link VisibilitySet} and no synchronisation is needed while culling; the result
+ * is <b>bit-identical</b> to the serial kernel.
  *
- * <p>Measured at 1M objects on 12 logical cores ({@code ParallelCullBench}): 2.25 ms serial, 1.56 ms with 2 chunks, 0.99 ms
- * with 4, 0.76 ms with 8. The kernel is memory-bound, so the gain flattens well before the core count.
+ * <p>The caller supplies the {@link Executor} (a fixed pool or {@code ForkJoinPool.commonPool()});
+ * this class never creates threads. The calling thread does one chunk itself, so {@code parts}
+ * chunks need only {@code parts - 1} pool threads. Each chunk has its own kernel instance (kernels
+ * own scratch memory). The driver itself allocates nothing per call; the executor may (a
+ * {@code ThreadPoolExecutor} queues a node of about 50 bytes per handed-out chunk).
  *
- * <p><b>Executor contract.</b> The executor must eventually run every task it accepts. {@code cull} returns only when all chunks have finished, with no timeout
- * (a chunk that is still running after a timeout would write into the result set after the call returned, which is worse than waiting), so an executor that accepts a
- * task and then discards it, for example a pool shut down with {@code shutdownNow()} while the task was still queued, blocks the calling thread forever. An executor that
- * <em>rejects</em> a task (throws from {@code execute}) is handled: the chunks already handed out are awaited and the exception is rethrown.
+ * <p>Measured at 1M objects on 12 logical cores ({@code ParallelCullBench}): 2.25 ms serial, 1.56
+ * ms with 2 chunks, 0.99 ms with 4, 0.76 ms with 8. The kernel is memory-bound, so the gain
+ * flattens well before the core count.
  *
- * <p>Ranges too small to pay for the hand-off ({@code < 2 * MIN_CHUNK} objects) run serially on the calling thread.
+ * <p><b>Executor contract.</b> The executor must eventually run every task it accepts. {@code cull}
+ * returns only when all chunks have finished, with no timeout (a chunk that is still running after
+ * a timeout would write into the result set after the call returned, which is worse than waiting),
+ * so an executor that accepts a task and then discards it, for example a pool shut down with
+ * {@code shutdownNow()} while the task was still queued, blocks the calling thread forever. An
+ * executor that <em>rejects</em> a task (throws from {@code execute}) is handled: the chunks
+ * already handed out are awaited and the exception is rethrown.
+ *
+ * <p>Ranges too small to pay for the hand-off ({@code < 2 * MIN_CHUNK} objects) run serially on the
+ * calling thread.
  *
  * <p>An instance is not thread-safe: one call at a time.
+ *
+ * <p><b>Thread safety.</b> Not specified for concurrent calls of {@code cull} on one instance; use
+ * one call at a time. The chunks run on the threads of the supplied executor and the calling thread
+ * runs one of them; the class creates no threads, and the call returns after all chunks finished.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * ExecutorService pool = Executors.newFixedThreadPool(3);
+ * FrustumKernel kernel = new ParallelFrustumKernel(pool, 4);                 // four chunks: the caller runs one itself
+ * BoundsArray bounds = new BoundsArray(100000);
+ * VisibilitySet visible = new VisibilitySet(100000);
+ * Frustumf frustum = Frustumf.fromViewProjection(Mat4f.IDENTITY, DepthRange.of(ClipSpace.OPENGL));
+ * kernel.cull(frustum, bounds, visible);
+ * pool.shutdown();
+ * }</pre>
  */
 public final class ParallelFrustumKernel implements FrustumKernel {
 
-    /** Smallest chunk worth handing to another thread. */
+    /**
+     * Smallest chunk worth handing to another thread.
+     */
     public static final int MIN_CHUNK = 8192;
 
     private final Executor executor;
@@ -40,9 +66,15 @@ public final class ParallelFrustumKernel implements FrustumKernel {
     private volatile Throwable failure;
 
     /**
-     * @param executor runs the chunks; must be able to run {@code parts - 1} tasks concurrently for full speed
+     * Creates a kernel that cuts every range into {@code parts} chunks, runs them on the executor
+     * and evaluates each with a kernel made by the factory.
+     *
+     * @param executor runs the chunks; must be able to run {@code parts - 1} tasks concurrently for
+     *     full speed
      * @param parts    how many chunks to cut a range into (typically the number of cores)
-     * @param factory  makes one kernel per chunk, for example {@code FrustumKernels::best}
+     * @param factory makes one kernel per chunk, for example {@code FrustumKernels::best}
+     * @throws IllegalArgumentException if {@code parts} is below 1
+     * @throws NullPointerException if {@code executor} is {@code null}
      */
     public ParallelFrustumKernel(Executor executor, int parts, Supplier<? extends FrustumKernel> factory) {
         if (parts < 1) {
@@ -55,7 +87,12 @@ public final class ParallelFrustumKernel implements FrustumKernel {
         }
     }
 
-    /** {@code parts} chunks of the best available kernel. */
+    /**
+     * Creates a kernel of {@code parts} chunks, each evaluated by the best available kernel.
+     *
+     * @param executor the executor; must not be {@code null}
+     * @param parts the parts
+     */
     public ParallelFrustumKernel(Executor executor, int parts) {
         this(executor, parts, FrustumKernels::best);
     }
@@ -110,7 +147,9 @@ public final class ParallelFrustumKernel implements FrustumKernel {
         }
     }
 
-    /** Waits until every chunk handed out has finished. */
+    /**
+     * Waits until every chunk handed out has finished.
+     */
     private void finish() {
         phaser.arriveAndAwaitAdvance();
     }

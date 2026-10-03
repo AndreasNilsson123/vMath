@@ -11,7 +11,9 @@ import vmath.gltf.Gltf.SkinData;
 import static vmath.gltf.ClipResampling.*;
 import static vmath.gltf.JsonAccess.*;
 
-/** Converts a glTF animation into an {@link AnimationClip} for the skeleton of a skin. */
+/**
+ * Converts a glTF animation into an {@link AnimationClip} for the skeleton of a skin.
+ */
 final class GltfAnimations {
 
     private GltfAnimations() {

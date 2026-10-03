@@ -6,41 +6,88 @@ import vmath.core.Transformf;
 import vmath.core.Vec3f;
 
 /**
- * Many translation-rotation-scale transforms in one {@code float[]}, ten floats each: translation {@code x, y, z}, unit quaternion
- * {@code x, y, z, w}, scale {@code x, y, z}. This is the layout of {@code vmath.anim.Pose} and of the local transforms in
+ * Many translation-rotation-scale transforms in one {@code float[]}, ten floats each: translation
+ * {@code x, y, z}, unit quaternion {@code x, y, z, w}, scale {@code x, y, z}.
+ *
+ * <p>This is the layout of {@code vmath.anim.Pose} and of the local transforms in
  * {@code vmath.anim.TransformHierarchy}, so data can move between them without conversion.
  *
- * <p>The quaternions are assumed to be unit length (use {@link QuatArray#normalizeAll} on a copy, or normalise when writing). The batch kernels read and
- * write the arrays directly and allocate nothing.
+ * <p>The quaternions are assumed to be unit length (use {@link QuatArray#normalizeAll} on a copy,
+ * or normalise when writing). The batch kernels read and write the arrays directly and allocate
+ * nothing.
  *
- * <p><b>Thread safety.</b> Not thread-safe: it is mutable, so use one instance per thread or synchronise externally. Concurrent reads are safe only
- * while no thread is writing.
+ * <p><b>Thread safety.</b> Not thread-safe: it is mutable, so use one instance per thread or
+ * synchronise externally. Concurrent reads are safe only while no thread is writing.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * TransformArray transforms = new TransformArray(2);
+ * transforms.add(new Transformf(new Vec3f(1f, 0f, 0f), Quatf.IDENTITY, Vec3f.ONE));
+ * transforms.add(new Transformf(new Vec3f(0f, 1f, 0f), Quatf.rotationY(0.5f), Vec3f.ONE));
+ * Mat4fArray matrices = new Mat4fArray(2);
+ * matrices.add(Mat4f.IDENTITY);
+ * matrices.add(Mat4f.IDENTITY);
+ * transforms.toMatrices(matrices);                                            // composes every transform into a matrix
+ * }</pre>
  */
 public final class TransformArray extends FloatElements {
 
-    /** Floats per transform. */
+    /**
+     * Floats per transform.
+     */
     public static final int STRIDE = 10;
 
-    /** An empty array with room for {@code capacity} transforms (at least 1). */
+    /**
+     * Creates an empty array with room for {@code capacity} transforms (at least 1).
+     *
+     * @param capacity the capacity in elements
+     */
     public TransformArray(int capacity) {
         super(capacity, STRIDE);
     }
 
-    /** Appends a transform given by translation, rotation quaternion ({@code x, y, z, w}, stored as given) and scale, and returns its index. */
+    /**
+     * Appends a transform given by translation, rotation quaternion ({@code x, y, z, w}, stored as
+     * given) and scale, and returns its index.
+     *
+     * @param tx the x component of the translation
+     * @param ty the y component of the translation
+     * @param tz the z component of the translation
+     * @param qx the x component of the rotation quaternion
+     * @param qy the y component of the rotation quaternion
+     * @param qz the z component of the rotation quaternion
+     * @param qw the w component of the rotation quaternion
+     * @param sx the scale along x
+     * @param sy the scale along y
+     * @param sz the scale along z
+     * @return its index
+     */
     public int add(float tx, float ty, float tz, float qx, float qy, float qz, float qw, float sx, float sy, float sz) {
         ensureCapacity(size + 1);
         write(size, tx, ty, tz, qx, qy, qz, qw, sx, sy, sz);
         return size++;
     }
 
-    /** Appends a transform and returns its index. */
+    /**
+     * Appends a transform and returns its index.
+     *
+     * @param t the transform; must not be {@code null}
+     * @return its index
+     */
     public int add(Transformf t) {
         ensureCapacity(size + 1);
         store(size, t);
         return size++;
     }
 
-    /** Replaces transform {@code i}; {@link IndexOutOfBoundsException} for an index that is not below {@link #size()}. */
+    /**
+     * Replaces transform {@code i}; {@link IndexOutOfBoundsException} for an index that is not
+     * below {@link #size()}.
+     *
+     * @param i the index
+     * @param t the transform; must not be {@code null}
+     */
     public void set(int i, Transformf t) {
         checkIndex(i);
         store(i, t);
@@ -66,7 +113,13 @@ public final class TransformArray extends FloatElements {
         data[o + 9] = sz;
     }
 
-    /** Transform {@code i} as a value (allocates); {@link IndexOutOfBoundsException} for an index that is not below {@link #size()}. */
+    /**
+     * Reads a transform as an object; allocates, so use the array form in loops.
+     *
+     * @param i the index
+     * @return transform {@code i} as a value (allocates); {@link IndexOutOfBoundsException} for an
+     *     index that is not below {@link #size()}
+     */
     public Transformf get(int i) {
         checkIndex(i);
         int o = i * STRIDE;
@@ -78,8 +131,11 @@ public final class TransformArray extends FloatElements {
     // ---------------------------------------------------------------- batch kernels
 
     /**
-     * Writes the model matrix {@code T * R * S} of every transform to {@code out} (16 floats each, column-major, bottom row 0, 0, 0, 1), resizing
-     * {@code out} to the element count: the matrices to upload for rendering.
+     * Writes the model matrix {@code T * R * S} of every transform to {@code out} (16 floats each,
+     * column-major, bottom row 0, 0, 0, 1), resizing {@code out} to the element count: the matrices
+     * to upload for rendering.
+     *
+     * @param out receives the result; must not be {@code null}
      */
     public void toMatrices(Mat4fArray out) {
         out.ensureCapacity(size);
@@ -109,9 +165,18 @@ public final class TransformArray extends FloatElements {
     }
 
     /**
-     * {@code out[i]} is {@code a[i]} blended toward {@code b[i]} by {@code t}: translation and scale linearly, rotation by slerp along the shortest arc
-     * ({@code t = 0} gives {@code a}, {@code t = 1} gives {@code b}). {@code a} and {@code b} must have the same size; {@code out} is resized and may
-     * be either of them.
+     * Blends {@code a[i]} toward {@code b[i]} by {@code t} into {@code out[i]}: translation and
+     * scale linearly, rotation by slerp along the shortest arc ({@code t = 0} gives {@code a},
+     * {@code t = 1} gives {@code b}).
+     *
+     * <p>{@code a} and {@code b} must have the same size; {@code out} is resized and may be either
+     * of them.
+     *
+     * @param a the first transform array; must not be {@code null}
+     * @param b the second transform array; must not be {@code null}
+     * @param t the blend parameter, 0 for {@code a} and 1 for {@code b}
+     * @param out receives the result; must not be {@code null}
+     * @throws IllegalArgumentException if the arrays differ in size
      */
     public static void blend(TransformArray a, TransformArray b, float t, TransformArray out) {
         if (a.size != b.size) {
@@ -132,9 +197,18 @@ public final class TransformArray extends FloatElements {
     // ---------------------------------------------------------------- compaction
 
     /**
-     * As {@link #toMatrices(Mat4fArray)}, but writes the model matrices (16 native-order floats, column-major) straight into {@code dst}: element {@code i} at byte
-     * {@code offset + i * strideBytes}, the way a persistently mapped instance buffer wants them (the stride may be larger than 64 to leave room for per-instance
-     * data, which is left untouched). Nothing is allocated and no heap matrix array is involved.
+     * As {@link #toMatrices(Mat4fArray)}, but writes the model matrices (16 native-order floats,
+     * column-major) straight into {@code dst}: element {@code i} at byte
+     * {@code offset + i * strideBytes}, the way a persistently mapped instance buffer wants them
+     * (the stride may be larger than 64 to leave room for per-instance data, which is left
+     * untouched).
+     *
+     * <p>Nothing is allocated and no heap matrix array is involved.
+     *
+     * @param dst receives the result; must not be {@code null}
+     * @param offset the index of the first element to read or write
+     * @param strideBytes the stride bytes
+     * @throws IllegalArgumentException if {@code strideBytes} is smaller than one matrix (64 bytes)
      */
     public void toMatrices(java.lang.foreign.MemorySegment dst, long offset, long strideBytes) {
         if (strideBytes < 64) {

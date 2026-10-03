@@ -10,30 +10,66 @@ import vmath.geo.Rayf;
 import vmath.geo.Spheref;
 
 /**
- * Queries against a {@link StaticBvh}. An instance owns the traversal stack, so create one per thread and reuse it:
- * queries allocate nothing once the stack has grown to the tree depth. Results go into caller-supplied buffers
+ * Queries against a {@link StaticBvh}.
+ *
+ * <p>An instance owns the traversal stack, so create one per thread and reuse it: queries allocate
+ * nothing once the stack has grown to the tree depth. Results go into caller-supplied buffers
  * ({@link VisibilitySet}, {@link IntList}, {@link BvhHit}).
  *
- * <p>Every query takes the {@link BoundsArray} the tree was built (or refitted) from; primitives are tested against
- * their own bounds at the leaves.
+ * <p>Every query takes the {@link BoundsArray} the tree was built (or refitted) from; primitives
+ * are tested against their own bounds at the leaves.
+ *
+ * <p><b>Thread safety.</b> Not thread-safe: an instance owns the traversal stack, so use one per
+ * thread and reuse it. The tree and the bounds must not be changed while a query runs.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * BoundsArray bounds = new BoundsArray(3);
+ * bounds.add(-1f, -1f, -1f, 1f, 1f, 1f);
+ * bounds.add(4f, 0f, 0f, 6f, 2f, 2f);
+ * StaticBvh bvh = StaticBvh.build(bounds);
+ * BvhQuery query = new BvhQuery(bvh);                                   // one per thread
+ * BvhQuery.BvhHit hit = new BvhQuery.BvhHit();
+ * boolean found = query.raycastBounds(Rayf.of(new Vec3f(-5f, 0f, 0f), Vec3f.UNIT_X), 100f, bounds, hit);
+ * }</pre>
  */
 public final class BvhQuery {
 
-    /** Narrow-phase test for ray casts: the exact hit distance of primitive {@code p}, or +Infinity. */
+    /**
+     * Narrow-phase test for ray casts: the exact hit distance of primitive {@code p}, or +Infinity.
+     */
     @FunctionalInterface
     public interface PrimitiveTest {
-        /** The exact hit distance of {@code primitive} along {@code ray} if it is hit before {@code tMax}, else {@link Float#POSITIVE_INFINITY}. */
+        /**
+         * Tests one primitive against a ray and returns the exact hit distance, for a
+         * caller-supplied primitive type that the tree does not know.
+         *
+         * @param primitive the primitive
+         * @param ray the ray; must not be {@code null}
+         * @param tMax the largest ray parameter to test
+         * @return the exact hit distance of {@code primitive} along {@code ray} if it is hit before
+         *     {@code tMax}, else {@link Float#POSITIVE_INFINITY}
+         */
         float intersect(int primitive, Rayf ray, float tMax);
     }
 
-    /** Nearest ray hit, written by the raycast methods. */
+    /**
+     * Nearest ray hit, written by the raycast methods.
+     */
     public static final class BvhHit {
-        /** Index of the hit primitive, or -1. */
+        /**
+         * Index of the hit primitive, or -1.
+         */
         public int primitive = -1;
-        /** Distance along the ray in units of its direction; +Infinity when nothing was hit. */
+        /**
+         * Distance along the ray in units of its direction; +Infinity when nothing was hit.
+         */
         public float t = Float.POSITIVE_INFINITY;
 
-        /** A hit that records nothing yet ({@code primitive} -1, {@code t} infinite). */
+        /**
+         * Creates a hit that records nothing yet ({@code primitive} -1, {@code t} infinite).
+         */
         public BvhHit() {
         }
 
@@ -48,7 +84,14 @@ public final class BvhQuery {
     private float[] tStack = new float[64];
     private final float[] planes = new float[24];
 
-    /** A query object over {@code bvh}. It owns the traversal stacks, so use one per thread; the queries allocate nothing after the stacks have grown. */
+    /**
+     * Creates a query object over {@code bvh}.
+     *
+     * <p>It owns the traversal stacks, so use one per thread; the queries allocate nothing after
+     * the stacks have grown.
+     *
+     * @param bvh the bvh; must not be {@code null}
+     */
     public BvhQuery(StaticBvh bvh) {
         this.bvh = bvh;
     }
@@ -56,10 +99,17 @@ public final class BvhQuery {
     // ------------------------------------------------------------------ frustum
 
     /**
-     * Sets the bit of every primitive that may be visible in {@code frustum} (bits of others are left as they are;
-     * clear {@code out} first for a fresh result). Subtrees entirely inside are accepted without visiting their
-     * leaves, and each node only tests the planes its parent could not already decide. Returns the number of
-     * primitives accepted.
+     * Sets the bit of every primitive that may be visible in {@code frustum} (bits of others are
+     * left as they are; clear {@code out} first for a fresh result).
+     *
+     * <p>Subtrees entirely inside are accepted without visiting their leaves, and each node only
+     * tests the planes its parent could not already decide. Returns the number of primitives
+     * accepted.
+     *
+     * @param frustum the frustum; must not be {@code null}
+     * @param bounds the bounds; must not be {@code null}
+     * @param out receives the result; must not be {@code null}
+     * @return the number of primitives accepted
      */
     public int frustum(Frustumf frustum, BoundsArray bounds, VisibilitySet out) {
         if (bvh.nodeCount() == 0) {
@@ -125,15 +175,35 @@ public final class BvhQuery {
 
     // ------------------------------------------------------------------ rays
 
-    /** Nearest primitive whose <b>bounding box</b> the ray enters within {@code [0, tMax]}. */
+    /**
+     * Returns the nearest primitive whose <b>bounding box</b> the ray enters within
+     * {@code [0, tMax]}.
+     *
+     * @param ray the ray; must not be {@code null}
+     * @param tMax the largest ray parameter to test
+     * @param bounds the bounds; must not be {@code null}
+     * @param hit the hit; must not be {@code null}
+     * @return {@code true} if the ray enters the bounding box of some primitive, in which case the
+     *     nearest is in {@code hit}
+     */
     public boolean raycastBounds(Rayf ray, float tMax, BoundsArray bounds, BvhHit hit) {
         return raycast(ray, tMax, bounds, null, hit);
     }
 
     /**
-     * Nearest hit found by {@code test}, visiting nodes front to back and pruning everything beyond the best hit so
-     * far. With a {@code null} test the primitives' bounding boxes are the geometry. Returns whether anything was
-     * hit; the result is in {@code hit}.
+     * Returns the nearest hit found by {@code test}, visiting nodes front to back and pruning
+     * everything beyond the best hit so far.
+     *
+     * <p>With a {@code null} test the primitives' bounding boxes are the geometry. Returns whether
+     * anything was hit; the result is in {@code hit}.
+     *
+     * @param ray the ray; must not be {@code null}
+     * @param tMax the largest ray parameter to test
+     * @param bounds the bounds; must not be {@code null}
+     * @param test the test; may be {@code null}
+     * @param hit the hit; must not be {@code null}
+     * @return {@code true} if {@code test} accepted a hit, in which case the nearest is in
+     *     {@code hit}
      */
     public boolean raycast(Rayf ray, float tMax, BoundsArray bounds, PrimitiveTest test, BvhHit hit) {
         hit.reset();
@@ -215,8 +285,17 @@ public final class BvhQuery {
     // ------------------------------------------------------------------ nearest neighbours
 
     /**
-     * The {@code out.k()} primitives whose boxes are closest to the point {@code (x, y, z)}, nearest first (ties by smaller
-     * index). Depth-first, nearer child first, pruning every subtree that cannot beat the worst neighbour kept so far.
+     * Finds the {@code out.k()} primitives whose boxes are closest to the point {@code (x, y, z)},
+     * nearest first (ties by smaller index).
+     *
+     * <p>Depth-first, nearer child first, pruning every subtree that cannot beat the worst
+     * neighbour kept so far.
+     *
+     * @param x the x component
+     * @param y the y component
+     * @param z the z component
+     * @param bounds the bounds; must not be {@code null}
+     * @param out receives the result; must not be {@code null}
      */
     public void nearest(float x, float y, float z, BoundsArray bounds, Neighbors out) {
         out.reset();
@@ -270,7 +349,13 @@ public final class BvhQuery {
 
     // ------------------------------------------------------------------ overlaps
 
-    /** Appends every primitive whose bounds overlap {@code box} to {@code out}. */
+    /**
+     * Appends every primitive whose bounds overlap {@code box} to {@code out}.
+     *
+     * @param box the box; must not be {@code null}
+     * @param bounds the bounds; must not be {@code null}
+     * @param out receives the result; must not be {@code null}
+     */
     public void overlapAabb(Aabbf box, BoundsArray bounds, IntList out) {
         if (bvh.nodeCount() == 0) {
             return;
@@ -307,7 +392,13 @@ public final class BvhQuery {
         }
     }
 
-    /** Appends every primitive whose bounds touch {@code sphere} to {@code out}. */
+    /**
+     * Appends every primitive whose bounds touch {@code sphere} to {@code out}.
+     *
+     * @param sphere the sphere; must not be {@code null}
+     * @param bounds the bounds; must not be {@code null}
+     * @param out receives the result; must not be {@code null}
+     */
     public void overlapSphere(Spheref sphere, BoundsArray bounds, IntList out) {
         if (bvh.nodeCount() == 0) {
             return;

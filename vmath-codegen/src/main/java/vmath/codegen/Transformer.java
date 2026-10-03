@@ -36,34 +36,78 @@ import javax.tools.SimpleJavaFileObject;
 import javax.tools.ToolProvider;
 
 /**
- * Rewrites one template source. The source is parsed with the JDK compiler's tree API, so every edit lands on a
- * real token (identifier, primitive type, literal, cast) and never on comments or strings by accident. Edits are
- * position-based replacements on the original text, so formatting and comments survive untouched.
+ * Rewrites one template source.
+ *
+ * <p>The source is parsed with the JDK compiler's tree API, so every edit lands on a real token
+ * (identifier, primitive type, literal, cast) and never on comments or strings by accident. Edits
+ * are position-based replacements on the original text, so formatting and comments survive
+ * untouched.
  *
  * <p>Modes:
  * <ul>
  *   <li>{@link Mode#FLOAT}: drop {@code @DoubleOnly} members, strip codegen annotations.</li>
- *   <li>{@link Mode#DOUBLE}: additionally retype float to double, drop {@code @FloatOnly} members, apply
- *       {@code @Eps} and rename the template family. {@code @DoubleOnly} members are copied verbatim.</li>
- *   <li>{@link Mode#PLAIN}: only strip annotations (and apply {@code @ValueType}); for hand-written sources.</li>
+ *   <li>{@link Mode#DOUBLE}: additionally retype float to double, drop {@code @FloatOnly} members,
+ *       apply {@code @Eps} and rename the template family. {@code @DoubleOnly} members are copied
+ *       verbatim.</li>
+ *   <li>{@link Mode#PLAIN}: only strip annotations (and apply {@code @ValueType}); for hand-written
+ *       sources.</li>
  * </ul>
+ *
+ * <p><b>Thread safety.</b> Stateless: the static methods keep no state between calls and may be
+ * called from any thread; each call parses its own input.
  */
 public final class Transformer {
 
-    public enum Mode { FLOAT, DOUBLE, PLAIN }
+    /**
+     * What the transformation produces from a source file.
+     */
+    public enum Mode {
+        /**
+         * The float output of a template: drops the double-only members and strips the annotations.
+         */
+        FLOAT,
+        /**
+         * The double output of a template: retypes float to double and renames the family.
+         */
+        DOUBLE,
+        /**
+         * A hand-written source: only the annotations are stripped (and {@code @ValueType}
+         * applied).
+         */
+        PLAIN
+    }
 
-    /** {@code header} is inserted below the package line when non-null. */
+    /**
+     * {@code header} is inserted below the package line when non-null.
+     *
+     * @param mode the mode; must not be {@code null}
+     * @param valhalla whether valhalla
+     * @param renames the renames; must not be {@code null}
+     * @param header the header; must not be {@code null}
+     */
     public record Options(Mode mode, boolean valhalla, Renames renames, String header) {
     }
 
-    /** A {@code @GenerateDouble} type found in a template. */
+    /**
+     * A {@code @GenerateDouble} type found in a template.
+     *
+     * @param name the name; must not be {@code null}
+     * @param twin the twin; must not be {@code null}
+     */
     public record Family(String name, String twin) {
     }
 
-    /** Reported for template mistakes; the message includes file and line. */
+    /**
+     * Reported for template mistakes; the message includes file and line.
+     */
     public static final class TemplateException extends RuntimeException {
         private static final long serialVersionUID = 1L;
 
+        /**
+         * Creates the exception.
+         *
+         * @param message the description of the mistake, with file and line
+         */
         public TemplateException(String message) {
             super(message);
         }
@@ -73,8 +117,11 @@ public final class Transformer {
     private static final Set<String> OUR_ANNOTATIONS =
             Set.of("GenerateDouble", "FloatOnly", "DoubleOnly", "Eps", "ValueType", "GpuStruct", "GpuArray", "GpuUint");
     /**
-     * Ours but not removed: {@code @ValueType} stays on the generated types (it has source retention, so it costs nothing at run time) so that the validating annotation processor of
-     * {@code vmath-validator} can tell a value type by its declaration instead of by its name. The generator still reads it to emit {@code value record}.
+     * Ours but not removed: {@code @ValueType} stays on the generated types (it has source
+     * retention, so it costs nothing at run time) so that the validating annotation processor of
+     * {@code vmath-validator} can tell a value type by its declaration instead of by its name.
+     *
+     * <p>The generator still reads it to emit {@code value record}.
      */
     private static final Set<String> RETAINED = Set.of("ValueType");
 
@@ -83,7 +130,13 @@ public final class Transformer {
 
     // ------------------------------------------------------------------ public API
 
-    /** Finds the types a template asks to have doubled. */
+    /**
+     * Finds the types a template asks to have doubled.
+     *
+     * @param source the source; must not be {@code null}
+     * @param fileName the file name; must not be {@code null}
+     * @return the families found, in source order, never {@code null}
+     */
     public static List<Family> families(String source, String fileName) {
         Parsed p = parse(source, fileName);
         List<Family> out = new ArrayList<>();
@@ -101,7 +154,16 @@ public final class Transformer {
         return out;
     }
 
-    /** {@code Vec3f -> Vec3d}, {@code Vec3fTest -> Vec3dTest}; an explicit twin wins. */
+    /**
+     * Derives the name of the generated twin of a template type, following the project naming
+     * convention unless an explicit name is given.
+     *
+     * @param name the name; must not be {@code null}
+     * @param explicit the explicit; may be {@code null}
+     * @return {@code Vec3f -> Vec3d}, {@code Vec3fTest -> Vec3dTest}; an explicit twin wins
+     * @throws TemplateException if no twin name can be derived: the name does not end in {@code f}
+     *     or {@code fTest} and no explicit twin is given
+     */
     public static String twinName(String name, String explicit) {
         if (explicit != null && !explicit.isEmpty()) {
             return explicit;
@@ -116,6 +178,15 @@ public final class Transformer {
                 + "': name must end in 'f' or 'fTest', or use @GenerateDouble(twin = \"...\")");
     }
 
+    /**
+     * Transforms one source file according to the options.
+     *
+     * @param source the text of the source file
+     * @param fileName the name of the file, used in the messages
+     * @param opt the mode and the other options
+     * @return the text of the output file
+     * @throws TemplateException if the template is malformed
+     */
     public static String transform(String source, String fileName, Options opt) {
         Parsed p = parse(source, fileName);
         Run run = new Run(p, source, fileName, opt);
@@ -171,7 +242,9 @@ public final class Transformer {
         return dot < 0 ? s : s.substring(dot + 1);
     }
 
-    /** Whether the generator removes this annotation from its output: ours, and not one that stays. */
+    /**
+     * Whether the generator removes this annotation from its output: ours, and not one that stays.
+     */
     private static boolean isStripped(AnnotationTree a) {
         return isOurs(a) && !RETAINED.contains(annotationName(a));
     }
@@ -200,9 +273,13 @@ public final class Transformer {
         final int start;
         final int end;
         final String text;
-        /** Comment/string rewrites are dropped inside verbatim regions. */
+        /**
+         * Comment/string rewrites are dropped inside verbatim regions.
+         */
         final boolean cosmetic;
-        /** Removal of a whole member or line: swallows every edit inside it. */
+        /**
+         * Removal of a whole member or line: swallows every edit inside it.
+         */
         final boolean removal;
 
         Edit(int start, int end, String text, boolean cosmetic, boolean removal) {
@@ -230,7 +307,9 @@ public final class Transformer {
         final SourcePositions sp;
         final List<Edit> edits = new ArrayList<>();
         final List<int[]> verbatim = new ArrayList<>();
-        /** Members dropped from this output; calls to them from kept code are errors. */
+        /**
+         * Members dropped from this output; calls to them from kept code are errors.
+         */
         final Set<String> droppedNames = new HashSet<>();
         final Set<String> keptOnlyNames = new HashSet<>();
         final List<Edit> importRemovals = new ArrayList<>();
@@ -262,7 +341,9 @@ public final class Transformer {
             return apply();
         }
 
-        /** When removing the annotation imports leaves a blank line on both sides, drop one of them. */
+        /**
+         * When removing the annotation imports leaves a blank line on both sides, drop one of them.
+         */
         void tidyImportGap() {
             if (importRemovals.isEmpty()) {
                 return;
@@ -511,7 +592,10 @@ public final class Transformer {
             }
         }
 
-        /** Renames the name of a method or variable declaration; it is not an identifier node in the tree. */
+        /**
+         * Renames the name of a method or variable declaration; it is not an identifier node in the
+         * tree.
+         */
         void renameDeclaredName(int searchFrom, String name) {
             String to = opt.renames().identifier(name);
             if (to.equals(name) || searchFrom < 0) {
@@ -579,7 +663,9 @@ public final class Transformer {
 
         // -------- source-range helpers
 
-        /** Start of a member including its leading comments. */
+        /**
+         * Start of a member including its leading comments.
+         */
         int memberStart(Tree member) {
             int start = (int) sp.getStartPosition(parsed.unit(), member);
             boolean moved = true;
@@ -625,7 +711,9 @@ public final class Transformer {
             edits.add(new Edit(start, end, "", false, true));
         }
 
-        /** Removes {@code node} and, when it is alone on its lines, the lines themselves. */
+        /**
+         * Removes {@code node} and, when it is alone on its lines, the lines themselves.
+         */
         void removeLines(Tree node) {
             int start = (int) sp.getStartPosition(parsed.unit(), node);
             int end = (int) sp.getEndPosition(parsed.unit(), node);
@@ -722,7 +810,9 @@ public final class Transformer {
 
     // ------------------------------------------------------------------ literals
 
-    /** {@code 1e-4f -> 1e-4}, {@code 1f -> 1.0}, {@code 0.5F -> 0.5}. */
+    /**
+     * {@code 1e-4f -> 1e-4}, {@code 1f -> 1.0}, {@code 0.5F -> 0.5}.
+     */
     static String floatLiteralToDouble(String lit) {
         String s = lit;
         char last = s.charAt(s.length() - 1);

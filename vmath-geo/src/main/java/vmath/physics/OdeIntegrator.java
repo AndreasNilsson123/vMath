@@ -1,46 +1,90 @@
 package vmath.physics;
 
 /**
- * Time integration of second-order systems {@code x'' = a(t, x, x')}: particles, springs, cloth, anything whose state is positions and velocities in arrays. Four methods trade accuracy
- * against cost and against the way they treat energy:
+ * Time integration of second-order systems {@code x'' = a(t, x, x')}: particles, springs, cloth,
+ * anything whose state is positions and velocities in arrays.
+ *
+ * <p>Four methods trade accuracy against cost and against the way they treat energy:
  *
  * <ul>
- *   <li>{@link Method#EXPLICIT_EULER}: advance the positions with the old velocities, then the velocities; first order, and the energy of an oscillator <b>grows</b> without bound: for demonstration
- *       and for comparison only.</li>
- *   <li>{@link Method#SEMI_IMPLICIT_EULER}: update the velocities first and advance the positions with the new ones (symplectic Euler); first order, but the energy of an oscillator stays bounded,
- *       which is why it is the standard choice of games.</li>
- *   <li>{@link Method#VELOCITY_VERLET}: kick-drift-kick (leapfrog); second order and symplectic for forces that depend on the position only. With a velocity-dependent force (damping) the
+ *   <li>{@link Method#EXPLICIT_EULER}: advance the positions with the old velocities, then the
+ *       velocities; first order, and the energy of an oscillator <b>grows</b> without bound: for
+ *       demonstration and for comparison only.</li>
+ *   <li>{@link Method#SEMI_IMPLICIT_EULER}: update the velocities first and advance the positions
+ *       with the new ones (symplectic Euler); first order, but the energy of an oscillator stays
+ *       bounded, which is why it is the standard choice of games.</li>
+ *   <li>{@link Method#VELOCITY_VERLET}: kick-drift-kick (leapfrog); second order and symplectic for
+ *       forces that depend on the position only. With a velocity-dependent force (damping) the
  *       velocity used by the second kick is the half-step one and the order drops.</li>
- *   <li>{@link Method#RK4}: the classical fourth-order Runge-Kutta method; four evaluations per step, error proportional to {@code dt^4}, not symplectic (energy drifts slowly).</li>
+ *   <li>{@link Method#RK4}: the classical fourth-order Runge-Kutta method; four evaluations per
+ *       step, error proportional to {@code dt^4}, not symplectic (energy drifts slowly).</li>
  * </ul>
  *
- * <p>One integrator owns the scratch arrays for systems of a fixed number of coordinates, so a step allocates nothing. <b>Thread safety.</b> Not thread-safe: one integrator per thread.
+ * <p>One integrator owns the scratch arrays for systems of a fixed number of coordinates, so a step
+ * allocates nothing. <b>Thread safety.</b> Not thread-safe: one integrator per thread.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * OdeIntegrator integrator = new OdeIntegrator(1);                         // one coordinate
+ * double[] x = {1.0};
+ * double[] v = {0.0};
+ * for (int i = 0; i < 100; i++) {
+ *     integrator.step(OdeIntegrator.Method.RK4, (t, xs, vs, a) -> a[0] = -xs[0], i * 0.01, 0.01, x, v);   // a harmonic oscillator
+ * }
+ * }</pre>
  */
 public final class OdeIntegrator {
 
-    /** The integration method. */
+    /**
+     * The integration method.
+     */
     public enum Method {
-        /** Explicit Euler: first order, unstable for oscillators. */
+        /**
+         * Explicit Euler: first order, unstable for oscillators.
+         */
         EXPLICIT_EULER,
-        /** Symplectic Euler: first order, bounded energy. */
+        /**
+         * Symplectic Euler: first order, bounded energy.
+         */
         SEMI_IMPLICIT_EULER,
-        /** Velocity Verlet (leapfrog): second order. */
+        /**
+         * Velocity Verlet (leapfrog): second order.
+         */
         VELOCITY_VERLET,
-        /** Classical Runge-Kutta: fourth order. */
+        /**
+         * Classical Runge-Kutta: fourth order.
+         */
         RK4
     }
 
-    /** The acceleration of the system. */
+    /**
+     * The acceleration of the system.
+     */
     @FunctionalInterface
     public interface Acceleration {
-        /** Writes the accelerations {@code a} for the positions {@code x} and velocities {@code v} at time {@code t}; all three arrays have the dimension of the system. */
+        /**
+         * Writes the accelerations {@code a} for the positions {@code x} and velocities {@code v}
+         * at time {@code t}; all three arrays have the dimension of the system.
+         *
+         * @param t the time
+         * @param x the x
+         * @param v the velocities
+         * @param a receives the accelerations
+         */
         void evaluate(double t, double[] x, double[] v, double[] a);
     }
 
     private final int n;
     private final double[] a0, a1, a2, a3, x1, v1, x2, v2, x3, v3, k1v, k2v, k3v, k4v;
 
-    /** An integrator for systems of {@code dimension} coordinates (the length of the position and velocity arrays). */
+    /**
+     * Creates an integrator for systems of {@code dimension} coordinates (the length of the
+     * position and velocity arrays).
+     *
+     * @param dimension the dimension
+     * @throws IllegalArgumentException if {@code dimension} is not positive
+     */
     public OdeIntegrator(int dimension) {
         if (dimension < 1) {
             throw new IllegalArgumentException("the dimension must be positive: " + dimension);
@@ -62,12 +106,27 @@ public final class OdeIntegrator {
         k4v = new double[n];
     }
 
-    /** The number of coordinates. */
+    /**
+     * Exposes the number of coordinates of the system the integrator was created for.
+     *
+     * @return the number of coordinates
+     */
     public int dimension() {
         return n;
     }
 
-    /** Advances the state {@code (x, v)} from time {@code t} by {@code dt} (which may be negative) with the given method, in place. */
+    /**
+     * Advances the state {@code (x, v)} from time {@code t} by {@code dt} (which may be negative)
+     * with the given method, in place.
+     *
+     * @param method the method; must not be {@code null}
+     * @param f the acceleration; must not be {@code null}
+     * @param t the time at the start of the step
+     * @param dt the time step in seconds
+     * @param x the x
+     * @param v the velocities, advanced in place
+     * @throws IllegalArgumentException if a state array has fewer elements than the dimension
+     */
     public void step(Method method, Acceleration f, double t, double dt, double[] x, double[] v) {
         if (x.length < n || v.length < n) {
             throw new IllegalArgumentException("the state arrays need " + n + " elements");

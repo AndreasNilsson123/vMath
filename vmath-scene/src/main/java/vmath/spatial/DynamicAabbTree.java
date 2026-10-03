@@ -9,38 +9,63 @@ import vmath.geo.Rayf;
 import vmath.geo.Spheref;
 
 /**
- * A bounding-volume tree for objects that move: objects can be inserted, removed and moved at any time, and queries always
- * see the current state. Where {@link StaticBvh} is rebuilt or refitted in bulk, this tree updates incrementally, so a
+ * A bounding-volume tree for objects that move: objects can be inserted, removed and moved at any
+ * time, and queries always see the current state.
+ *
+ * <p>Where {@link StaticBvh} is rebuilt or refitted in bulk, this tree updates incrementally, so a
  * scene of mostly-still objects with a few movers costs almost nothing per frame.
  *
- * <p><b>Fat boxes.</b> Each leaf is stored with a slightly enlarged ("fat") box, padded by {@code margin} and stretched
- * along the direction it is moving. {@link #move} only touches the tree when the object leaves its fat box, so an object
- * drifting slowly costs nothing on most frames. Queries still test the object's own tight box at the leaf, so results are
- * exact; the fat boxes only affect how well subtrees prune.
+ * <p><b>Fat boxes.</b> Each leaf is stored with a slightly enlarged ("fat") box, padded by
+ * {@code margin} and stretched along the direction it is moving. {@link #move} only touches the
+ * tree when the object leaves its fat box, so an object drifting slowly costs nothing on most
+ * frames. Queries still test the object's own tight box at the leaf, so results are exact; the fat
+ * boxes only affect how well subtrees prune.
  *
- * <p><b>Structure.</b> Nodes are entries in parallel arrays (no node objects). Insertion picks the sibling that grows the
- * surface area least (branch-and-descend on the surface-area heuristic), and each change rebalances with AVL-style
- * rotations on the way back up, so the depth stays logarithmic. Only <em>internal</em> nodes are ever rearranged: a leaf's
- * index is a <b>stable handle</b> for as long as the object is in the tree.
+ * <p><b>Structure.</b> Nodes are entries in parallel arrays (no node objects). Insertion picks the
+ * sibling that grows the surface area least (branch-and-descend on the surface-area heuristic), and
+ * each change rebalances with AVL-style rotations on the way back up, so the depth stays
+ * logarithmic. Only <em>internal</em> nodes are ever rearranged: a leaf's index is a <b>stable
+ * handle</b> for as long as the object is in the tree.
  *
- * <p>Each object carries an {@code int} of user data (typically an index into your own arrays); queries report that value.
+ * <p>Each object carries an {@code int} of user data (typically an index into your own arrays);
+ * queries report that value.
  *
- * <p>Not thread-safe for updates. Concurrent read-only queries are fine if each thread uses its own {@link Query} and the
- * tree is not being modified.
+ * <p>Not thread-safe for updates. Concurrent read-only queries are fine if each thread uses its own
+ * {@link Query} and the tree is not being modified.
+ *
+ * <p><b>Thread safety.</b> Not thread-safe for updates. Concurrent read-only queries are safe if
+ * each thread uses its own {@link Query} and nobody modifies the tree meanwhile.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * DynamicAabbTree tree = new DynamicAabbTree();
+ * int handle = tree.insert(Aabbf.of(new Vec3f(0f, 0f, 0f), new Vec3f(1f, 1f, 1f)), 42);   // 42 is user data
+ * boolean restructured = tree.move(handle, Aabbf.of(new Vec3f(0.1f, 0f, 0f), new Vec3f(1.1f, 1f, 1f)), 0.1f, 0f, 0f);
+ * DynamicAabbTree.Query query = tree.newQuery();                         // one per thread
+ * IntList found = new IntList();
+ * query.overlapSphere(Spheref.of(Vec3f.ZERO, 5f), found);                // the user data of the objects that overlap
+ * }</pre>
  */
 public final class DynamicAabbTree {
 
     private static final int NULL = -1;
 
     private final float margin;
-    /** How far ahead (in multiples of the displacement passed to {@link #move}) the fat box is stretched. */
+    /**
+     * How far ahead (in multiples of the displacement passed to {@link #move}) the fat box is
+     * stretched.
+     */
     private static final float VELOCITY_MULTIPLIER = 2f;
 
     private float[] bounds;   // 6 per node: fat box for leaves, union of children for internal nodes
     private float[] tight;    // 6 per node, leaves only: the object's own box
     /**
-     * Eight ints per node so that everything a traversal needs beyond the bounds sits in half a cache line: left, right,
-     * parent, height (leaf 0, internal >= 1, free -1) and user data (leaves only). Separate arrays cost a cache miss each.
+     * Eight ints per node so that everything a traversal needs beyond the bounds sits in half a
+     * cache line: left, right, parent, height (leaf 0, internal >= 1, free -1) and user data
+     * (leaves only).
+     *
+     * <p>Separate arrays cost a cache miss each.
      */
     private int[] link;
     private static final int STRIDE_SHIFT = 3;
@@ -52,8 +77,11 @@ public final class DynamicAabbTree {
     private static final int HANDLE = 5;
 
     /**
-     * Handle to node. Handles are what callers hold; nodes are renumbered by {@link #optimize()}. A free entry is negative and
-     * chains the free list ({@code -2 - next}, so the end of the list is {@code -1}).
+     * Handle to node.
+     *
+     * <p>Handles are what callers hold; nodes are renumbered by {@link #optimize()}. A free entry
+     * is negative and chains the free list ({@code -2 - next}, so the end of the list is
+     * {@code -1}).
      */
     private int[] handleNode;
     private int handleFree = NULL;
@@ -72,15 +100,21 @@ public final class DynamicAabbTree {
     private int leafCount;
     private long reinsertions;
 
-    /** A tree whose fat boxes extend {@code 0.1} beyond each object. */
+    /**
+     * Creates a tree whose fat boxes extend {@code 0.1} beyond each object.
+     */
     public DynamicAabbTree() {
         this(0.1f, 64);
     }
 
     /**
-     * @param margin          how far to pad each object's box on every side; larger means fewer updates but looser pruning.
-     *                        A good value is a fraction of a typical object's size or of how far it moves per frame.
+     * Creates a tree whose fat boxes extend {@code margin} beyond each object, with room for
+     * {@code initialCapacity} nodes.
+     *
+     * @param margin          how far to pad each object's box on every side; larger means fewer updates but looser pruning. A good value is a fraction of a typical object's size or of how far it moves per frame.
+     *
      * @param initialCapacity nodes to preallocate (a tree with n objects has 2n - 1 nodes)
+     * @throws IllegalArgumentException if {@code margin} is negative
      */
     public DynamicAabbTree(float margin, int initialCapacity) {
         if (!(margin >= 0f)) {
@@ -99,12 +133,30 @@ public final class DynamicAabbTree {
 
     // ---------------------------------------------------------------- public API: updates
 
-    /** Adds an object and returns its handle. */
+    /**
+     * Adds an object and returns its handle.
+     *
+     * @param box the box; must not be {@code null}
+     * @param userData the user data of the object
+     * @return its handle
+     */
     public int insert(Aabbf box, int userData) {
         return insert(box.minX(), box.minY(), box.minZ(), box.maxX(), box.maxY(), box.maxZ(), userData);
     }
 
-    /** Adds an object with the box given by its six bounds and returns its handle; {@code userData} is returned by queries and {@link #userData}. */
+    /**
+     * Adds an object with the box given by its six bounds and returns its handle; {@code userData}
+     * is returned by queries and {@link #userData}.
+     *
+     * @param minX the smallest x coordinate
+     * @param minY the smallest y coordinate
+     * @param minZ the smallest z coordinate
+     * @param maxX the largest x coordinate
+     * @param maxY the largest y coordinate
+     * @param maxZ the largest z coordinate
+     * @param userData the user data of the object
+     * @return its handle
+     */
     public int insert(float minX, float minY, float minZ, float maxX, float maxY, float maxZ, int userData) {
         int leaf = allocate();
         int o = leaf * 6;
@@ -132,7 +184,12 @@ public final class DynamicAabbTree {
         return handle;
     }
 
-    /** Removes the object; its handle becomes invalid (and may be reused by a later {@link #insert}). */
+    /**
+     * Removes the object; its handle becomes invalid (and may be reused by a later
+     * {@link #insert}).
+     *
+     * @param handle the handle
+     */
     public void remove(int handle) {
         int leaf = leafOf(handle);
         removeLeaf(leaf);
@@ -142,10 +199,25 @@ public final class DynamicAabbTree {
     }
 
     /**
-     * Updates the object's box. Returns {@code true} if the tree had to be changed (the object left its fat box), {@code false}
-     * if the fat box still covers it and nothing was done (the tight box is always updated). {@code displacementX/Y/Z} is
-     * how far the object moved this frame: the new fat box is stretched that far ahead, so an object moving steadily
-     * leaves its fat box rarely.
+     * Updates the object's box.
+     *
+     * <p>Returns {@code true} if the tree had to be changed (the object left its fat box),
+     * {@code false} if the fat box still covers it and nothing was done (the tight box is always
+     * updated). {@code displacementX/Y/Z} is how far the object moved this frame: the new fat box
+     * is stretched that far ahead, so an object moving steadily leaves its fat box rarely.
+     *
+     * @param handle the handle
+     * @param minX the smallest x coordinate
+     * @param minY the smallest y coordinate
+     * @param minZ the smallest z coordinate
+     * @param maxX the largest x coordinate
+     * @param maxY the largest y coordinate
+     * @param maxZ the largest z coordinate
+     * @param displacementX the displacement x
+     * @param displacementY the displacement y
+     * @param displacementZ the displacement z
+     * @return {@code true} if the tree had to be changed because the object left its fat box;
+     *     {@code false} if nothing needed to change
      */
     public boolean move(int handle, float minX, float minY, float minZ, float maxX, float maxY, float maxZ,
                         float displacementX, float displacementY, float displacementZ) {
@@ -183,13 +255,27 @@ public final class DynamicAabbTree {
         return true;
     }
 
-    /** As the six-bounds {@code move}, with the box given as an {@link Aabbf}. */
+    /**
+     * Returns as the six-bounds {@code move}, with the box given as an {@link Aabbf}.
+     *
+     * @param handle the handle
+     * @param box the box; must not be {@code null}
+     * @param displacementX the displacement x
+     * @param displacementY the displacement y
+     * @param displacementZ the displacement z
+     * @return {@code true} if the tree had to be changed because the object left its fat box;
+     *     {@code false} if nothing needed to change
+     */
     public boolean move(int handle, Aabbf box, float displacementX, float displacementY, float displacementZ) {
         return move(handle, box.minX(), box.minY(), box.minZ(), box.maxX(), box.maxY(), box.maxZ(),
                 displacementX, displacementY, displacementZ);
     }
 
-    /** Removes every object. Capacity is kept. */
+    /**
+     * Removes every object.
+     *
+     * <p>Capacity is kept.
+     */
     public void clear() {
         root = NULL;
         leafCount = 0;
@@ -201,34 +287,65 @@ public final class DynamicAabbTree {
 
     // ---------------------------------------------------------------- public API: inspection
 
-    /** Number of objects in the tree. */
+    /**
+     * Counts the objects in the tree.
+     *
+     * @return number of objects in the tree
+     */
     public int size() {
         return leafCount;
     }
 
-    /** True when {@code handle} names an object currently in the tree. */
+    /**
+     * Tests whether a handle refers to an object that is currently in the tree.
+     *
+     * @param handle the handle
+     * @return {@code true} when {@code handle} names an object currently in the tree
+     */
     public boolean isValid(int handle) {
         return handle >= 0 && handle < nodeCapacity && handleNode[handle] >= 0;
     }
 
-    /** The {@code userData} given when the object was inserted; {@link IllegalArgumentException} for a handle that is not in the tree. */
+    /**
+     * Reads the user data of an object, looked up by handle; an invalid handle is rejected.
+     *
+     * @param handle the handle
+     * @return the {@code userData} given when the object was inserted;
+     *     {@link IllegalArgumentException} for a handle that is not in the tree
+     */
     public int userData(int handle) {
         return link[(leafOf(handle) << 3) + ITEM];
     }
 
-    /** The object's own box, as last given to {@link #insert} or {@link #move}. */
+    /**
+     * Reads the exact box of an object, as opposed to the padded box that the tree uses internally.
+     *
+     * @param handle the handle
+     * @return the object's own box, as last given to {@link #insert} or {@link #move}
+     */
     public Aabbf tightBounds(int handle) {
         int o = leafOf(handle) * 6;
         return new Aabbf(tight[o], tight[o + 1], tight[o + 2], tight[o + 3], tight[o + 4], tight[o + 5]);
     }
 
-    /** The padded box the tree currently uses for this object; always contains {@link #tightBounds}. */
+    /**
+     * Reads the padded box that the tree uses for an object, which lets small moves happen without
+     * restructuring.
+     *
+     * @param handle the handle
+     * @return the padded box the tree currently uses for this object; always contains
+     *     {@link #tightBounds}
+     */
     public Aabbf fatBounds(int handle) {
         int o = leafOf(handle) * 6;
         return new Aabbf(bounds[o], bounds[o + 1], bounds[o + 2], bounds[o + 3], bounds[o + 4], bounds[o + 5]);
     }
 
-    /** Bounds of everything in the tree (fat boxes); {@link Aabbf#EMPTY} when empty. */
+    /**
+     * Computes the bounds of everything in the tree from the padded boxes.
+     *
+     * @return bounds of everything in the tree (fat boxes); {@link Aabbf#EMPTY} when empty
+     */
     public Aabbf totalBounds() {
         if (root == NULL) {
             return Aabbf.EMPTY;
@@ -237,19 +354,37 @@ public final class DynamicAabbTree {
         return new Aabbf(bounds[o], bounds[o + 1], bounds[o + 2], bounds[o + 3], bounds[o + 4], bounds[o + 5]);
     }
 
-    /** Depth of the tree in levels (0 when empty, 1 for a single object). */
+    /**
+     * Measures the height of the tree, which grows with the depth of the hierarchy and affects
+     * query cost.
+     *
+     * @return depth of the tree in levels (0 when empty, 1 for a single object)
+     */
     public int height() {
         return root == NULL ? 0 : link[(root << 3) + HEIGHT] + 1;
     }
 
-    /** How many {@link #move} calls had to restructure the tree so far. Shows how well the fat boxes are working. */
+    /**
+     * Counts how often an object moved far enough to require restructuring, which shows how well
+     * the padding fits the motion.
+     *
+     * <p>Shows how well the fat boxes are working.
+     *
+     * @return how many {@link #move} calls had to restructure the tree so far
+     */
     public long reinsertions() {
         return reinsertions;
     }
 
     /**
-     * The same quality measure as {@link StaticBvh#sahCost()}: expected cost of a random ray, relative to the root area. Lower
-     * is better; comparing it with a freshly built static tree tells you when a rebuild would pay off.
+     * Computes the surface area heuristic cost of the tree, a quality measure that is comparable
+     * with a static tree.
+     *
+     * <p>Lower is better; comparing it with a freshly built static tree tells you when a rebuild
+     * would pay off.
+     *
+     * @return the same quality measure as {@link StaticBvh#sahCost()}: expected cost of a random
+     *     ray, relative to the root area
      */
     public float sahCost() {
         if (root == NULL) {
@@ -269,14 +404,20 @@ public final class DynamicAabbTree {
     }
 
     /**
-     * Checks every structural invariant and throws {@link IllegalStateException} naming the first violation: parent/child links
-     * agree, each internal node's box contains its children's, heights are consistent, the tree is shallow (see below), every
-     * leaf's fat box contains its tight box, and the counts add up.
+     * Checks every structural invariant and throws {@link IllegalStateException} naming the first
+     * violation: parent/child links agree, each internal node's box contains its children's,
+     * heights are consistent, the tree is shallow (see below), every leaf's fat box contains its
+     * tight box, and the counts add up.
      *
-     * <p>Balance is checked as an overall depth bound, not per node. Insertion places a new object next to whichever node
-     * grows the surface area least, which may be a whole subtree, so a node's two children can differ by more than one level
-     * (as in the well-known Box2D tree this design follows); the rotations keep the depth logarithmic all the same. A tree of
-     * {@code n} objects must be no deeper than {@code 3 * ceil(log2(n + 1))} levels (and at least 8 are always allowed).
+     * <p>Balance is checked as an overall depth bound, not per node. Insertion places a new object
+     * next to whichever node grows the surface area least, which may be a whole subtree, so a
+     * node's two children can differ by more than one level (as in the well-known Box2D tree this
+     * design follows); the rotations keep the depth logarithmic all the same. A tree of {@code n}
+     * objects must be no deeper than {@code 3 * ceil(log2(n + 1))} levels (and at least 8 are
+     * always allowed).
+     *
+     * @throws IllegalStateException if the tree is inconsistent: the message names the first
+     *     problem found
      */
     public void validate() {
         if (root == NULL) {
@@ -394,7 +535,9 @@ public final class DynamicAabbTree {
         nodeCount--;
     }
 
-    /** The leaf node behind {@code handle}; throws for a handle that is not in the tree. */
+    /**
+     * The leaf node behind {@code handle}; throws for a handle that is not in the tree.
+     */
     private int leafOf(int handle) {
         if (!isValid(handle)) {
             throw new IllegalArgumentException("not a valid object handle: " + handle);
@@ -402,7 +545,9 @@ public final class DynamicAabbTree {
         return handleNode[handle];
     }
 
-    /** Chains handles {@code from} .. capacity-1 in front of whatever was already free. */
+    /**
+     * Chains handles {@code from} .. capacity-1 in front of whatever was already free.
+     */
     private void linkFreeHandles(int from) {
         for (int i = from; i < nodeCapacity - 1; i++) {
             handleNode[i] = -2 - (i + 1);
@@ -425,13 +570,17 @@ public final class DynamicAabbTree {
     // ---------------------------------------------------------------- optimisation
 
     /**
-     * Renumbers every node in depth-first order (a node's left child directly follows it), so that queries walk memory
-     * sequentially instead of jumping between wherever insertions happened to put nodes. Handles, user data and the tree's
-     * shape are unchanged; only the node numbering (and so cache behaviour) is. Frustum queries over 100k scattered objects
-     * are several times faster afterwards.
+     * Renumbers every node in depth-first order (a node's left child directly follows it), so that
+     * queries walk memory sequentially instead of jumping between wherever insertions happened to
+     * put nodes.
      *
-     * <p>Cost is O(n) and allocation-free after the first call (it keeps a second set of node arrays and swaps). Call it after
-     * loading a level, after bulk inserts, or every few hundred frames when objects are being reinserted a lot.
+     * <p>Handles, user data and the tree's shape are unchanged; only the node numbering (and so
+     * cache behaviour) is. Frustum queries over 100k scattered objects are several times faster
+     * afterwards.
+     *
+     * <p>Cost is O(n) and allocation-free after the first call (it keeps a second set of node
+     * arrays and swaps). Call it after loading a level, after bulk inserts, or every few hundred
+     * frames when objects are being reinserted a lot.
      */
     public void optimize() {
         if (root == NULL) {
@@ -506,7 +655,9 @@ public final class DynamicAabbTree {
         return 2f * (dx * dy + dy * dz + dz * dx);
     }
 
-    /** Surface area of the union of node {@code a} and node {@code b}. */
+    /**
+     * Surface area of the union of node {@code a} and node {@code b}.
+     */
     private float unionArea(int a, int b) {
         int p = a * 6, q = b * 6;
         float dx = Math.max(bounds[p + 3], bounds[q + 3]) - Math.min(bounds[p], bounds[q]);
@@ -515,7 +666,9 @@ public final class DynamicAabbTree {
         return 2f * (dx * dy + dy * dz + dz * dx);
     }
 
-    /** Sets node {@code into} to the union of nodes {@code a} and {@code b}. */
+    /**
+     * Sets node {@code into} to the union of nodes {@code a} and {@code b}.
+     */
     private void setUnion(int into, int a, int b) {
         int o = into * 6, p = a * 6, q = b * 6;
         bounds[o] = Math.min(bounds[p], bounds[q]);
@@ -555,8 +708,9 @@ public final class DynamicAabbTree {
     }
 
     /**
-     * Descends from the root, at each internal node comparing "pair the new leaf with this node" against "push it into
-     * the cheaper child", where cost is the surface area that would be added to the tree.
+     * Descends from the root, at each internal node comparing "pair the new leaf with this node"
+     * against "push it into the cheaper child", where cost is the surface area that would be added
+     * to the tree.
      */
     private int findBestSibling(int leaf) {
         int index = root;
@@ -606,7 +760,9 @@ public final class DynamicAabbTree {
         link[(leaf << 3) + PARENT] = NULL;
     }
 
-    /** Walks from {@code index} to the root, rebalancing and recomputing heights and boxes. */
+    /**
+     * Walks from {@code index} to the root, rebalancing and recomputing heights and boxes.
+     */
     private void refitUpward(int start) {
         int index = start;
         while (index != NULL) {
@@ -618,7 +774,11 @@ public final class DynamicAabbTree {
         }
     }
 
-    /** AVL-style rotation: if one child is two levels taller than the other, lifts it. Returns the new subtree root. */
+    /**
+     * AVL-style rotation: if one child is two levels taller than the other, lifts it.
+     *
+     * <p>Returns the new subtree root.
+     */
     private int balance(int a) {
         if (link[(a << 3) + LEFT] == NULL || link[(a << 3) + HEIGHT] < 2) {
             return a;
@@ -678,7 +838,10 @@ public final class DynamicAabbTree {
         return a;
     }
 
-    /** Makes {@code newChild} take {@code oldChild}'s place under {@code p}, or becomes the root when {@code p} is NULL. */
+    /**
+     * Makes {@code newChild} take {@code oldChild}'s place under {@code p}, or becomes the root
+     * when {@code p} is NULL.
+     */
     private void replaceChild(int p, int oldChild, int newChild) {
         if (p == NULL) {
             root = newChild;
@@ -691,14 +854,23 @@ public final class DynamicAabbTree {
 
     // ---------------------------------------------------------------- queries
 
-    /** A query object with its own traversal stack. Create one per thread; reuse it every frame. */
+    /**
+     * Creates a query object with its own traversal stack, so that several threads can query the
+     * tree at the same time.
+     *
+     * <p>Create one per thread; reuse it every frame.
+     *
+     * @return a query object with its own traversal stack
+     */
     public Query newQuery() {
         return new Query(this);
     }
 
     /**
-     * Read-only queries on a {@link DynamicAabbTree}. Results are the objects' user data. Leaves are tested against their own
-     * (tight) boxes, so results are exact; nothing allocates once the stack has grown to the tree depth.
+     * Read-only queries on a {@link DynamicAabbTree}.
+     *
+     * <p>Results are the objects' user data. Leaves are tested against their own (tight) boxes, so
+     * results are exact; nothing allocates once the stack has grown to the tree depth.
      */
     public static final class Query {
 
@@ -713,20 +885,35 @@ public final class DynamicAabbTree {
         }
 
         /**
-         * Sets bit {@code userData} of {@code out} for every object that may be visible in {@code frustum} (bits of other
-         * objects are left alone). Subtrees entirely inside are accepted whole, and each node tests only the planes its
+         * Sets bit {@code userData} of {@code out} for every object that may be visible in
+         * {@code frustum} (bits of other objects are left alone).
+         *
+         * <p>Subtrees entirely inside are accepted whole, and each node tests only the planes its
          * parent could not decide. Returns the number of objects accepted.
+         *
+         * @param frustum the frustum; must not be {@code null}
+         * @param out receives the result; must not be {@code null}
+         * @return the number of objects accepted
          */
         public int frustum(Frustumf frustum, VisibilitySet out) {
             return traverseFrustum(frustum, out, null);
         }
 
-        /** Appends the user data of every object that may be visible in {@code frustum}; returns how many. */
+        /**
+         * Appends the user data of every object that may be visible in {@code frustum}; returns how
+         * many.
+         *
+         * @param frustum the frustum; must not be {@code null}
+         * @param out receives the result; must not be {@code null}
+         * @return how many
+         */
         public int frustum(Frustumf frustum, IntList out) {
             return traverseFrustum(frustum, null, out);
         }
 
-        /** Exactly one of {@code set} and {@code list} is non-null. */
+        /**
+         * Exactly one of {@code set} and {@code list} is non-null.
+         */
         private int traverseFrustum(Frustumf frustum, VisibilitySet set, IntList list) {
             DynamicAabbTree t = tree;
             if (t.root == NULL) {
@@ -774,7 +961,11 @@ public final class DynamicAabbTree {
             }
         }
 
-        /** Accepts every leaf below {@code n}, whose box is known to lie fully inside the frustum. Returns how many. */
+        /**
+         * Accepts every leaf below {@code n}, whose box is known to lie fully inside the frustum.
+         *
+         * <p>Returns how many.
+         */
         private int acceptSubtree(int n, VisibilitySet set, IntList list) {
             DynamicAabbTree t = tree;
             int count = 0;
@@ -796,7 +987,12 @@ public final class DynamicAabbTree {
             return count;
         }
 
-        /** Appends the user data of every object whose own box overlaps {@code box}. */
+        /**
+         * Appends the user data of every object whose own box overlaps {@code box}.
+         *
+         * @param box the box; must not be {@code null}
+         * @param out receives the result; must not be {@code null}
+         */
         public void overlapAabb(Aabbf box, IntList out) {
             DynamicAabbTree t = tree;
             if (t.root == NULL) {
@@ -828,7 +1024,12 @@ public final class DynamicAabbTree {
             }
         }
 
-        /** Appends the user data of every object whose own box touches {@code sphere}. */
+        /**
+         * Appends the user data of every object whose own box touches {@code sphere}.
+         *
+         * @param sphere the sphere; must not be {@code null}
+         * @param out receives the result; must not be {@code null}
+         */
         public void overlapSphere(Spheref sphere, IntList out) {
             DynamicAabbTree t = tree;
             if (t.root == NULL) {
@@ -859,8 +1060,16 @@ public final class DynamicAabbTree {
         }
 
         /**
-         * The {@code out.k()} objects whose own boxes are closest to the point, nearest first; {@code out} holds their user
-         * data. Ties are broken by the smaller user data. Subtrees that cannot beat the worst neighbour kept so far are skipped.
+         * Finds the {@code out.k()} objects whose own boxes are closest to the point, nearest
+         * first; {@code out} holds their user data.
+         *
+         * <p>Ties are broken by the smaller user data. Subtrees that cannot beat the worst
+         * neighbour kept so far are skipped.
+         *
+         * @param x the x component
+         * @param y the y component
+         * @param z the z component
+         * @param out receives the result; must not be {@code null}
          */
         public void nearest(float x, float y, float z, Neighbors out) {
             out.reset();
@@ -907,9 +1116,18 @@ public final class DynamicAabbTree {
         }
 
         /**
-         * Nearest hit along {@code ray} within {@code [0, tMax]}, visiting nodes front to back and pruning beyond the best
-         * hit so far. {@code test} is the exact test for the object with the given user data; with {@code null} the objects'
-         * own boxes are the geometry. The result (user data of the hit object, distance) goes into {@code hit}.
+         * Returns the nearest hit along {@code ray} within {@code [0, tMax]}, visiting nodes front
+         * to back and pruning beyond the best hit so far.
+         *
+         * <p>{@code test} is the exact test for the object with the given user data; with
+         * {@code null} the objects' own boxes are the geometry. The result (user data of the hit
+         * object, distance) goes into {@code hit}.
+         *
+         * @param ray the ray; must not be {@code null}
+         * @param tMax the largest ray parameter to test
+         * @param test the test; may be {@code null}
+         * @param hit the hit; must not be {@code null}
+         * @return {@code true} if a hit was found, in which case it is in {@code hit}
          */
         public boolean raycast(Rayf ray, float tMax, BvhQuery.PrimitiveTest test, BvhQuery.BvhHit hit) {
             hit.primitive = -1;
@@ -988,7 +1206,10 @@ public final class DynamicAabbTree {
         }
     }
 
-    /** Whether leaf {@code n}'s own box passes the planes of {@code mask} (the p-vertex test used by the flat kernels). */
+    /**
+     * Whether leaf {@code n}'s own box passes the planes of {@code mask} (the p-vertex test used by
+     * the flat kernels).
+     */
     private boolean tightVisible(int n, float[] planes, int mask) {
         int o = n * 6;
         for (int p = 0; p < 6; p++) {

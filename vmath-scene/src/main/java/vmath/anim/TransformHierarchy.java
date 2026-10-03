@@ -8,28 +8,50 @@ import vmath.core.Transformf;
 import vmath.core.Vec3f;
 
 /**
- * A scene graph in structure-of-arrays form: each node has a parent, a local transform (translation, rotation, scale) and a
- * world matrix. There are no node objects and no recursion.
+ * A scene graph in structure-of-arrays form: each node has a parent, a local transform
+ * (translation, rotation, scale) and a world matrix.
  *
- * <p><b>Order invariant.</b> A node's parent always has a smaller index than the node ({@link #add} can only attach to an existing
- * node, so it holds by construction). That lets {@link #update()} compute every world matrix in a single forward pass over the arrays:
- * by the time a node is reached, its parent's matrix is final.
+ * <p>There are no node objects and no recursion.
  *
- * <p><b>Dirty tracking.</b> Changing a node's local transform marks it dirty. {@link #update()} recomputes each dirty node and everything
- * below it (a node is recomputed if it or its parent was), and starts at the lowest dirty index, so an update after a few changes near
- * the end of the arrays does not touch the rest. World matrices are stored as 16 floats per node in a {@link Mat4fArray}, in GPU
- * (column-major) order, ready to upload.
+ * <p><b>Order invariant.</b> A node's parent always has a smaller index than the node ({@link #add}
+ * can only attach to an existing node, so it holds by construction). That lets {@link #update()}
+ * compute every world matrix in a single forward pass over the arrays: by the time a node is
+ * reached, its parent's matrix is final.
  *
- * <p><b>Transform model.</b> A local transform is {@code T * R * S} (translation, then rotation, then scale), so the world matrix is
- * the exact matrix product down the chain, including the shear that non-uniform scale above a rotated child produces. That is what a
- * renderer wants and it differs from composing {@link Transformf}s, which cannot represent shear. Local transforms are affine, so the
- * bottom row of every matrix is {@code (0, 0, 0, 1)}. Quaternions are normalised when set.
+ * <p><b>Dirty tracking.</b> Changing a node's local transform marks it dirty. {@link #update()}
+ * recomputes each dirty node and everything below it (a node is recomputed if it or its parent
+ * was), and starts at the lowest dirty index, so an update after a few changes near the end of the
+ * arrays does not touch the rest. World matrices are stored as 16 floats per node in a
+ * {@link Mat4fArray}, in GPU (column-major) order, ready to upload.
+ *
+ * <p><b>Transform model.</b> A local transform is {@code T * R * S} (translation, then rotation,
+ * then scale), so the world matrix is the exact matrix product down the chain, including the shear
+ * that non-uniform scale above a rotated child produces. That is what a renderer wants and it
+ * differs from composing {@link Transformf}s, which cannot represent shear. Local transforms are
+ * affine, so the bottom row of every matrix is {@code (0, 0, 0, 1)}. Quaternions are normalised
+ * when set.
  *
  * <p>Not thread-safe. Nothing allocates in {@link #update()} or the setters.
+ *
+ * <p><b>Thread safety.</b> Not thread-safe: use it from one thread at a time. Nothing blocks.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * TransformHierarchy tree = new TransformHierarchy();
+ * int parent = tree.add(-1);
+ * int child = tree.add(parent);
+ * tree.setTranslation(parent, 1f, 0f, 0f);
+ * tree.setTranslation(child, 0f, 2f, 0f);
+ * tree.update();                                                          // recomputes only what changed
+ * Mat4f world = tree.worldMatrix(child);                                  // translates by (1, 2, 0)
+ * }</pre>
  */
 public final class TransformHierarchy {
 
-    /** Floats of local transform per node: translation (3), rotation (4), scale (3). */
+    /**
+     * Floats of local transform per node: translation (3), rotation (4), scale (3).
+     */
     private static final int LOCAL = 10;
 
     private int[] parent;
@@ -40,12 +62,19 @@ public final class TransformHierarchy {
     private int firstDirty = Integer.MAX_VALUE;
     private int lastUpdated;
 
-    /** An empty hierarchy with room for 64 nodes; it grows as nodes are added. */
+    /**
+     * Creates an empty hierarchy with room for 64 nodes; it grows as nodes are added.
+     */
     public TransformHierarchy() {
         this(64);
     }
 
-    /** An empty hierarchy with room for {@code capacity} nodes (at least 4); it grows as nodes are added. */
+    /**
+     * Creates an empty hierarchy with room for {@code capacity} nodes (at least 4); it grows as
+     * nodes are added.
+     *
+     * @param capacity the capacity in elements
+     */
     public TransformHierarchy(int capacity) {
         int c = Math.max(capacity, 4);
         parent = new int[c];
@@ -56,20 +85,35 @@ public final class TransformHierarchy {
 
     // ---------------------------------------------------------------- structure
 
-    /** Number of nodes. */
+    /**
+     * Counts the nodes of the hierarchy.
+     *
+     * @return number of nodes
+     */
     public int size() {
         return size;
     }
 
-    /** Parent of {@code node}, or {@code -1} for a root. */
+    /**
+     * Looks up the parent of a node.
+     *
+     * @param node the node index
+     * @return parent of {@code node}, or {@code -1} for a root
+     */
     public int parent(int node) {
         check(node);
         return parent[node];
     }
 
     /**
-     * Adds a node under {@code parentNode} ({@code -1} for a root) with the identity local transform, and returns its index. The node is
-     * dirty until the next {@link #update()}.
+     * Adds a node under {@code parentNode} ({@code -1} for a root) with the identity local
+     * transform, and returns its index.
+     *
+     * <p>The node is dirty until the next {@link #update()}.
+     *
+     * @param parentNode the parent node
+     * @return its index
+     * @throws IllegalArgumentException if {@code parentNode} does not exist
      */
     public int add(int parentNode) {
         if (parentNode < -1 || parentNode >= size) {
@@ -101,9 +145,15 @@ public final class TransformHierarchy {
     }
 
     /**
-     * Removes {@code node} and its whole subtree and compacts the arrays, keeping the order invariant. Returns {@code remap}: for every
-     * old index its new index, or {@code -1} for a removed node. World matrices and dirty flags of the survivors move with them (a
-     * survivor's world matrix does not depend on anything that was removed, so no update is needed afterwards).
+     * Removes {@code node} and its whole subtree and compacts the arrays, keeping the order
+     * invariant.
+     *
+     * <p>Returns {@code remap}: for every old index its new index, or {@code -1} for a removed
+     * node. World matrices and dirty flags of the survivors move with them (a survivor's world
+     * matrix does not depend on anything that was removed, so no update is needed afterwards).
+     *
+     * @param node the node index
+     * @return {@code remap}: for every old index its new index, or {@code -1} for a removed node
      */
     public int[] remove(int node) {
         check(node);
@@ -144,7 +194,11 @@ public final class TransformHierarchy {
         return remap;
     }
 
-    /** Removes every node. Capacity is kept. */
+    /**
+     * Removes every node.
+     *
+     * <p>Capacity is kept.
+     */
     public void clear() {
         size = 0;
         world.setSize(0);
@@ -154,7 +208,22 @@ public final class TransformHierarchy {
 
     // ---------------------------------------------------------------- local transforms
 
-    /** Sets the whole local transform; the quaternion is normalised (a zero quaternion becomes the identity). */
+    /**
+     * Sets the whole local transform; the quaternion is normalised (a zero quaternion becomes the
+     * identity).
+     *
+     * @param node the node index
+     * @param tx the x component of the translation
+     * @param ty the y component of the translation
+     * @param tz the z component of the translation
+     * @param qx the x component of the local rotation quaternion
+     * @param qy the y component of the local rotation quaternion
+     * @param qz the z component of the local rotation quaternion
+     * @param qw the w component of the local rotation quaternion
+     * @param sx the scale along x
+     * @param sy the scale along y
+     * @param sz the scale along z
+     */
     public void setLocal(int node, float tx, float ty, float tz, float qx, float qy, float qz, float qw, float sx, float sy, float sz) {
         check(node);
         int o = node * LOCAL;
@@ -168,14 +237,26 @@ public final class TransformHierarchy {
         markDirty(node);
     }
 
-    /** Sets the whole local transform of {@code node} from a {@link Transformf}. */
+    /**
+     * Sets the whole local transform of {@code node} from a {@link Transformf}.
+     *
+     * @param node the node index
+     * @param t the transform; must not be {@code null}
+     */
     public void setLocal(int node, Transformf t) {
         Vec3f p = t.translation(), s = t.scale();
         Quatf q = t.rotation();
         setLocal(node, p.x(), p.y(), p.z(), q.x(), q.y(), q.z(), q.w(), s.x(), s.y(), s.z());
     }
 
-    /** Sets the local translation of {@code node}. */
+    /**
+     * Sets the local translation of {@code node}.
+     *
+     * @param node the node index
+     * @param x the x component
+     * @param y the y component
+     * @param z the z component
+     */
     public void setTranslation(int node, float x, float y, float z) {
         check(node);
         int o = node * LOCAL;
@@ -185,14 +266,29 @@ public final class TransformHierarchy {
         markDirty(node);
     }
 
-    /** Sets the rotation; the quaternion is normalised. */
+    /**
+     * Sets the rotation; the quaternion is normalised.
+     *
+     * @param node the node index
+     * @param x the x component
+     * @param y the y component
+     * @param z the z component
+     * @param w the w component
+     */
     public void setRotation(int node, float x, float y, float z, float w) {
         check(node);
         storeRotation(node * LOCAL + 3, x, y, z, w);
         markDirty(node);
     }
 
-    /** Sets the local scale of {@code node}. */
+    /**
+     * Sets the local scale of {@code node}.
+     *
+     * @param node the node index
+     * @param x the x component
+     * @param y the y component
+     * @param z the z component
+     */
     public void setScale(int node, float x, float y, float z) {
         check(node);
         int o = node * LOCAL;
@@ -202,7 +298,14 @@ public final class TransformHierarchy {
         markDirty(node);
     }
 
-    /** The node's local transform as a value (allocates; for inspection and tests, not for loops). */
+    /**
+     * Reads the local transform of a node as an object; allocates, so it is for inspection and
+     * tests, not for loops.
+     *
+     * @param node the node index
+     * @return the node's local transform as a value (allocates; for inspection and tests, not for
+     *     loops)
+     */
     public Transformf local(int node) {
         check(node);
         int o = node * LOCAL;
@@ -241,7 +344,14 @@ public final class TransformHierarchy {
 
     // ---------------------------------------------------------------- world matrices
 
-    /** True if the node's local transform (or an ancestor's) changed since the last {@link #update()}. */
+    /**
+     * Tells whether a node, or one of its ancestors, has changed since the last update and
+     * therefore will be recomputed.
+     *
+     * @param node the node index
+     * @return {@code true} if the node's local transform (or an ancestor's) changed since the last
+     *     {@link #update()}
+     */
     public boolean isDirty(int node) {
         check(node);
         int n = node;
@@ -255,8 +365,12 @@ public final class TransformHierarchy {
     }
 
     /**
-     * Recomputes the world matrix of every node whose local transform or ancestry changed, in one forward pass, and clears the dirty
-     * flags. Returns how many nodes were recomputed.
+     * Recomputes the world matrix of every node whose local transform or ancestry changed, in one
+     * forward pass, and clears the dirty flags.
+     *
+     * <p>Returns how many nodes were recomputed.
+     *
+     * @return how many nodes were recomputed
      */
     public int update() {
         int count = 0;
@@ -281,26 +395,47 @@ public final class TransformHierarchy {
         return count;
     }
 
-    /** How many nodes the last {@link #update()} recomputed. */
+    /**
+     * Counts the nodes that the last update recomputed, which shows how effective dirty tracking
+     * is.
+     *
+     * @return how many nodes the last {@link #update()} recomputed
+     */
     public int lastUpdateCount() {
         return lastUpdated;
     }
 
     /**
-     * World matrices, 16 floats per node in column-major (GPU) order, indexed by node. Live storage: valid after {@link #update()}, and
-     * replaced when the hierarchy grows, so fetch it again after adding nodes.
+     * Exposes the world matrices as the live internal array in column-major order, ready for upload
+     * to the GPU.
+     *
+     * <p>Live storage: valid after {@link #update()}, and replaced when the hierarchy grows, so
+     * fetch it again after adding nodes.
+     *
+     * @return world matrices, 16 floats per node in column-major (GPU) order, indexed by node
      */
     public Mat4fArray worldMatrices() {
         return world;
     }
 
-    /** The world matrix of {@code node} as a value (allocates). Call {@link #update()} first. */
+    /**
+     * Reads the world matrix of a node as an object; allocates, so it is for inspection and tests,
+     * not for loops.
+     *
+     * <p>Call {@link #update()} first.
+     *
+     * @param node the node index
+     * @return the world matrix of {@code node} as a value (allocates)
+     */
     public Mat4f worldMatrix(int node) {
         check(node);
         return world.get(node);
     }
 
-    /** Computes {@code world[i] = world[parent] * T * R * S} for an affine chain, writing 16 floats at {@code i * 16}. */
+    /**
+     * Computes {@code world[i] = world[parent] * T * R * S} for an affine chain, writing 16 floats
+     * at {@code i * 16}.
+     */
     private void compute(float[] w, int i, int p) {
         TransformMath.compose(w, i, p, local, i * LOCAL);
     }

@@ -5,15 +5,28 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Offline mesh clean-up and reordering for GPU efficiency. None of these passes changes the surface: {@link #weld} merges duplicate
- * vertices, {@link #optimizeVertexCache} reorders the triangles so that recently used vertices are used again soon (fewer vertex shader
- * runs), and {@link #optimizeVertexFetch} reorders the vertices so that memory is read nearly sequentially. Run them in that order:
- * weld, cache, fetch.
+ * Offline mesh clean-up and reordering for GPU efficiency.
+ *
+ * <p>None of these passes changes the surface: {@link #weld} merges duplicate vertices,
+ * {@link #optimizeVertexCache} reorders the triangles so that recently used vertices are used again
+ * soon (fewer vertex shader runs), and {@link #optimizeVertexFetch} reorders the vertices so that
+ * memory is read nearly sequentially. Run them in that order: weld, cache, fetch.
  *
  * <p>They are load-time tools, not per-frame ones: they allocate working arrays sized to the mesh.
  *
- * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time. The arrays and buffers you pass in are
- * not synchronised, so two threads must not write the same one.
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the
+ * same time. The arrays and buffers you pass in are not synchronised, so two threads must not write
+ * the same one.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * Mesh mesh = Primitives.uvSphere(1f, 64, 32);
+ * int[] remap = MeshOptimizer.weld(mesh, 1e-6f, false);                                      // merges duplicate vertices
+ * MeshOptimizer.optimizeVertexCache(mesh, 32);                                                // reorders the triangles for the GPU cache
+ * MeshOptimizer.optimizeVertexFetch(mesh);                                                    // then the vertices, in the order of use
+ * float acmr = MeshOptimizer.acmr(mesh, 32);
+ * }</pre>
  */
 public final class MeshOptimizer {
 
@@ -23,15 +36,27 @@ public final class MeshOptimizer {
     // ---------------------------------------------------------------- weld
 
     /**
-     * Merges vertices that are the same within {@code eps}, in place, and returns {@code remap}: for every <em>old</em> vertex the index
-     * it has afterwards. Triangles are re-pointed; a triangle that collapses (two of its corners merged) is dropped.
+     * Merges vertices that are the same within {@code eps}, in place, and returns {@code remap}:
+     * for every <em>old</em> vertex the index it has afterwards.
      *
-     * <p>With {@code positionsOnly} false a vertex is a duplicate only if every enabled stream (position, normal, tangent, each UV set)
-     * matches within {@code eps} per component, which keeps UV seams and hard edges (their vertices differ in some attribute). With
-     * {@code positionsOnly} true only positions are compared and the first vertex's other attributes win, which closes those seams:
-     * use it to rebuild connectivity, for example before {@link MeshTools#computeNormalsWithCrease}.
+     * <p>Triangles are re-pointed; a triangle that collapses (two of its corners merged) is
+     * dropped.
      *
-     * <p>Candidates are found through a grid of cell size {@code eps} (neighbouring cells included), so the cost is close to linear.
+     * <p>With {@code positionsOnly} false a vertex is a duplicate only if every enabled stream
+     * (position, normal, tangent, each UV set) matches within {@code eps} per component, which
+     * keeps UV seams and hard edges (their vertices differ in some attribute). With
+     * {@code positionsOnly} true only positions are compared and the first vertex's other
+     * attributes win, which closes those seams: use it to rebuild connectivity, for example before
+     * {@link MeshTools#computeNormalsWithCrease}.
+     *
+     * <p>Candidates are found through a grid of cell size {@code eps} (neighbouring cells
+     * included), so the cost is close to linear.
+     *
+     * @param mesh the mesh; must not be {@code null}
+     * @param eps the tolerance
+     * @param positionsOnly whether positions only
+     * @return {@code remap}: for every <em>old</em> vertex the index it has afterwards
+     * @throws IllegalArgumentException if {@code eps} is negative or not finite
      */
     public static int[] weld(Mesh mesh, float eps, boolean positionsOnly) {
         if (!(eps >= 0f) || Float.isInfinite(eps)) {
@@ -128,17 +153,30 @@ public final class MeshOptimizer {
     // ---------------------------------------------------------------- vertex cache
 
     /**
-     * Reorders the triangles of {@code mesh} to make good use of the GPU's post-transform vertex cache (Tom Forsyth's scoring
-     * algorithm: prefer triangles whose vertices were used very recently, and finish off vertices with few triangles left). Only the
-     * order of the triangles changes; each triangle keeps its own vertex order, so the surface and its orientation are untouched.
+     * Reorders the triangles of {@code mesh} to make good use of the GPU's post-transform vertex
+     * cache (Tom Forsyth's scoring algorithm: prefer triangles whose vertices were used very
+     * recently, and finish off vertices with few triangles left).
      *
+     * <p>Only the order of the triangles changes; each triangle keeps its own vertex order, so the
+     * surface and its orientation are untouched.
+     *
+     * @param mesh the mesh; must not be {@code null}
      * @param cacheSize the modelled cache size, typically 16 to 32 (32 is a good general default)
      */
     public static void optimizeVertexCache(Mesh mesh, int cacheSize) {
         optimizeVertexCache(mesh.indices(), mesh.indexCount(), mesh.vertexCount(), cacheSize);
     }
 
-    /** {@link #optimizeVertexCache(Mesh, int)} on a bare triangle list: reorders {@code indices[0..indexCount)} in place. */
+    /**
+     * Reorders {@code indices[0..indexCount)} in place as {@link #optimizeVertexCache(Mesh, int)}
+     * does for a mesh, on a bare triangle list.
+     *
+     * @param indices the indices
+     * @param indexCount the index count
+     * @param vertexCount the number of vertices
+     * @param cacheSize the cache size
+     * @throws IllegalArgumentException if {@code indexCount} is not a multiple of 3
+     */
     public static void optimizeVertexCache(int[] indices, int indexCount, int vertexCount, int cacheSize) {
         if (indexCount % 3 != 0) {
             throw new IllegalArgumentException("indexCount must be a multiple of 3: " + indexCount);
@@ -275,8 +313,16 @@ public final class MeshOptimizer {
     }
 
     /**
-     * Average cache miss ratio: vertex shader invocations per triangle for a FIFO cache of {@code cacheSize} entries. Lower is better;
-     * 3 means no reuse at all, and about 0.5 is the best a regular grid can do.
+     * Estimates the vertex cache efficiency of an index order by simulating a FIFO cache; lower is
+     * better, and 0.5 is the ideal for a regular mesh.
+     *
+     * <p>Lower is better; 3 means no reuse at all, and about 0.5 is the best a regular grid can do.
+     *
+     * @param indices the indices
+     * @param indexCount the index count
+     * @param cacheSize the cache size
+     * @return average cache miss ratio: vertex shader invocations per triangle for a FIFO cache of
+     *     {@code cacheSize} entries
      */
     public static float acmr(int[] indices, int indexCount, int cacheSize) {
         if (indexCount == 0) {
@@ -304,7 +350,13 @@ public final class MeshOptimizer {
         return (float) misses / (indexCount / 3f);
     }
 
-    /** {@link #acmr(int[], int, int)} for a mesh. */
+    /**
+     * Estimates the vertex cache efficiency of a mesh by simulating a FIFO cache; lower is better.
+     *
+     * @param mesh the mesh; must not be {@code null}
+     * @param cacheSize the cache size
+     * @return {@link #acmr(int[], int, int)} for a mesh
+     */
     public static float acmr(Mesh mesh, int cacheSize) {
         return acmr(mesh.indices(), mesh.indexCount(), cacheSize);
     }
@@ -312,9 +364,14 @@ public final class MeshOptimizer {
     // ---------------------------------------------------------------- vertex fetch
 
     /**
-     * Reorders the vertices, in place, in the order the (already cache-optimised) triangle list first uses them, so that the vertex
-     * buffer is read almost sequentially. Unused vertices go to the end in their old order. Every stream follows and the indices are
+     * Reorders the vertices, in place, in the order the (already cache-optimised) triangle list
+     * first uses them, so that the vertex buffer is read almost sequentially.
+     *
+     * <p>Unused vertices go to the end in their old order. Every stream follows and the indices are
      * rewritten. Returns {@code remap}: for every old vertex, its new index (a permutation).
+     *
+     * @param mesh the mesh; must not be {@code null}
+     * @return {@code remap}: for every old vertex, its new index (a permutation)
      */
     public static int[] optimizeVertexFetch(Mesh mesh) {
         int n = mesh.vertexCount();
@@ -345,7 +402,10 @@ public final class MeshOptimizer {
 
     // ---------------------------------------------------------------- shared
 
-    /** Rebuilds every stream so that new vertex {@code i} is old vertex {@code newToOld[i]}, then installs the given indices. */
+    /**
+     * Rebuilds every stream so that new vertex {@code i} is old vertex {@code newToOld[i]}, then
+     * installs the given indices.
+     */
     static void rebuild(Mesh mesh, int[] newToOld, int newCount, int[] indices, int indexEntries) {
         float[] pos = new float[Math.max(newCount, 1) * 3];
         gather(mesh.positions(), pos, newToOld, newCount, 3);

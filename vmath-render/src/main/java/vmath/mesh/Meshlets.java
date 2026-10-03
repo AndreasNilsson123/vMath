@@ -8,34 +8,59 @@ import vmath.geo.NormalCone;
 import vmath.spatial.ConeCull;
 
 /**
- * A mesh cut into <b>meshlets</b>: small clusters of triangles (by default up to 64 vertices and 124 triangles, the sizes that suit mesh shaders and
- * cluster culling) each with a bounding sphere and a normal cone, so a whole cluster can be frustum culled, occlusion culled or back-face culled with one test.
+ * A mesh cut into <b>meshlets</b>: small clusters of triangles (by default up to 64 vertices and
+ * 124 triangles, the sizes that suit mesh shaders and cluster culling) each with a bounding sphere
+ * and a normal cone, so a whole cluster can be frustum culled, occlusion culled or back-face culled
+ * with one test.
  *
- * <p><b>Layout</b> (the same shape as meshoptimizer's and what a mesh shader wants): {@link #vertices()} is the concatenation of the meshlets' vertex lists
- * (entries are vertex indices of the source mesh); {@link #triangles()} is the concatenation of their triangles as three 8-bit local indices each, into the
- * meshlet's own vertex list. Meshlet {@code m} owns {@code vertexCount(m)} vertex entries from {@code vertexOffset(m)} and {@code triangleCount(m)} triangles
- * from {@code triangleOffset(m)} (a triangle offset counts triangles, so the bytes start at {@code 3 * triangleOffset}).
+ * <p><b>Layout</b> (the same shape as meshoptimizer's and what a mesh shader wants):
+ * {@link #vertices()} is the concatenation of the meshlets' vertex lists (entries are vertex
+ * indices of the source mesh); {@link #triangles()} is the concatenation of their triangles as
+ * three 8-bit local indices each, into the meshlet's own vertex list. Meshlet {@code m} owns
+ * {@code vertexCount(m)} vertex entries from {@code vertexOffset(m)} and {@code triangleCount(m)}
+ * triangles from {@code triangleOffset(m)} (a triangle offset counts triangles, so the bytes start
+ * at {@code 3 * triangleOffset}).
  *
- * <p><b>Building.</b> A greedy grower: start at the first unused triangle, then repeatedly take the adjacent triangle that needs the fewest new vertices,
- * ties going to the one nearest the meshlet's centre, until a limit is hit. It is a good-locality heuristic, not an optimal partition; the tests report the
- * average fill. Triangle winding is preserved (a meshlet triangle is the source triangle with its corners renamed).
+ * <p><b>Building.</b> A greedy grower: start at the first unused triangle, then repeatedly take the
+ * adjacent triangle that needs the fewest new vertices, ties going to the one nearest the meshlet's
+ * centre, until a limit is hit. It is a good-locality heuristic, not an optimal partition; the
+ * tests report the average fill. Triangle winding is preserved (a meshlet triangle is the source
+ * triangle with its corners renamed).
  *
- * <p><b>Bounds.</b> The sphere is the centre of the meshlet's vertex box with the radius reaching the farthest vertex (conservative, not minimal). The cone is
- * {@link NormalCone#compute}: axis and cutoff (the sine of the half-angle), with cutoff 1 (never culls) when the triangle normals spread too wide. The pair
- * plugs straight into {@link NormalCone#backfacing} and {@link ConeCull.Clusters}.
+ * <p><b>Bounds.</b> The sphere is the centre of the meshlet's vertex box with the radius reaching
+ * the farthest vertex (conservative, not minimal). The cone is {@link NormalCone#compute}: axis and
+ * cutoff (the sine of the half-angle), with cutoff 1 (never culls) when the triangle normals spread
+ * too wide. The pair plugs straight into {@link NormalCone#backfacing} and
+ * {@link ConeCull.Clusters}.
  *
- * <p><b>Thread safety.</b> Immutable after construction, so it can be shared between threads freely. The arrays it hands out are its own storage: do
- * not modify them.
+ * <p><b>Thread safety.</b> Immutable after construction, so it can be shared between threads
+ * freely. The arrays it hands out are its own storage: do not modify them.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * Mesh mesh = Primitives.uvSphere(1f, 64, 32);
+ * Meshlets meshlets = Meshlets.build(mesh);                                                 // at most 64 vertices and 124 triangles each
+ * int count = meshlets.count();
+ * float radius = meshlets.sphereRadius(0);
+ * }</pre>
  */
 @Experimental("the builder heuristic may change; the layout follows common mesh-shader conventions")
 public final class Meshlets {
 
-    /** Bytes of one meshlet descriptor written by {@link #writeDescriptors}: four 32-bit unsigned ints. */
+    /**
+     * Bytes of one meshlet descriptor written by {@link #writeDescriptors}: four 32-bit unsigned
+     * ints.
+     */
     public static final int DESCRIPTOR_BYTES = 16;
-    /** Bytes of one bounds record written by {@link #writeBounds}: two vec4s. */
+    /**
+     * Bytes of one bounds record written by {@link #writeBounds}: two vec4s.
+     */
     public static final int BOUNDS_BYTES = 32;
 
-    /** How many unused triangles the seed choice looks at. */
+    /**
+     * How many unused triangles the seed choice looks at.
+     */
     private static final int SEED_WINDOW = 32;
 
     private final int count;
@@ -57,7 +82,12 @@ public final class Meshlets {
         this.cone = cone;
     }
 
-    /** Builds meshlets of at most 64 vertices and 124 triangles. */
+    /**
+     * Builds meshlets of at most 64 vertices and 124 triangles.
+     *
+     * @param mesh the mesh; must not be {@code null}
+     * @return the meshlets, never {@code null}
+     */
     public static Meshlets build(Mesh mesh) {
         return build(mesh, 64, 124);
     }
@@ -65,8 +95,12 @@ public final class Meshlets {
     /**
      * Builds meshlets with the given limits.
      *
+     * @param mesh the mesh; must not be {@code null}
      * @param maxVertices at most 255 (local indices are bytes), at least 3
      * @param maxTriangles at least 1
+     * @return the meshlets, never {@code null}
+     * @throws IllegalArgumentException if {@code maxVertices} is not in {@code [3, 255]} or
+     *     {@code maxTriangles} is below 1
      */
     public static Meshlets build(Mesh mesh, int maxVertices, int maxTriangles) {
         if (maxVertices < 3 || maxVertices > 255 || maxTriangles < 1) {
@@ -270,82 +304,167 @@ public final class Meshlets {
 
     // ---------------------------------------------------------------- access
 
-    /** The number of meshlets. */
+    /**
+     * Counts the meshlets.
+     *
+     * @return the number of meshlets
+     */
     public int count() {
         return count;
     }
 
-    /** The position of the meshlet's first entry in {@link #vertices()}. */
+    /**
+     * Reads where the vertex list of a meshlet starts in the shared vertex list.
+     *
+     * @param meshlet the meshlet
+     * @return the position of the meshlet's first entry in {@link #vertices()}
+     */
     public int vertexOffset(int meshlet) {
         return vertexOffset[meshlet];
     }
 
-    /** The number of vertices of the meshlet. */
+    /**
+     * Counts the vertices of a meshlet.
+     *
+     * @param meshlet the meshlet
+     * @return the number of vertices of the meshlet
+     */
     public int vertexCount(int meshlet) {
         return vertexCount[meshlet];
     }
 
-    /** Offset of the meshlet's first triangle, in triangles. */
+    /**
+     * Reads where the triangles of a meshlet start in the shared triangle list, counted in
+     * triangles.
+     *
+     * @param meshlet the meshlet
+     * @return offset of the meshlet's first triangle, in triangles
+     */
     public int triangleOffset(int meshlet) {
         return triangleOffset[meshlet];
     }
 
-    /** The number of triangles of the meshlet. */
+    /**
+     * Counts the triangles of a meshlet.
+     *
+     * @param meshlet the meshlet
+     * @return the number of triangles of the meshlet
+     */
     public int triangleCount(int meshlet) {
         return triangleCount[meshlet];
     }
 
-    /** The concatenated vertex lists (source-mesh vertex indices); live array. */
+    /**
+     * Exposes the shared vertex list, a live array holding source-mesh vertex indices per meshlet.
+     *
+     * @return the concatenated vertex lists (source-mesh vertex indices); live array
+     */
     public int[] vertices() {
         return vertices;
     }
 
-    /** The concatenated triangles, three local indices (each below the meshlet's vertex count) per triangle; live array. */
+    /**
+     * Exposes the shared triangle list, a live array holding meshlet-local vertex indices, three
+     * per triangle.
+     *
+     * @return the concatenated triangles, three local indices (each below the meshlet's vertex
+     *     count) per triangle; live array
+     */
     public byte[] triangles() {
         return triangles;
     }
 
-    /** Bounding sphere {@code centre x, y, z, radius} of a meshlet. */
+    /**
+     * Reads the x of the bounding sphere centre of a meshlet, which frustum culling tests.
+     *
+     * @param m the meshlet index
+     * @return bounding sphere {@code centre x, y, z, radius} of a meshlet
+     */
     public float sphereX(int m) {
         return sphere[m * 4];
     }
 
-    /** The y of the meshlet's bounding sphere centre. */
+    /**
+     * Reads the y of the bounding sphere centre of a meshlet.
+     *
+     * @param m the meshlet index
+     * @return the y of the meshlet's bounding sphere centre
+     */
     public float sphereY(int m) {
         return sphere[m * 4 + 1];
     }
 
-    /** The z of the meshlet's bounding sphere centre. */
+    /**
+     * Reads the z of the bounding sphere centre of a meshlet.
+     *
+     * @param m the meshlet index
+     * @return the z of the meshlet's bounding sphere centre
+     */
     public float sphereZ(int m) {
         return sphere[m * 4 + 2];
     }
 
-    /** The radius of the meshlet's bounding sphere. */
+    /**
+     * Reads the radius of the bounding sphere of a meshlet.
+     *
+     * @param m the meshlet index
+     * @return the radius of the meshlet's bounding sphere
+     */
     public float sphereRadius(int m) {
         return sphere[m * 4 + 3];
     }
 
-    /** Normal cone axis (unit, meaningless when {@link #coneCutoff} is 1). */
+    /**
+     * Reads the x of the normal cone axis of a meshlet, which back-face culling of whole meshlets
+     * uses.
+     *
+     * @param m the meshlet index
+     * @return normal cone axis (unit, meaningless when {@link #coneCutoff} is 1)
+     */
     public float coneAxisX(int m) {
         return cone[m * 4];
     }
 
-    /** The y of the normal cone axis. */
+    /**
+     * Reads the y of the normal cone axis of a meshlet.
+     *
+     * @param m the meshlet index
+     * @return the y of the normal cone axis
+     */
     public float coneAxisY(int m) {
         return cone[m * 4 + 1];
     }
 
-    /** The z of the normal cone axis. */
+    /**
+     * Reads the z of the normal cone axis of a meshlet.
+     *
+     * @param m the meshlet index
+     * @return the z of the normal cone axis
+     */
     public float coneAxisZ(int m) {
         return cone[m * 4 + 2];
     }
 
-    /** Sine of the cone's half-angle; 1 means the cluster has no useful cone and is never back-face culled. */
+    /**
+     * Reads the cutoff of the normal cone of a meshlet, which is the sine of the cone's half-angle;
+     * the value 1 disables cone culling for that meshlet.
+     *
+     * @param m the meshlet index
+     * @return sine of the cone's half-angle; 1 means the cluster has no useful cone and is never
+     *     back-face culled
+     */
     public float coneCutoff(int m) {
         return cone[m * 4 + 3];
     }
 
-    /** The source-mesh vertex indices of triangle {@code t} of meshlet {@code m}, written to {@code out[0..2]}. */
+    /**
+     * Writes the source-mesh vertex indices of triangle {@code t} of meshlet {@code m} to
+     * {@code out[0..2]}.
+     *
+     * @param m the meshlet index
+     * @param t the triangle index within the meshlet
+     * @param out receives the result
+     */
     public void triangle(int m, int t, int[] out) {
         int base = (triangleOffset[m] + t) * 3;
         for (int k = 0; k < 3; k++) {
@@ -353,7 +472,12 @@ public final class Meshlets {
         }
     }
 
-    /** Adds every meshlet to {@code clusters} (sphere and cone) in meshlet order, so cluster {@code i} is meshlet {@code i} of this set. */
+    /**
+     * Adds every meshlet to {@code clusters} (sphere and cone) in meshlet order, so cluster
+     * {@code i} is meshlet {@code i} of this set.
+     *
+     * @param clusters the clusters; must not be {@code null}
+     */
     public void addTo(ConeCull.Clusters clusters) {
         for (int m = 0; m < count; m++) {
             clusters.add(sphereX(m), sphereY(m), sphereZ(m), sphereRadius(m), coneAxisX(m), coneAxisY(m), coneAxisZ(m), coneCutoff(m));
@@ -362,7 +486,13 @@ public final class Meshlets {
 
     // ---------------------------------------------------------------- GPU upload
 
-    /** Writes one 16-byte descriptor per meshlet at {@code offset}: {@code uint vertexOffset, vertexCount, triangleOffset, triangleCount}. */
+    /**
+     * Writes one 16-byte descriptor per meshlet at {@code offset}:
+     * {@code uint vertexOffset, vertexCount, triangleOffset, triangleCount}.
+     *
+     * @param dst receives the result; must not be {@code null}
+     * @param offset the index of the first element to read or write
+     */
     public void writeDescriptors(MemorySegment dst, long offset) {
         for (int m = 0; m < count; m++) {
             long o = offset + (long) m * DESCRIPTOR_BYTES;
@@ -373,7 +503,13 @@ public final class Meshlets {
         }
     }
 
-    /** Writes one 32-byte bounds record per meshlet at {@code offset}: {@code vec4(sphere centre, radius)}, {@code vec4(cone axis, cutoff)}. */
+    /**
+     * Writes one 32-byte bounds record per meshlet at {@code offset}:
+     * {@code vec4(sphere centre, radius)}, {@code vec4(cone axis, cutoff)}.
+     *
+     * @param dst receives the result; must not be {@code null}
+     * @param offset the index of the first element to read or write
+     */
     public void writeBounds(MemorySegment dst, long offset) {
         for (int m = 0; m < count; m++) {
             long o = offset + (long) m * BOUNDS_BYTES;

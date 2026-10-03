@@ -4,16 +4,31 @@ import java.util.Arrays;
 import vmath.annotations.Experimental;
 
 /**
- * Least-significant-digit radix sort of 32- and 64-bit keys with an optional {@code int} payload (typically an index or an id), for draw sorting, locality
- * sorting by {@link vmath.core.Morton}/{@link vmath.core.Hilbert} code and BVH construction. The sort is <b>stable</b> (equal keys keep their order), works on the
- * first {@code n} elements of the arrays, and sorts in place; the keys and the payload are permuted together.
+ * Least-significant-digit radix sort of 32- and 64-bit keys with an optional {@code int} payload
+ * (typically an index or an id), for draw sorting, locality sorting by
+ * {@link vmath.core.Morton}/{@link vmath.core.Hilbert} code and BVH construction.
  *
- * <p>An instance owns the scratch arrays and grows them on demand, so after the first call with a given size nothing is allocated. Use one instance per thread.
- * {@link #reserve} preallocates.
+ * <p>The sort is <b>stable</b> (equal keys keep their order), works on the first {@code n} elements
+ * of the arrays, and sorts in place; the keys and the payload are permuted together.
  *
- * <p><b>Order of floating-point keys</b> is the IEEE total order: {@code -NaN < -Infinity < ... < -0.0 < +0.0 < ... < +Infinity < +NaN}, which differs from
- * {@code Arrays.sort} only in that a NaN with the sign bit set sorts first instead of last. Pass {@code descending = true} for the reverse order; equal keys still
- * keep their original order.
+ * <p>An instance owns the scratch arrays and grows them on demand, so after the first call with a
+ * given size nothing is allocated. Use one instance per thread. {@link #reserve} preallocates.
+ *
+ * <p><b>Order of floating-point keys</b> is the IEEE total order:
+ * {@code -NaN < -Infinity < ... < -0.0 < +0.0 < ... < +Infinity < +NaN}, which differs from
+ * {@code Arrays.sort} only in that a NaN with the sign bit set sorts first instead of last. Pass
+ * {@code descending = true} for the reverse order; equal keys still keep their original order.
+ *
+ * <p><b>Thread safety.</b> Not thread-safe: use one instance per thread. Nothing blocks.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * RadixSorter sorter = new RadixSorter();                                     // reuse it: it keeps its buffers
+ * float[] depths = {3.5f, 0.5f, 2f};
+ * int[] ids = {0, 1, 2};
+ * sorter.sort(depths, ids, 3, false);                                         // ids becomes {1, 2, 0}
+ * }</pre>
  */
 @Experimental("the set of overloads may grow")
 public final class RadixSorter {
@@ -23,7 +38,9 @@ public final class RadixSorter {
     private static final int MASK = RADIX - 1;
     private static final int PASSES_32 = 3;
     private static final int PASSES_64 = 6;
-    /** Below this many elements an insertion sort beats clearing the histograms. */
+    /**
+     * Below this many elements an insertion sort beats clearing the histograms.
+     */
     private static final int SMALL = 48;
 
     private final int[] histogram = new int[PASSES_64 * RADIX];
@@ -33,11 +50,19 @@ public final class RadixSorter {
     private int[] converted = new int[0];
     private long[] longConverted = new long[0];
 
-    /** A sorter with no buffers yet; they are allocated by the first sort, or by {@link #reserve}. */
+    /**
+     * Creates a sorter with no buffers yet; they are allocated by the first sort, or by
+     * {@link #reserve}.
+     */
     public RadixSorter() {
     }
 
-    /** Makes sure that sorting up to {@code n} elements will not allocate: reserves for the 32-bit, 64-bit, payload and float/double conversion buffers. */
+    /**
+     * Makes sure that sorting up to {@code n} elements will not allocate: reserves for the 32-bit,
+     * 64-bit, payload and float/double conversion buffers.
+     *
+     * @param n the number of elements
+     */
     public void reserve(int n) {
         keyBuffer = grow(keyBuffer, n);
         longKeyBuffer = grow(longKeyBuffer, n);
@@ -62,49 +87,98 @@ public final class RadixSorter {
 
     // ---------------------------------------------------------------- the float order keys
 
-    /** The int whose <em>unsigned</em> order is the IEEE total order of the float. */
+    /**
+     * Maps a float to an integer key whose unsigned order matches the float order, which is what a
+     * radix sort of floats needs.
+     *
+     * @param f the value
+     * @return the int whose <em>unsigned</em> order is the IEEE total order of the float
+     */
     public static int floatKey(float f) {
         int b = Float.floatToRawIntBits(f);
         return b ^ ((b >> 31) | 0x80000000);
     }
 
-    /** The inverse of {@link #floatKey}. */
+    /**
+     * Maps a sort key back to the float it came from.
+     *
+     * @param key the key
+     * @return the inverse of {@link #floatKey}
+     */
     public static float floatFromKey(int key) {
         return Float.intBitsToFloat(key ^ ((~key >> 31) | 0x80000000));
     }
 
-    /** The long whose unsigned order is the IEEE total order of the double. */
+    /**
+     * Maps a double to a long key whose unsigned order matches the double order, which is what a
+     * radix sort of doubles needs.
+     *
+     * @param d the value
+     * @return the long whose unsigned order is the IEEE total order of the double
+     */
     public static long doubleKey(double d) {
         long b = Double.doubleToRawLongBits(d);
         return b ^ ((b >> 63) | 0x8000000000000000L);
     }
 
-    /** The inverse of {@link #doubleKey}. */
+    /**
+     * Maps a sort key back to the double it came from.
+     *
+     * @param key the key
+     * @return the inverse of {@link #doubleKey}
+     */
     public static double doubleFromKey(long key) {
         return Double.longBitsToDouble(key ^ ((~key >> 63) | 0x8000000000000000L));
     }
 
     // ---------------------------------------------------------------- int keys
 
-    /** Sorts {@code keys[0..n)} as unsigned integers; {@code values} (may be {@code null}) is permuted along. */
+    /**
+     * Sorts {@code keys[0..n)} as unsigned integers; {@code values} (may be {@code null}) is
+     * permuted along.
+     *
+     * @param keys the keys
+     * @param values the values
+     * @param n the number of elements
+     */
     public void sortUnsigned(int[] keys, int[] values, int n) {
         check(keys.length, values, n);
         sort32(keys, values, n, false);
     }
 
-    /** Sorts {@code keys[0..n)} as signed integers; {@code values} (may be {@code null}) is permuted along. */
+    /**
+     * Sorts {@code keys[0..n)} as signed integers; {@code values} (may be {@code null}) is permuted
+     * along.
+     *
+     * @param keys the keys
+     * @param values the values
+     * @param n the number of elements
+     */
     public void sort(int[] keys, int[] values, int n) {
         check(keys.length, values, n);
         sort32(keys, values, n, true);
     }
 
-    /** Sorts {@code keys[0..n)} as unsigned 64-bit integers (Morton and Hilbert codes of 2D grids use all 64 bits). */
+    /**
+     * Sorts {@code keys[0..n)} as unsigned 64-bit integers (Morton and Hilbert codes of 2D grids
+     * use all 64 bits).
+     *
+     * @param keys the keys
+     * @param values the values
+     * @param n the number of elements
+     */
     public void sortUnsigned(long[] keys, int[] values, int n) {
         check(keys.length, values, n);
         sort64(keys, values, n, false);
     }
 
-    /** Sorts {@code keys[0..n)} as signed 64-bit integers. */
+    /**
+     * Sorts {@code keys[0..n)} as signed 64-bit integers.
+     *
+     * @param keys the keys
+     * @param values the values
+     * @param n the number of elements
+     */
     public void sort(long[] keys, int[] values, int n) {
         check(keys.length, values, n);
         sort64(keys, values, n, true);
@@ -112,12 +186,25 @@ public final class RadixSorter {
 
     // ---------------------------------------------------------------- float and double keys
 
-    /** Sorts {@code keys[0..n)} ascending; {@code values} (may be {@code null}) is permuted along. */
+    /**
+     * Sorts {@code keys[0..n)} ascending; {@code values} (may be {@code null}) is permuted along.
+     *
+     * @param keys the keys
+     * @param values the values
+     * @param n the number of elements
+     */
     public void sort(float[] keys, int[] values, int n) {
         sort(keys, values, n, false);
     }
 
-    /** Sorts {@code keys[0..n)} ascending or descending; equal keys keep their order either way. */
+    /**
+     * Sorts {@code keys[0..n)} ascending or descending; equal keys keep their order either way.
+     *
+     * @param keys the keys
+     * @param values the values
+     * @param n the number of elements
+     * @param descending whether descending
+     */
     public void sort(float[] keys, int[] values, int n, boolean descending) {
         check(keys.length, values, n);
         converted = grow(converted, n);
@@ -133,8 +220,13 @@ public final class RadixSorter {
     }
 
     /**
-     * Writes the permutation that sorts {@code keys[0..n)} to {@code order[0..n)} ({@code order[i]} is the index of the element that comes {@code i}-th) and leaves
-     * {@code keys} untouched.
+     * Writes the permutation that sorts {@code keys[0..n)} to {@code order[0..n)} ({@code order[i]}
+     * is the index of the element that comes {@code i}-th) and leaves {@code keys} untouched.
+     *
+     * @param keys the keys
+     * @param n the number of elements
+     * @param order the order
+     * @param descending whether descending
      */
     public void order(float[] keys, int n, int[] order, boolean descending) {
         check(keys.length, order, n);
@@ -148,7 +240,15 @@ public final class RadixSorter {
         sort32(c, order, n, false);
     }
 
-    /** Sorts {@code keys[0..n)} ascending or descending; {@code values} (may be {@code null}) is permuted along. */
+    /**
+     * Sorts {@code keys[0..n)} ascending or descending; {@code values} (may be {@code null}) is
+     * permuted along.
+     *
+     * @param keys the keys
+     * @param values the values
+     * @param n the number of elements
+     * @param descending whether descending
+     */
     public void sort(double[] keys, int[] values, int n, boolean descending) {
         check(keys.length, values, n);
         longConverted = grow(longConverted, n);
@@ -163,7 +263,14 @@ public final class RadixSorter {
         }
     }
 
-    /** As {@link #order(float[], int, int[], boolean)} for double keys. */
+    /**
+     * As {@link #order(float[], int, int[], boolean)} for double keys.
+     *
+     * @param keys the keys
+     * @param n the number of elements
+     * @param order the order
+     * @param descending whether descending
+     */
     public void order(double[] keys, int n, int[] order, boolean descending) {
         check(keys.length, order, n);
         longConverted = grow(longConverted, n);
@@ -178,7 +285,10 @@ public final class RadixSorter {
 
     // ---------------------------------------------------------------- the passes
 
-    /** {@code signed} flips the top bit of the key's order, which is how signed integers become unsigned ones. */
+    /**
+     * {@code signed} flips the top bit of the key's order, which is how signed integers become
+     * unsigned ones.
+     */
     private void sort32(int[] k, int[] v, int n, boolean signed) {
         if (n < 2) {
             return;

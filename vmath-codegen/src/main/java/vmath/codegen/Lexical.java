@@ -3,13 +3,17 @@ package vmath.codegen;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Finds comment and string-literal ranges in Java source, which the tree API does not expose. */
+/**
+ * Finds comment and string-literal ranges in Java source, which the tree API does not expose.
+ */
 final class Lexical {
 
     private Lexical() {
     }
 
-    /** Returns {@code [start, end)} pairs for comments, string literals and text blocks. */
+    /**
+     * Returns {@code [start, end)} pairs for comments, string literals and text blocks.
+     */
     static List<int[]> textRanges(String s) {
         List<int[]> out = new ArrayList<>();
         int n = s.length();

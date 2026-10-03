@@ -3,35 +3,67 @@ package vmath.util;
 import vmath.annotations.Experimental;
 
 /**
- * Coherent noise: smooth pseudo-random functions of a position, for terrain, clouds, textures, wind and animation jitter. All functions are deterministic (the same position and
- * {@code seed} always give the same value, on every platform), allocate nothing, are continuous, and have no stored table: the lattice values come from an integer hash.
+ * Coherent noise: smooth pseudo-random functions of a position, for terrain, clouds, textures, wind
+ * and animation jitter.
+ *
+ * <p>All functions are deterministic (the same position and {@code seed} always give the same
+ * value, on every platform), allocate nothing, are continuous, and have no stored table: the
+ * lattice values come from an integer hash.
  *
  * <ul>
- *   <li><b>Value noise</b> ({@link #value2}, {@link #value3}): random values on the integer lattice, smoothly interpolated. Cheap; blocky in character.</li>
- *   <li><b>Gradient (Perlin) noise</b> ({@link #perlin2}, {@link #perlin3}, {@link #perlin4}): random gradients on the lattice; zero at every lattice point. The gradients are the
- *       {@code +-1} diagonal vectors, and the result is scaled by {@code 2 / dimension}, which makes {@code [-1, 1]} a <em>guaranteed</em> bound (the largest possible value of this
- *       construction is {@code dimension / 2}). The typical amplitude is therefore well below 1; see the measured values in {@code docs/NOISE.md}.</li>
- *   <li><b>Simplex noise</b> ({@link #simplex2}, {@link #simplex3}): gradient noise on a simplex grid: fewer lattice points per sample than Perlin in 3D, and less axis-aligned structure.
+ *   <li><b>Value noise</b> ({@link #value2}, {@link #value3}): random values on the integer
+ *       lattice, smoothly interpolated. Cheap; blocky in character.</li>
+ *   <li><b>Gradient (Perlin) noise</b> ({@link #perlin2}, {@link #perlin3}, {@link #perlin4}):
+ *       random gradients on the lattice; zero at every lattice point. The gradients are the
+ *       {@code +-1} diagonal vectors, and the result is scaled by {@code 2 / dimension}, which
+ *       makes {@code [-1, 1]} a <em>guaranteed</em> bound (the largest possible value of this
+ *       construction is {@code dimension / 2}). The typical amplitude is therefore well below 1;
+ *       see the measured values in {@code docs/NOISE.md}.</li>
+ *   <li><b>Simplex noise</b> ({@link #simplex2}, {@link #simplex3}): gradient noise on a simplex
+ *       grid: fewer lattice points per sample than Perlin in 3D, and less axis-aligned structure.
  *       Scaled so that the largest value found by dense sampling is just under 1.</li>
- *   <li><b>Worley (cellular) noise</b> ({@link #worley2}, {@link #worley3}): the distances to the nearest and second nearest of a jittered grid of feature points.</li>
- *   <li><b>Curl noise</b> ({@link #curl2}, {@link #curl3}): the curl of a noise potential, a divergence-free vector field, for fluid-looking particle motion.</li>
- *   <li><b>Fractal sums</b> ({@link #fbm2}, {@link #fbm3}), <b>domain warping</b> ({@link #warpedFbm2}) and <b>batch filling</b> of a {@code float[]} grid ({@link #fill2}).</li>
+ *   <li><b>Worley (cellular) noise</b> ({@link #worley2}, {@link #worley3}): the distances to the
+ *       nearest and second nearest of a jittered grid of feature points.</li>
+ *   <li><b>Curl noise</b> ({@link #curl2}, {@link #curl3}): the curl of a noise potential, a
+ *       divergence-free vector field, for fluid-looking particle motion.</li>
+ *   <li><b>Fractal sums</b> ({@link #fbm2}, {@link #fbm3}), <b>domain warping</b>
+ *       ({@link #warpedFbm2}) and <b>batch filling</b> of a {@code float[]} grid
+ *       ({@link #fill2}).</li>
  * </ul>
  *
- * <p>Coordinates are in lattice units: the features are about one unit across, so scale the position before the call to change the size of the features.
+ * <p>Coordinates are in lattice units: the features are about one unit across, so scale the
+ * position before the call to change the size of the features.
  *
- * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time.
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the
+ * same time.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * double n = Noise.perlin3(1.5, 2.5, 0.5, 1234);                                // in [-1, 1], 0 at lattice points
+ * double fractal = Noise.fbm2(Noise.Kind.PERLIN, 3.2, 1.1, 99, 5, 2.0, 0.5);   // five octaves
+ * float[] height = new float[256 * 256];
+ * Noise.fill2(Noise.Kind.SIMPLEX, height, 256, 256, 0.0, 0.0, 0.02, 0.02, 7, 4, 2.0, 0.5);
+ * }</pre>
  */
 @Experimental("simplex noise in 4D and analytic derivatives may be added")
 public final class Noise {
 
-    /** Which noise {@link #fbm2}, {@link #fbm3} and {@link #fill2} sum. */
+    /**
+     * Which noise {@link #fbm2}, {@link #fbm3} and {@link #fill2} sum.
+     */
     public enum Kind {
-        /** {@link Noise#value2} and {@link Noise#value3}. */
+        /**
+         * {@link Noise#value2} and {@link Noise#value3}.
+         */
         VALUE,
-        /** {@link Noise#perlin2} and {@link Noise#perlin3}. */
+        /**
+         * {@link Noise#perlin2} and {@link Noise#perlin3}.
+         */
         PERLIN,
-        /** {@link Noise#simplex2} and {@link Noise#simplex3}. */
+        /**
+         * {@link Noise#simplex2} and {@link Noise#simplex3}.
+         */
         SIMPLEX
     }
 
@@ -54,7 +86,9 @@ public final class Noise {
 
     // ------------------------------------------------------------ hashing
 
-    /** A 32-bit hash of an integer lattice point and a seed, well mixed in all bits. */
+    /**
+     * A 32-bit hash of an integer lattice point and a seed, well mixed in all bits.
+     */
     static int hash(int x, int y, int z, int w, int seed) {
         int h = seed * 0x2545F491 + x * 0x27D4EB2D + y * 0x165667B1 + z * 0x9E3779B1 + w * 0x85EBCA77;
         h ^= h >>> 15;
@@ -84,7 +118,15 @@ public final class Noise {
 
     // ------------------------------------------------------------ value noise
 
-    /** 2D value noise in {@code [-1, 1]}. */
+    /**
+     * Evaluates 2D value noise, which interpolates random values at lattice points; blocky compared
+     * with gradient noise.
+     *
+     * @param x the x component
+     * @param y the y component
+     * @param seed the seed
+     * @return 2D value noise in {@code [-1, 1]}
+     */
     public static double value2(double x, double y, int seed) {
         int xi = floor(x), yi = floor(y);
         double fx = x - xi, fy = y - yi;
@@ -94,7 +136,16 @@ public final class Noise {
         return lerp(lerp(a, b, u), lerp(c, d, u), v);
     }
 
-    /** 3D value noise in {@code [-1, 1]}. */
+    /**
+     * Evaluates 3D value noise, which interpolates random values at lattice points; blocky compared
+     * with gradient noise.
+     *
+     * @param x the x component
+     * @param y the y component
+     * @param z the z component
+     * @param seed the seed
+     * @return 3D value noise in {@code [-1, 1]}
+     */
     public static double value3(double x, double y, double z, int seed) {
         int xi = floor(x), yi = floor(y), zi = floor(z);
         double fx = x - xi, fy = y - yi, fz = z - zi;
@@ -112,7 +163,15 @@ public final class Noise {
 
     // ------------------------------------------------------------ gradient (Perlin) noise
 
-    /** 2D gradient noise in {@code [-1, 1]}; 0 at the integer lattice points. */
+    /**
+     * Evaluates 2D gradient (Perlin) noise, which interpolates random gradients and is zero at the
+     * lattice points.
+     *
+     * @param x the x component
+     * @param y the y component
+     * @param seed the seed
+     * @return 2D gradient noise in {@code [-1, 1]}; 0 at the integer lattice points
+     */
     public static double perlin2(double x, double y, int seed) {
         int xi = floor(x), yi = floor(y);
         double fx = x - xi, fy = y - yi;
@@ -126,7 +185,16 @@ public final class Noise {
         return dx * (1 - 2 * (h & 1)) + dy * (1 - ((h & 2)));
     }
 
-    /** 3D gradient noise in {@code [-1, 1]} (scaled by 2/3); 0 at the integer lattice points. */
+    /**
+     * Evaluates 3D gradient (Perlin) noise, which interpolates random gradients and is zero at the
+     * lattice points.
+     *
+     * @param x the x component
+     * @param y the y component
+     * @param z the z component
+     * @param seed the seed
+     * @return 3D gradient noise in {@code [-1, 1]} (scaled by 2/3); 0 at the integer lattice points
+     */
     public static double perlin3(double x, double y, double z, int seed) {
         int xi = floor(x), yi = floor(y), zi = floor(z);
         double fx = x - xi, fy = y - yi, fz = z - zi;
@@ -142,7 +210,19 @@ public final class Noise {
         return dx * (1 - 2 * (h & 1)) + dy * (1 - (h & 2)) + dz * (1 - ((h >> 1) & 2));
     }
 
-    /** 4D gradient noise in {@code [-1, 1]} (scaled by 1/2); 0 at the integer lattice points. Use the fourth coordinate for time. */
+    /**
+     * Evaluates 4D gradient (Perlin) noise, which interpolates random gradients and is zero at the
+     * lattice points; the fourth dimension is typically time.
+     *
+     * <p>Use the fourth coordinate for time.
+     *
+     * @param x the x component
+     * @param y the y component
+     * @param z the z component
+     * @param t the fourth coordinate
+     * @param seed the seed
+     * @return 4D gradient noise in {@code [-1, 1]} (scaled by 1/2); 0 at the integer lattice points
+     */
     public static double perlin4(double x, double y, double z, double t, int seed) {
         int xi = floor(x), yi = floor(y), zi = floor(z), ti = floor(t);
         double fx = x - xi, fy = y - yi, fz = z - zi, ft = t - ti;
@@ -166,7 +246,16 @@ public final class Noise {
 
     // ------------------------------------------------------------ simplex noise
 
-    /** 2D simplex noise, scaled so that the values found by dense sampling stay just inside {@code [-1, 1]}. */
+    /**
+     * Evaluates 2D simplex noise, which has fewer directional artefacts than classic gradient noise
+     * and is cheaper in higher dimensions.
+     *
+     * @param x the x component
+     * @param y the y component
+     * @param seed the seed
+     * @return 2D simplex noise, scaled so that the values found by dense sampling stay just inside
+     *     {@code [-1, 1]}
+     */
     public static double simplex2(double x, double y, int seed) {
         double s = (x + y) * F2;
         int i = floor(x + s), j = floor(y + s);
@@ -189,7 +278,17 @@ public final class Noise {
         return t * t * (GRAD2[g] * x + GRAD2[g + 1] * y);
     }
 
-    /** 3D simplex noise, scaled so that the values found by dense sampling stay just inside {@code [-1, 1]}. */
+    /**
+     * Evaluates 3D simplex noise, which has fewer directional artefacts than classic gradient noise
+     * and is cheaper in higher dimensions.
+     *
+     * @param x the x component
+     * @param y the y component
+     * @param z the z component
+     * @param seed the seed
+     * @return 3D simplex noise, scaled so that the values found by dense sampling stay just inside
+     *     {@code [-1, 1]}
+     */
     public static double simplex3(double x, double y, double z, int seed) {
         double s = (x + y + z) * F3;
         int i = floor(x + s), j = floor(y + s), k = floor(z + s);
@@ -234,9 +333,20 @@ public final class Noise {
     // ------------------------------------------------------------ Worley noise
 
     /**
-     * 2D Worley noise: the distance to the nearest ({@code out[0]}) and to the second nearest ({@code out[1]}) feature point, one point per lattice cell at a random position
-     * within the cell, moved towards the cell centre by {@code 1 - jitter} (0 gives a regular grid, 1 fully random positions). The nine cells around the sample are searched; the
-     * nearest distance is exact, and the second nearest is exact except in rare configurations where it lies beyond those cells (rate in {@code docs/NOISE.md}).
+     * Computes 2D Worley noise: the distance to the nearest ({@code out[0]}) and to the second
+     * nearest ({@code out[1]}) feature point, one point per lattice cell at a random position
+     * within the cell, moved towards the cell centre by {@code 1 - jitter} (0 gives a regular grid,
+     * 1 fully random positions).
+     *
+     * <p>The nine cells around the sample are searched; the nearest distance is exact, and the
+     * second nearest is exact except in rare configurations where it lies beyond those cells (rate
+     * in {@code docs/NOISE.md}).
+     *
+     * @param x the x component
+     * @param y the y component
+     * @param seed the seed
+     * @param jitter the jitter
+     * @param out receives the result in {@code [0, 2)}
      */
     public static void worley2(double x, double y, int seed, double jitter, double[] out) {
         int xi = floor(x), yi = floor(y);
@@ -260,7 +370,16 @@ public final class Noise {
         out[1] = Math.sqrt(best2);
     }
 
-    /** 3D Worley noise; see {@link #worley2}: the 27 cells around the sample are searched. */
+    /**
+     * Computes 3D Worley noise; see {@link #worley2}: the 27 cells around the sample are searched.
+     *
+     * @param x the x component
+     * @param y the y component
+     * @param z the z component
+     * @param seed the seed
+     * @param jitter the jitter
+     * @param out receives the result in {@code [0, 2)}
+     */
     public static void worley3(double x, double y, double z, int seed, double jitter, double[] out) {
         int xi = floor(x), yi = floor(y), zi = floor(z);
         double best1 = Double.POSITIVE_INFINITY, best2 = Double.POSITIVE_INFINITY;
@@ -290,15 +409,32 @@ public final class Noise {
     private static final double CURL_EPS = 1e-4;
 
     /**
-     * The 2D curl of a gradient-noise potential: the vector {@code (d psi / dy, -d psi / dx)}, written to {@code out[0]} and {@code out[1]}. The field is divergence-free: it has
-     * no sources or sinks, so particles carried by it swirl without bunching up. The derivatives are central differences with a step of 1e-4.
+     * Computes the 2D curl of a gradient-noise potential: the vector
+     * {@code (d psi / dy, -d psi / dx)}, written to {@code out[0]} and {@code out[1]}.
+     *
+     * <p>The field is divergence-free: it has no sources or sinks, so particles carried by it swirl
+     * without bunching up. The derivatives are central differences with a step of 1e-4.
+     *
+     * @param x the x component
+     * @param y the y component
+     * @param seed the seed
+     * @param out receives the result in {@code [0, 2)}
      */
     public static void curl2(double x, double y, int seed, double[] out) {
         out[0] = (perlin2(x, y + CURL_EPS, seed) - perlin2(x, y - CURL_EPS, seed)) / (2 * CURL_EPS);
         out[1] = -(perlin2(x + CURL_EPS, y, seed) - perlin2(x - CURL_EPS, y, seed)) / (2 * CURL_EPS);
     }
 
-    /** The 3D curl of a vector potential made of three independent gradient noises (seeds {@code seed}, {@code seed + 1}, {@code seed + 2}), written to {@code out[0 .. 3)}. */
+    /**
+     * Computes the 3D curl of a vector potential made of three independent gradient noises (seeds
+     * {@code seed}, {@code seed + 1}, {@code seed + 2}), written to {@code out[0 .. 3)}.
+     *
+     * @param x the x component
+     * @param y the y component
+     * @param z the z component
+     * @param seed the seed
+     * @param out receives the result in {@code [0, 3)}
+     */
     public static void curl3(double x, double y, double z, int seed, double[] out) {
         double e = CURL_EPS, inv = 1 / (2 * e);
         double dz1 = (perlin3(x, y, z + e, seed) - perlin3(x, y, z - e, seed)) * inv;
@@ -314,7 +450,15 @@ public final class Noise {
 
     // ------------------------------------------------------------ fractal sums, warping, batches
 
-    /** One octave of the chosen noise in 2D. */
+    /**
+     * Evaluates a single octave of the chosen kind of 2D noise.
+     *
+     * @param kind the kind; must not be {@code null}
+     * @param x the x component
+     * @param y the y component
+     * @param seed the seed
+     * @return one octave of the chosen noise in 2D
+     */
     public static double sample2(Kind kind, double x, double y, int seed) {
         switch (kind) {
             case VALUE:
@@ -326,7 +470,16 @@ public final class Noise {
         }
     }
 
-    /** One octave of the chosen noise in 3D. */
+    /**
+     * Evaluates a single octave of the chosen kind of 3D noise.
+     *
+     * @param kind the kind; must not be {@code null}
+     * @param x the x component
+     * @param y the y component
+     * @param z the z component
+     * @param seed the seed
+     * @return one octave of the chosen noise in 3D
+     */
     public static double sample3(Kind kind, double x, double y, double z, int seed) {
         switch (kind) {
             case VALUE:
@@ -339,8 +492,22 @@ public final class Noise {
     }
 
     /**
-     * Fractional Brownian motion: the sum of {@code octaves} noises, each {@code lacunarity} times finer (2 is usual) and {@code gain} times as strong (0.5 is usual) as the one
-     * before, divided by the sum of the strengths so that the result stays in the range of the single noise. Each octave uses its own seed.
+     * Sums several octaves of noise, each finer and weaker than the one before, to get the
+     * self-similar detail of fractal noise; cost grows linearly with the number of octaves.
+     *
+     * <p>Each octave uses its own seed.
+     *
+     * @param kind the kind; must not be {@code null}
+     * @param x the x component
+     * @param y the y component
+     * @param seed the seed
+     * @param octaves the octaves
+     * @param lacunarity the lacunarity
+     * @param gain the gain
+     * @return fractional Brownian motion: the sum of {@code octaves} noises, each
+     *     {@code lacunarity} times finer (2 is usual) and {@code gain} times as strong (0.5 is
+     *     usual) as the one before, divided by the sum of the strengths so that the result stays in
+     *     the range of the single noise
      */
     public static double fbm2(Kind kind, double x, double y, int seed, int octaves, double lacunarity, double gain) {
         double sum = 0, amplitude = 1, norm = 0, frequency = 1;
@@ -353,7 +520,20 @@ public final class Noise {
         return norm > 0 ? sum / norm : 0;
     }
 
-    /** 3D {@link #fbm2}. */
+    /**
+     * Sums several octaves of 3D noise, each finer and weaker than the one before; cost grows
+     * linearly with the number of octaves.
+     *
+     * @param kind the kind; must not be {@code null}
+     * @param x the x component
+     * @param y the y component
+     * @param z the z component
+     * @param seed the seed
+     * @param octaves the octaves
+     * @param lacunarity the lacunarity
+     * @param gain the gain
+     * @return 3D {@link #fbm2}
+     */
     public static double fbm3(Kind kind, double x, double y, double z, int seed, int octaves, double lacunarity, double gain) {
         double sum = 0, amplitude = 1, norm = 0, frequency = 1;
         for (int o = 0; o < octaves; o++) {
@@ -366,8 +546,21 @@ public final class Noise {
     }
 
     /**
-     * Domain-warped fractal noise: {@link #fbm2} evaluated at a position that has itself been moved by two other fractal noises, {@code strength} lattice units at most. Gives the
-     * swirling, marble-like look that plain noise lacks.
+     * Evaluates fractal noise at a position that other fractal noise has displaced, which produces
+     * swirling, marble-like patterns; costs several times a plain fractal evaluation.
+     *
+     * <p>Gives the swirling, marble-like look that plain noise lacks.
+     *
+     * @param kind the kind; must not be {@code null}
+     * @param x the x component
+     * @param y the y component
+     * @param seed the seed
+     * @param octaves the octaves
+     * @param lacunarity the lacunarity
+     * @param gain the gain
+     * @param strength the strength
+     * @return domain-warped fractal noise: {@link #fbm2} evaluated at a position that has itself
+     *     been moved by two other fractal noises, {@code strength} lattice units at most
      */
     public static double warpedFbm2(Kind kind, double x, double y, int seed, int octaves, double lacunarity, double gain, double strength) {
         double wx = fbm2(kind, x + 5.2, y + 1.3, seed + 7919, octaves, lacunarity, gain);
@@ -376,8 +569,25 @@ public final class Noise {
     }
 
     /**
-     * Fills {@code out[0 .. width * height)} (row by row, the {@code x} index running fastest) with {@link #fbm2} sampled on a regular grid: sample {@code (i, j)} is taken at
-     * {@code (x0 + i dx, y0 + j dy)}. With {@code octaves = 1} this is the plain noise.
+     * Fills {@code out[0 .. width * height)} (row by row, the {@code x} index running fastest) with
+     * {@link #fbm2} sampled on a regular grid: sample {@code (i, j)} is taken at
+     * {@code (x0 + i dx, y0 + j dy)}.
+     *
+     * <p>With {@code octaves = 1} this is the plain noise.
+     *
+     * @param kind the kind; must not be {@code null}
+     * @param out receives the result
+     * @param width the width
+     * @param height the height
+     * @param x0 the x coordinate of the first sample
+     * @param y0 the y coordinate of the first sample
+     * @param dx the distance between neighbouring samples along x
+     * @param dy the distance between neighbouring samples along y
+     * @param seed the seed
+     * @param octaves the octaves
+     * @param lacunarity the lacunarity
+     * @param gain the gain
+     * @throws IllegalArgumentException if {@code out} cannot hold the grid
      */
     public static void fill2(Kind kind, float[] out, int width, int height, double x0, double y0, double dx, double dy, int seed, int octaves, double lacunarity, double gain) {
         if (width < 0 || height < 0 || (long) width * height > out.length) {

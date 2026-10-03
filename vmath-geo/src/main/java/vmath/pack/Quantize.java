@@ -3,13 +3,26 @@ package vmath.pack;
 import vmath.annotations.Experimental;
 
 /**
- * Quantization to an arbitrary number of bits, as mesh pipelines such as meshoptimizer use it: normalized integers of 1 to 24 bits, and rounding of a float's mantissa
- * to fewer bits (which keeps the value a float but makes the data far more compressible). {@link Norm} has the fixed 8-, 10- and 16-bit formats with the GL packing
- * rules; this is for formats of your own choosing, such as 12-bit UVs or 14-bit positions. The conventions are the same as there: values outside the range are clamped,
- * NaN becomes 0, rounding is to nearest (ties up), and zero is exact in the signed form.
+ * Quantization to an arbitrary number of bits, as mesh pipelines such as meshoptimizer use it:
+ * normalized integers of 1 to 24 bits, and rounding of a float's mantissa to fewer bits (which
+ * keeps the value a float but makes the data far more compressible).
  *
- * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time. The arrays and buffers you pass in are
- * not synchronised, so two threads must not write the same one.
+ * <p>{@link Norm} has the fixed 8-, 10- and 16-bit formats with the GL packing rules; this is for
+ * formats of your own choosing, such as 12-bit UVs or 14-bit positions. The conventions are the
+ * same as there: values outside the range are clamped, NaN becomes 0, rounding is to nearest (ties
+ * up), and zero is exact in the signed form.
+ *
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the
+ * same time. The arrays and buffers you pass in are not synchronised, so two threads must not write
+ * the same one.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * int code = Quantize.unorm(0.3f, 12);                                   // 12-bit code of 0.3
+ * float back = Quantize.fromUnorm(code, 12);
+ * float coarse = Quantize.mantissa(1.2345678f, 10);                      // keeps 10 of the 23 mantissa bits
+ * }</pre>
  */
 @Experimental("the set of helpers may grow")
 public final class Quantize {
@@ -23,19 +36,38 @@ public final class Quantize {
         }
     }
 
-    /** The largest unsigned code of {@code bits} bits: {@code 2^bits - 1}. */
+    /**
+     * Computes the largest unsigned code for a bit count.
+     *
+     * @param bits the number of bits
+     * @return the largest unsigned code of {@code bits} bits: {@code 2^bits - 1}
+     */
     public static int unormMax(int bits) {
         checkBits(bits, 1, 24);
         return (1 << bits) - 1;
     }
 
-    /** The largest signed code: {@code 2^(bits-1) - 1} (the codes run from its negative to it, so zero is exact). */
+    /**
+     * Computes the largest signed code for a bit count; the range is symmetric, so zero is exactly
+     * representable.
+     *
+     * @param bits the number of bits
+     * @return the largest signed code: {@code 2^(bits-1) - 1} (the codes run from its negative to
+     *     it, so zero is exact)
+     */
     public static int snormMax(int bits) {
         checkBits(bits, 2, 24);
         return (1 << (bits - 1)) - 1;
     }
 
-    /** {@code v} in {@code [0, 1]} as a code in {@code [0, 2^bits - 1]}, nearest. */
+    /**
+     * Quantizes a value in the unit interval to the nearest unsigned code of the given width;
+     * out-of-range input is clamped.
+     *
+     * @param v the value, in {@code [0, 1]}
+     * @param bits the number of bits
+     * @return {@code v} in {@code [0, 1]} as a code in {@code [0, 2^bits - 1]}, nearest
+     */
     public static int unorm(float v, int bits) {
         int max = unormMax(bits);
         if (!(v > 0f)) {
@@ -47,13 +79,27 @@ public final class Quantize {
         return (int) ((double) v * max + 0.5);
     }
 
-    /** The value of an unsigned code, in {@code [0, 1]}. */
+    /**
+     * Dequantizes an unsigned code of the given width to the unit interval.
+     *
+     * @param code the code
+     * @param bits the number of bits
+     * @return the value of an unsigned code, in {@code [0, 1]}
+     */
     public static float fromUnorm(int code, int bits) {
         int max = unormMax(bits);
         return (float) ((double) Math.max(0, Math.min(code, max)) / max);
     }
 
-    /** {@code v} in {@code [-1, 1]} as a code in {@code [-(2^(bits-1) - 1), 2^(bits-1) - 1]}, nearest (ties up, as in {@link Norm}). */
+    /**
+     * Quantizes a signed value to the nearest code of the given width, symmetrically around zero so
+     * that zero is exactly representable; out-of-range input is clamped.
+     *
+     * @param v the value, in {@code [-1, 1]}
+     * @param bits the number of bits
+     * @return {@code v} in {@code [-1, 1]} as a code in
+     *     {@code [-(2^(bits-1) - 1), 2^(bits-1) - 1]}, nearest (ties up, as in {@link Norm})
+     */
     public static int snorm(float v, int bits) {
         int max = snormMax(bits);
         if (!(v > -1f)) {
@@ -65,16 +111,31 @@ public final class Quantize {
         return (int) Math.round((double) v * max);
     }
 
-    /** The value of a signed code, in {@code [-1, 1]}; the most negative two's complement value {@code -2^(bits-1)} also maps to -1. */
+    /**
+     * Dequantizes a signed code of the given width to the range from -1 to 1.
+     *
+     * @param code the code
+     * @param bits the number of bits
+     * @return the value of a signed code, in {@code [-1, 1]}; the most negative two's complement
+     *     value {@code -2^(bits-1)} also maps to -1
+     */
     public static float fromSnorm(int code, int bits) {
         int max = snormMax(bits);
         return (float) Math.max(-1.0, (double) Math.min(code, max) / max);
     }
 
     /**
-     * Rounds the mantissa of {@code f} to {@code bits} bits (of the 23 stored; 0 keeps only the power of two), to nearest with ties to even in the discarded bits'
-     * sense of "round half up on the magnitude". Infinities and NaNs are unchanged, the sign is kept, and a value that rounds up to the next power of two does so
-     * correctly. The result is a float, so it needs no decoding; its low {@code 23 - bits} mantissa bits are zero. Relative error at most {@code 2^-(bits+1)}.
+     * Rounds the mantissa of {@code f} to {@code bits} bits (of the 23 stored; 0 keeps only the
+     * power of two), to nearest with ties to even in the discarded bits' sense of "round half up on
+     * the magnitude".
+     *
+     * <p>Infinities and NaNs are unchanged, the sign is kept, and a value that rounds up to the
+     * next power of two does so correctly. The result is a float, so it needs no decoding; its low
+     * {@code 23 - bits} mantissa bits are zero. Relative error at most {@code 2^-(bits+1)}.
+     *
+     * @param f the value to round
+     * @param bits the number of bits
+     * @return the value with the mantissa rounded to the given number of bits
      */
     public static float mantissa(float f, int bits) {
         checkBits(bits, 0, 23);
@@ -96,7 +157,15 @@ public final class Quantize {
         return Float.intBitsToFloat((b & 0x80000000) | magnitude);
     }
 
-    /** {@link #mantissa(float, int)} of {@code count} floats of {@code a} starting at {@code offset}, in place. */
+    /**
+     * Rounds the mantissa of {@code count} floats of {@code a} starting at {@code offset} in place,
+     * as {@link #mantissa(float, int)} does for one value.
+     *
+     * @param a the array whose elements are rounded in place
+     * @param offset the index of the first element to read or write
+     * @param count the number of elements
+     * @param bits the number of bits
+     */
     public static void mantissa(float[] a, int offset, int count, int bits) {
         for (int i = offset; i < offset + count; i++) {
             a[i] = mantissa(a[i], bits);

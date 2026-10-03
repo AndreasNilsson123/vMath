@@ -3,44 +3,77 @@ package vmath.anim;
 import java.util.Arrays;
 
 /**
- * The local transform of every joint at one moment: what an animation clip samples into and what blending combines. Stored as one
- * array, 10 floats per joint: translation {@code x, y, z}, unit quaternion {@code x, y, z, w}, scale {@code x, y, z}.
+ * The local transform of every joint at one moment: what an animation clip samples into and what
+ * blending combines.
  *
- * <p>All blend operations write into a caller-supplied {@code out} pose and allocate nothing. {@code out} may be the same object as one
- * of the inputs.
+ * <p>Stored as one array, 10 floats per joint: translation {@code x, y, z}, unit quaternion
+ * {@code x, y, z, w}, scale {@code x, y, z}.
  *
- * <p><b>Thread safety.</b> Not thread-safe: it is mutable, so use one instance per thread or synchronise externally. Concurrent reads are safe only
- * while no thread is writing.
+ * <p>All blend operations write into a caller-supplied {@code out} pose and allocate nothing.
+ * {@code out} may be the same object as one of the inputs.
+ *
+ * <p><b>Thread safety.</b> Not thread-safe: it is mutable, so use one instance per thread or
+ * synchronise externally. Concurrent reads are safe only while no thread is writing.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * Skeleton skeleton = new Skeleton(new int[] {-1, 0}, new float[] {0f, 0f, 0f, 0f, 0f, 0f, 1f, 1f, 1f, 1f, 0f, 1f, 0f, 0f, 0f, 0f, 1f, 1f, 1f, 1f});
+ * Pose a = new Pose(skeleton);                                            // starts at the bind pose
+ * Pose b = new Pose(skeleton);
+ * b.setRotation(1, 0f, 0.38f, 0f, 0.92f);
+ * Pose blended = new Pose(skeleton);
+ * Pose.lerp(a, b, 0.5f, blended);                                         // slerp along the shortest arc
+ * }</pre>
  */
 public final class Pose {
 
     private final float[] trs;
     private final int joints;
 
-    /** A pose of {@code jointCount} joints, all at the identity. */
+    /**
+     * Creates a pose of {@code jointCount} joints, all at the identity.
+     *
+     * @param jointCount the joint count
+     */
     public Pose(int jointCount) {
         joints = jointCount;
         trs = new float[jointCount * TransformMath.TRS];
         setIdentity();
     }
 
-    /** A pose at the skeleton's bind pose. */
+    /**
+     * Creates a pose at the skeleton's bind pose.
+     *
+     * @param skeleton the skeleton; must not be {@code null}
+     */
     public Pose(Skeleton skeleton) {
         this(skeleton.jointCount());
         setToBind(skeleton);
     }
 
-    /** The number of joints. */
+    /**
+     * Counts the joints of the pose.
+     *
+     * @return the number of joints
+     */
     public int jointCount() {
         return joints;
     }
 
-    /** The live array, 10 floats per joint. */
+    /**
+     * Exposes the pose data as the live internal array, with a fixed number of floats per joint,
+     * which makes it suitable for bulk upload.
+     *
+     * @return the live array, 10 floats per joint
+     */
     public float[] data() {
         return trs;
     }
 
-    /** Sets every joint to the identity: no translation, no rotation, scale 1. */
+    /**
+     * Sets every joint to the identity: no translation, no rotation, scale 1.
+     */
     public void setIdentity() {
         for (int j = 0; j < joints; j++) {
             int o = j * TransformMath.TRS;
@@ -53,19 +86,34 @@ public final class Pose {
         }
     }
 
-    /** Copies the bind pose of {@code skeleton} into this pose; the joint counts must be equal. */
+    /**
+     * Copies the bind pose of {@code skeleton} into this pose; the joint counts must be equal.
+     *
+     * @param skeleton the skeleton; must not be {@code null}
+     */
     public void setToBind(Skeleton skeleton) {
         requireJoints(skeleton.jointCount());
         System.arraycopy(skeleton.bindArray(), 0, trs, 0, trs.length);
     }
 
-    /** Copies every joint of {@code other}, which must have the same joint count. */
+    /**
+     * Copies every joint of {@code other}, which must have the same joint count.
+     *
+     * @param other the other pose; must not be {@code null}
+     */
     public void copyFrom(Pose other) {
         requireJoints(other.joints);
         System.arraycopy(other.trs, 0, trs, 0, trs.length);
     }
 
-    /** Sets the translation of {@code joint}. */
+    /**
+     * Sets the translation of {@code joint}.
+     *
+     * @param joint the joint index
+     * @param x the x component
+     * @param y the y component
+     * @param z the z component
+     */
     public void setTranslation(int joint, float x, float y, float z) {
         int o = joint * TransformMath.TRS;
         trs[o] = x;
@@ -73,7 +121,15 @@ public final class Pose {
         trs[o + 2] = z;
     }
 
-    /** Sets the rotation; the quaternion is normalised. */
+    /**
+     * Sets the rotation; the quaternion is normalised.
+     *
+     * @param joint the joint index
+     * @param x the x component
+     * @param y the y component
+     * @param z the z component
+     * @param w the w component
+     */
     public void setRotation(int joint, float x, float y, float z, float w) {
         int o = joint * TransformMath.TRS + 3;
         trs[o] = x;
@@ -83,7 +139,14 @@ public final class Pose {
         Skeleton.normalize(trs, o);
     }
 
-    /** Sets the scale of {@code joint}. */
+    /**
+     * Sets the scale of {@code joint}.
+     *
+     * @param joint the joint index
+     * @param x the x component
+     * @param y the y component
+     * @param z the z component
+     */
     public void setScale(int joint, float x, float y, float z) {
         int o = joint * TransformMath.TRS + 7;
         trs[o] = x;
@@ -100,8 +163,15 @@ public final class Pose {
     // ---------------------------------------------------------------- blending
 
     /**
-     * {@code out = a} blended toward {@code b} by {@code t}: translation and scale linearly, rotation by slerp along the shortest arc.
-     * {@code t = 0} gives {@code a}, {@code t = 1} gives {@code b}.
+     * Blends {@code a} toward {@code b} by {@code t} into {@code out}: translation and scale
+     * linearly, rotation by slerp along the shortest arc.
+     *
+     * <p>{@code t = 0} gives {@code a}, {@code t = 1} gives {@code b}.
+     *
+     * @param a the first pose; must not be {@code null}
+     * @param b the second pose; must not be {@code null}
+     * @param t the blend parameter, 0 for {@code a} and 1 for {@code b}
+     * @param out receives the result; must not be {@code null}
      */
     public static void lerp(Pose a, Pose b, float t, Pose out) {
         a.requireJoints(b.joints);
@@ -112,8 +182,19 @@ public final class Pose {
     }
 
     /**
-     * Layered blend: joint {@code j} of {@code out} is {@code base} blended toward {@code overlay} by {@code mask[j] * weight}. A mask
-     * of 1 for the upper body and 0 for the legs plays an attack animation over a walk, for example.
+     * Blends in layers: joint {@code j} of {@code out} is {@code base} blended toward
+     * {@code overlay} by {@code mask[j] * weight}.
+     *
+     * <p>A mask of 1 for the upper body and 0 for the legs plays an attack animation over a walk,
+     * for example.
+     *
+     * @param base the base; must not be {@code null}
+     * @param overlay the overlay; must not be {@code null}
+     * @param mask the mask
+     * @param weight the weight
+     * @param out receives the result; must not be {@code null}
+     * @throws IllegalArgumentException if {@code mask} has fewer entries than the skeleton has
+     *     joints
      */
     public static void blendMasked(Pose base, Pose overlay, float[] mask, float weight, Pose out) {
         base.requireJoints(overlay.joints);
@@ -136,9 +217,16 @@ public final class Pose {
     }
 
     /**
-     * Turns {@code source} into an additive pose relative to {@code reference}: what has to be added to the reference to get the source
-     * (translation difference, rotation {@code source * inverse(reference)}, scale ratio). Typically the reference is the first frame of a
-     * clip, so the result holds only the motion, which {@link #applyAdditive} can then lay over any base pose.
+     * Turns {@code source} into an additive pose relative to {@code reference}: what has to be
+     * added to the reference to get the source (translation difference, rotation
+     * {@code source * inverse(reference)}, scale ratio).
+     *
+     * <p>Typically the reference is the first frame of a clip, so the result holds only the motion,
+     * which {@link #applyAdditive} can then lay over any base pose.
+     *
+     * @param reference the reference; must not be {@code null}
+     * @param source the source; must not be {@code null}
+     * @param out receives the result; must not be {@code null}
      */
     public static void makeAdditive(Pose reference, Pose source, Pose out) {
         reference.requireJoints(source.joints);
@@ -157,9 +245,17 @@ public final class Pose {
     }
 
     /**
-     * Lays an additive pose over {@code base} with strength {@code weight}: translation is added, rotation is multiplied on the left by
-     * the additive rotation scaled toward the identity, scale is multiplied by the additive ratio scaled toward 1. With weight 1 and the
-     * additive made by {@link #makeAdditive} against the same reference, the source pose comes back.
+     * Lays an additive pose over {@code base} with strength {@code weight}: translation is added,
+     * rotation is multiplied on the left by the additive rotation scaled toward the identity, scale
+     * is multiplied by the additive ratio scaled toward 1.
+     *
+     * <p>With weight 1 and the additive made by {@link #makeAdditive} against the same reference,
+     * the source pose comes back.
+     *
+     * @param base the base; must not be {@code null}
+     * @param additive the additive; must not be {@code null}
+     * @param weight the weight
+     * @param out receives the result; must not be {@code null}
      */
     public static void applyAdditive(Pose base, Pose additive, float weight, Pose out) {
         base.requireJoints(additive.joints);

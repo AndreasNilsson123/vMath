@@ -1,25 +1,41 @@
 package vmath.core;
 
 /**
- * Morton (Z-order) codes: interleave the bits of grid coordinates so that numerically close codes are spatially close.
- * Sorting objects by Morton code gives a cache-friendly memory order and is the basis of LBVH construction.
+ * Morton (Z-order) codes: interleave the bits of grid coordinates so that numerically close codes
+ * are spatially close.
  *
- * <p>3D codes take 21 bits per axis (63 bits, so always non-negative as a {@code long}); 2D codes take 32 bits per
- * axis and use all 64 bits. Coordinates are treated as unsigned; use {@link #quantize} to map a float in a known range
- * onto the grid.
+ * <p>Sorting objects by Morton code gives a cache-friendly memory order and is the basis of LBVH
+ * construction.
  *
- * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time. The arrays and buffers you pass in are
- * not synchronised, so two threads must not write the same one.
+ * <p>3D codes take 21 bits per axis (63 bits, so always non-negative as a {@code long}); 2D codes
+ * take 32 bits per axis and use all 64 bits. Coordinates are treated as unsigned; use
+ * {@link #quantize} to map a float in a known range onto the grid.
+ *
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the
+ * same time. The arrays and buffers you pass in are not synchronised, so two threads must not write
+ * the same one.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * long code = Morton.encode3(5, 6, 7);
+ * Vec3i cell = Morton.decode3(code);                           // (5, 6, 7)
+ * int cellIndex = Morton.quantize(2.5f, 0f, 10f, 1024);        // maps [0, 10] onto [0, 1023]
+ * }</pre>
  */
 public final class Morton {
 
     private Morton() {
     }
 
-    /** Largest 3D coordinate: {@code 2^21 - 1}. */
+    /**
+     * Largest 3D coordinate: {@code 2^21 - 1}.
+     */
     public static final int MAX_3D = (1 << 21) - 1;
 
-    /** Spreads the low 21 bits of {@code v} so that two zero bits sit between each pair of bits. */
+    /**
+     * Spreads the low 21 bits of {@code v} so that two zero bits sit between each pair of bits.
+     */
     static long spread3(long v) {
         long x = v & 0x1FFFFFL;
         x = (x | (x << 32)) & 0x1F00000000FFFFL;
@@ -40,12 +56,27 @@ public final class Morton {
         return x;
     }
 
-    /** 63-bit code: bit {@code 3i} is bit {@code i} of x, bit {@code 3i+1} of y, bit {@code 3i+2} of z. */
+    /**
+     * Interleaves the bits of three coordinates into one Z-order (Morton) code, so that sorting by
+     * the code orders points along a space-filling curve.
+     *
+     * @param x the x component
+     * @param y the y component
+     * @param z the z component
+     * @return 63-bit code: bit {@code 3i} is bit {@code i} of x, bit {@code 3i+1} of y, bit
+     *     {@code 3i+2} of z
+     */
     public static long encode3(int x, int y, int z) {
         return spread3(x) | (spread3(y) << 1) | (spread3(z) << 2);
     }
 
-    /** The coordinates of a code made by {@link #encode3(int, int, int)}. */
+    /**
+     * Splits a Morton code back into three coordinates by compacting every third bit, inverting the
+     * encoder.
+     *
+     * @param code the code
+     * @return the coordinates of a code made by {@link #encode3(int, int, int)}
+     */
     public static Vec3i decode3(long code) {
         return new Vec3i((int) compact3(code), (int) compact3(code >>> 1), (int) compact3(code >>> 2));
     }
@@ -70,39 +101,89 @@ public final class Morton {
         return x;
     }
 
-    /** 64-bit code: bit {@code 2i} is bit {@code i} of x, bit {@code 2i+1} of y. */
+    /**
+     * Interleaves the bits of two coordinates into one Z-order (Morton) code, so that sorting by
+     * the code orders points along a space-filling curve.
+     *
+     * @param x the x component
+     * @param y the y component
+     * @return 64-bit code: bit {@code 2i} is bit {@code i} of x, bit {@code 2i+1} of y
+     */
     public static long encode2(int x, int y) {
         return spread2(x) | (spread2(y) << 1);
     }
 
-    /** The coordinates of a code made by {@link #encode2(int, int)}. */
+    /**
+     * Splits a Morton code back into two coordinates by compacting every second bit, inverting the
+     * encoder.
+     *
+     * @param code the code
+     * @return the coordinates of a code made by {@link #encode2(int, int)}
+     */
     public static Vec2i decode2(long code) {
         return new Vec2i((int) compact2(code), (int) compact2(code >>> 1));
     }
 
-    /** 30-bit code of three 10-bit coordinates (0 to 1023), as an {@code int} that is non-negative and sorts as a signed or an unsigned integer alike. */
+    /**
+     * Encodes three 10-bit coordinates as a Morton code that fits a non-negative {@code int}; bits
+     * beyond the tenth are discarded.
+     *
+     * @param x the x component
+     * @param y the y component
+     * @param z the z component
+     * @return 30-bit code of three 10-bit coordinates (0 to 1023), as an {@code int} that is
+     *     non-negative and sorts as a signed or an unsigned integer alike
+     */
     public static int encode3Int(int x, int y, int z) {
         return (int) encode3(x & 0x3FF, y & 0x3FF, z & 0x3FF);
     }
 
-    /** The coordinates of a code made by {@link #encode3Int(int, int, int)}. */
+    /**
+     * Splits a 30-bit Morton code back into three 10-bit coordinates, inverting the compact
+     * encoder.
+     *
+     * @param code the code
+     * @return the coordinates of a code made by {@link #encode3Int(int, int, int)}
+     */
     public static Vec3i decode3Int(int code) {
         return decode3(code & 0x3FFFFFFFL);
     }
 
-    /** 32-bit code of two 16-bit coordinates (0 to 65535); the code is unsigned, so compare with {@link Integer#compareUnsigned} or sort with an unsigned sort. */
+    /**
+     * Encodes two 16-bit coordinates as a Morton code in an {@code int} that is meant as an
+     * unsigned value; bits beyond the sixteenth are discarded.
+     *
+     * @param x the x component
+     * @param y the y component
+     * @return 32-bit code of two 16-bit coordinates (0 to 65535); the code is unsigned, so compare
+     *     with {@link Integer#compareUnsigned} or sort with an unsigned sort
+     */
     public static int encode2Int(int x, int y) {
         return (int) encode2(x & 0xFFFF, y & 0xFFFF);
     }
 
-    /** The coordinates of a code made by {@link #encode2Int(int, int)}. */
+    /**
+     * Splits a 32-bit Morton code back into two 16-bit coordinates, inverting the compact encoder.
+     *
+     * @param code the code
+     * @return the coordinates of a code made by {@link #encode2Int(int, int)}
+     */
     public static Vec2i decode2Int(int code) {
         return decode2(code & 0xFFFFFFFFL);
     }
 
     /**
-     * Maps {@code v} from {@code [min, max]} onto {@code [0, cells - 1]}, clamping values outside the range. Use it to
-     * turn positions into Morton input, with {@code cells = MAX_3D + 1} for full 3D precision.
+     * Maps {@code v} from {@code [min, max]} onto {@code [0, cells - 1]}, clamping values outside
+     * the range.
+     *
+     * <p>Use it to turn positions into Morton input, with {@code cells = MAX_3D + 1} for full 3D
+     * precision.
+     *
+     * @param v the value to map
+     * @param min the min
+     * @param max the max
+     * @param cells the cells
+     * @return the cell index, in {@code [0, cells - 1]}
      */
     public static int quantize(float v, float min, float max, int cells) {
         float t = (v - min) / (max - min);
@@ -110,7 +191,19 @@ public final class Morton {
         return Math.min(Math.max(q, 0), cells - 1);
     }
 
-    /** Morton code of {@code p} inside the given bounds at full 21-bit precision per axis. */
+    /**
+     * Quantizes a position to a grid inside the given box and encodes the cell as a Morton code;
+     * positions outside the box are clamped to its border.
+     *
+     * @param p the vector; must not be {@code null}
+     * @param minX the smallest x coordinate
+     * @param minY the smallest y coordinate
+     * @param minZ the smallest z coordinate
+     * @param maxX the largest x coordinate
+     * @param maxY the largest y coordinate
+     * @param maxZ the largest z coordinate
+     * @return morton code of {@code p} inside the given bounds at full 21-bit precision per axis
+     */
     public static long encode3(Vec3f p, float minX, float minY, float minZ, float maxX, float maxY, float maxZ) {
         int cells = MAX_3D + 1;
         return encode3(quantize(p.x(), minX, maxX, cells), quantize(p.y(), minY, maxY, cells),

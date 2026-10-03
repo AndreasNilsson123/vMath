@@ -4,20 +4,33 @@ import java.util.Arrays;
 import vmath.annotations.Experimental;
 
 /**
- * Overdraw measurement and overdraw-aware triangle ordering, in the spirit of meshoptimizer's {@code optimizeOverdraw} but simpler and checked by
- * measurement rather than trusted.
+ * Overdraw measurement and overdraw-aware triangle ordering, in the spirit of meshoptimizer's
+ * {@code optimizeOverdraw} but simpler and checked by measurement rather than trusted.
  *
- * <p><b>Measuring.</b> {@link #measure} rasterises the mesh in submission order, back faces culled, with an early depth test, from the six axis
- * directions, and returns {@code shaded pixels / covered pixels}: 1.0 means no pixel was shaded more than once. It is a model (orthographic, six views, a
- * small grid), good for comparing two orders of the same mesh, not a GPU counter.
+ * <p><b>Measuring.</b> {@link #measure} rasterises the mesh in submission order, back faces culled,
+ * with an early depth test, from the six axis directions, and returns
+ * {@code shaded pixels / covered pixels}: 1.0 means no pixel was shaded more than once. It is a
+ * model (orthographic, six views, a small grid), good for comparing two orders of the same mesh,
+ * not a GPU counter.
  *
- * <p><b>Optimising.</b> {@link #optimize} splits the (already cache-optimised) triangle list into clusters at natural breaks, where a triangle jumps to a
- * new region of the mesh, orders the clusters by how far their average normal points away from the mesh centre, and keeps the result only when it lowers
- * the measured overdraw without raising the vertex-cache miss ratio by more than a threshold. Both sort directions are tried, because which one helps
- * depends on the shape. Only the order of the triangles changes.
+ * <p><b>Optimising.</b> {@link #optimize} splits the (already cache-optimised) triangle list into
+ * clusters at natural breaks, where a triangle jumps to a new region of the mesh, orders the
+ * clusters by how far their average normal points away from the mesh centre, and keeps the result
+ * only when it lowers the measured overdraw without raising the vertex-cache miss ratio by more
+ * than a threshold. Both sort directions are tried, because which one helps depends on the shape.
+ * Only the order of the triangles changes.
  *
- * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time. The arrays and buffers you pass in are
- * not synchronised, so two threads must not write the same one.
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the
+ * same time. The arrays and buffers you pass in are not synchronised, so two threads must not write
+ * the same one.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * Mesh mesh = Primitives.uvSphere(1f, 32, 16);
+ * float before = Overdraw.measure(mesh, 128);
+ * Overdraw.Result result = Overdraw.optimize(mesh, 128, 1.05f);                              // reorders triangles in clusters
+ * }</pre>
  */
 @Experimental("the clustering heuristic and the result record may change")
 public final class Overdraw {
@@ -25,12 +38,25 @@ public final class Overdraw {
     private Overdraw() {
     }
 
-    /** What {@link #optimize} did. {@code applied} is false when no ordering was better, in which case the mesh is unchanged. */
+    /**
+     * What {@link #optimize} did.
+     *
+     * <p>{@code applied} is false when no ordering was better, in which case the mesh is unchanged.
+     *
+     * @param overdrawBefore the overdraw before
+     * @param overdrawAfter the overdraw after
+     * @param acmrBefore the acmr before
+     * @param acmrAfter the acmr after
+     * @param clusters the clusters
+     * @param applied whether applied
+     */
     public record Result(float overdrawBefore, float overdrawAfter, float acmrBefore, float acmrAfter, int clusters, boolean applied) {
     }
 
     private static final int CLUSTER_CACHE = 16;
-    /** A cluster ends when its box is wider than this fraction of the mesh. */
+    /**
+     * A cluster ends when its box is wider than this fraction of the mesh.
+     */
     private static final float CLUSTER_EXTENT = 0.5f;
 
     private static void resetBox(float[] lo, float[] hi) {
@@ -38,12 +64,30 @@ public final class Overdraw {
         Arrays.fill(hi, Float.NEGATIVE_INFINITY);
     }
 
-    /** Average overdraw over the six axis views at a square grid of {@code resolution} (for example 128). */
+    /**
+     * Estimates overdraw by rasterising the mesh into a depth grid from the six axis directions and
+     * counting how many fragments land on each pixel; a measure of how well the triangle order
+     * suits an early-depth test.
+     *
+     * @param mesh the mesh; must not be {@code null}
+     * @param resolution the resolution
+     * @return average overdraw over the six axis views at a square grid of {@code resolution} (for
+     *     example 128)
+     */
     public static float measure(Mesh mesh, int resolution) {
         return measure(mesh.positions(), mesh.indices(), mesh.indexCount(), resolution);
     }
 
-    /** {@link #measure(Mesh, int)} on bare arrays: {@code positions} hold 3 floats per vertex, triangles are {@code indices[0..indexCount)}. */
+    /**
+     * Estimates overdraw like {@link #measure(Mesh, int)} for bare arrays, without a mesh object.
+     *
+     * @param positions the positions
+     * @param indices the indices (at least 3 elements)
+     * @param indexCount the index count
+     * @param resolution the resolution
+     * @return {@link #measure(Mesh, int)} on bare arrays: {@code positions} hold 3 floats per
+     *     vertex, triangles are {@code indices[0..indexCount)}
+     */
     public static float measure(float[] positions, int[] indices, int indexCount, int resolution) {
         if (indexCount < 3) {
             return 1f;
@@ -110,12 +154,17 @@ public final class Overdraw {
     }
 
     /**
-     * Reorders the triangles of {@code mesh} to reduce overdraw; call it after {@link MeshOptimizer#optimizeVertexCache} and before
-     * {@link MeshOptimizer#optimizeVertexFetch}. The order is kept only if it lowers {@link #measure overdraw} and keeps
+     * Reorders the triangles of {@code mesh} to reduce overdraw; call it after
+     * {@link MeshOptimizer#optimizeVertexCache} and before
+     * {@link MeshOptimizer#optimizeVertexFetch}.
+     *
+     * <p>The order is kept only if it lowers {@link #measure overdraw} and keeps
      * {@code acmrAfter <= acmrBefore * cacheThreshold} (1.05 allows 5% more vertex shader work).
      *
+     * @param mesh the mesh; must not be {@code null}
      * @param resolution grid size of the overdraw model, for example 128
      * @param cacheThreshold allowed growth of the cache miss ratio, at least 1
+     * @return the outcome of the reordering, never {@code null}
      */
     public static Result optimize(Mesh mesh, int resolution, float cacheThreshold) {
         int n = mesh.indexCount(), tris = n / 3;

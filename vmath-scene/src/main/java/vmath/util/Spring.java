@@ -3,45 +3,89 @@
 import vmath.annotations.Experimental;
 
 /**
- * A damped spring that pulls a value towards a target, for smoothing cameras, UI values and anything that should follow a moving goal without jerks. It solves
- * {@code x'' = -w^2 (x - target) - 2 z w x'} <b>exactly</b> for a time step of any size (the closed form of the damped oscillator for underdamped, critically damped and overdamped
- * springs), so the result does not depend on the frame rate and never blows up for a large {@code dt}, unlike a spring integrated with Euler steps.
+ * A damped spring that pulls a value towards a target, for smoothing cameras, UI values and
+ * anything that should follow a moving goal without jerks.
  *
- * <p>{@code w} ({@code omega}) is the angular frequency in radians per second: the spring settles in a time of the order of {@code 1 / w}. {@code z} ({@code zeta}) is the damping ratio:
- * 1 is <b>critically damped</b> (the fastest approach without overshoot), below 1 it overshoots and oscillates, above 1 it creeps in slowly. {@link #halfLife} turns "reach half
- * the distance in this many seconds" into the {@code omega} of a critically damped spring.
+ * <p>It solves {@code x'' = -w^2 (x - target) - 2 z w x'} <b>exactly</b> for a time step of any
+ * size (the closed form of the damped oscillator for underdamped, critically damped and overdamped
+ * springs), so the result does not depend on the frame rate and never blows up for a large
+ * {@code dt}, unlike a spring integrated with Euler steps.
  *
- * <p>The scalar form is an object holding the position and velocity; {@link #step(float[], float[], int, int, float[], int, double, double, double)} advances
- * several components stored in arrays (a position, a colour) with no objects.
+ * <p>{@code w} ({@code omega}) is the angular frequency in radians per second: the spring settles
+ * in a time of the order of {@code 1 / w}. {@code z} ({@code zeta}) is the damping ratio: 1 is
+ * <b>critically damped</b> (the fastest approach without overshoot), below 1 it overshoots and
+ * oscillates, above 1 it creeps in slowly. {@link #halfLife} turns "reach half the distance in this
+ * many seconds" into the {@code omega} of a critically damped spring.
  *
- * <p><b>Thread safety.</b> The object is mutable and not thread-safe; the static method is stateless.
+ * <p>The scalar form is an object holding the position and velocity;
+ * {@link #step(float[], float[], int, int, float[], int, double, double, double)} advances several
+ * components stored in arrays (a position, a colour) with no objects.
+ *
+ * <p><b>Thread safety.</b> The object is mutable and not thread-safe; the static method is
+ * stateless.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * Spring spring = new Spring(0.0);                                                  // starts at rest at 0
+ * double omega = 8.0;                                                               // stiffness, in radians per second
+ * double position = spring.update(1.0, omega, 1.0, 1.0 / 60);                       // critically damped towards 1
+ * }</pre>
  */
 @Experimental("a spring on rotations (quaternions) may be added")
 public final class Spring {
 
-    /** The current value. */
+    /**
+     * The current value.
+     */
     public double position;
-    /** The current rate of change of the value. */
+    /**
+     * The current rate of change of the value.
+     */
     public double velocity;
 
-    /** A spring at rest at 0. */
+    /**
+     * Creates a spring at rest at 0.
+     */
     public Spring() {
     }
 
-    /** A spring at rest at {@code position}. */
+    /**
+     * Creates a spring at rest at {@code position}.
+     *
+     * @param position the position
+     */
     public Spring(double position) {
         this.position = position;
     }
 
-    /** The {@code omega} of a critically damped spring that covers half the remaining distance to a still target in {@code seconds}: {@code 1.678346990016661 / seconds}: the constant is the root of {@code (1 + u) exp(-u) = 1/2}, the remaining fraction of the distance of a critically damped spring from rest. */
+    /**
+     * Converts a half-life to the natural frequency of a critically damped spring, which is the
+     * parameter the spring update needs.
+     *
+     * @param seconds the seconds
+     * @return the {@code omega} of a critically damped spring that covers half the remaining
+     *     distance to a still target in {@code seconds}: {@code 1.678346990016661 / seconds}: the
+     *     constant is the root of {@code (1 + u) exp(-u) = 1/2}, the remaining fraction of the
+     *     distance of a critically damped spring from rest
+     */
     public static double halfLife(double seconds) {
         // for z = 1 the decay is (1 + w t) e^(-w t); it equals 1/2 at w t = 1.67835..., the root of (1 + u) e^(-u) = 1/2
         return 1.678346990016661 / seconds;
     }
 
     /**
-     * Advances the spring by {@code dt} seconds towards {@code target} and returns the new position. With {@code dt <= 0} nothing changes. {@code omega} must be positive and
-     * {@code zeta} not negative.
+     * Advances the spring by {@code dt} seconds towards {@code target} and returns the new
+     * position.
+     *
+     * <p>With {@code dt <= 0} nothing changes. {@code omega} must be positive and {@code zeta} not
+     * negative.
+     *
+     * @param target the target
+     * @param omega the omega
+     * @param zeta the zeta
+     * @param dt the time step in seconds
+     * @return the new position
      */
     public double update(double target, double omega, double zeta, double dt) {
         double x = position, v = velocity;
@@ -51,14 +95,27 @@ public final class Spring {
     }
 
     /**
-     * The exact state of the spring after {@code dt} seconds, written to {@code out[0]} (position) and {@code out[1]} (velocity). {@code dt <= 0} gives the state unchanged.
+     * Computes the exact state of the spring after {@code dt} seconds and writes it to
+     * {@code out[0]} (position) and {@code out[1]} (velocity).
+     *
+     * <p>{@code dt <= 0} gives the state unchanged.
+     *
+     * @param x the x component
+     * @param v the velocity
+     * @param target the target
+     * @param omega the omega
+     * @param zeta the zeta
+     * @param dt the time step in seconds
+     * @param out receives the result in {@code [0, 2)}
      */
     public static void step(double x, double v, double target, double omega, double zeta, double dt, double[] out) {
         out[0] = evolve(x, v, target, omega, zeta, dt, false);
         out[1] = evolve(x, v, target, omega, zeta, dt, true);
     }
 
-    /** The position (or, with {@code velocity}, the velocity) of the spring after {@code dt}. */
+    /**
+     * The position (or, with {@code velocity}, the velocity) of the spring after {@code dt}.
+     */
     private static double evolve(double x, double v, double target, double omega, double zeta, double dt, boolean velocity) {
         if (!(omega > 0) || !(zeta >= 0)) {
             throw new IllegalArgumentException("omega must be positive and zeta not negative: " + omega + ", " + zeta);
@@ -93,8 +150,20 @@ public final class Spring {
     }
 
     /**
-     * Advances {@code n} independent components at once: {@code pos[offset .. offset + n)} and {@code vel[offset .. offset + n)} move towards
-     * {@code target[targetOffset .. targetOffset + n)} with the same {@code omega} and {@code zeta}.
+     * Advances {@code n} independent components at once: {@code pos[offset .. offset + n)} and
+     * {@code vel[offset .. offset + n)} move towards
+     * {@code target[targetOffset .. targetOffset + n)} with the same {@code omega} and
+     * {@code zeta}.
+     *
+     * @param pos the pos
+     * @param vel the vel
+     * @param offset the index of the first element to read or write
+     * @param n the number of elements
+     * @param target the target
+     * @param targetOffset the target offset
+     * @param omega the omega
+     * @param zeta the zeta
+     * @param dt the time step in seconds
      */
     public static void step(float[] pos, float[] vel, int offset, int n, float[] target, int targetOffset, double omega, double zeta, double dt) {
         for (int i = 0; i < n; i++) {

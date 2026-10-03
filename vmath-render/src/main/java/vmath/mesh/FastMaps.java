@@ -2,7 +2,12 @@ package vmath.mesh;
 
 import java.util.Arrays;
 
-/** Open-addressing hash maps with primitive keys and values, for the mesh tools: no boxing, no entry objects. Values must not be negative; -1 means "absent". */
+/**
+ * Open-addressing hash maps with primitive keys and values, for the mesh tools: no boxing, no entry
+ * objects.
+ *
+ * <p>Values must not be negative; -1 means "absent".
+ */
 final class FastMaps {
 
     private FastMaps() {
@@ -24,7 +29,9 @@ final class FastMaps {
         return k ^ (k >>> 33);
     }
 
-    /** long to non-negative int. */
+    /**
+     * long to non-negative int.
+     */
     static final class LongIntMap {
         private long[] keys;
         private int[] values; // -1: empty slot
@@ -57,7 +64,9 @@ final class FastMaps {
             return get(key) >= 0;
         }
 
-        /** Stores the value and returns the previous one, or -1. */
+        /**
+         * Stores the value and returns the previous one, or -1.
+         */
         int put(long key, int value) {
             if (value < 0) {
                 throw new IllegalArgumentException("values must not be negative");
@@ -81,7 +90,9 @@ final class FastMaps {
             }
         }
 
-        /** Adds {@code delta} to the value of the key (starting from 0) and returns the new value. */
+        /**
+         * Adds {@code delta} to the value of the key (starting from 0) and returns the new value.
+         */
         int add(long key, int delta) {
             int old = get(key);
             int now = (old < 0 ? 0 : old) + delta;
@@ -103,7 +114,9 @@ final class FastMaps {
             }
         }
 
-        /** Calls {@code visit} for every entry. */
+        /**
+         * Calls {@code visit} for every entry.
+         */
         void forEach(EntryVisitor visit) {
             for (int i = 0; i < keys.length; i++) {
                 if (values[i] >= 0) {
@@ -117,7 +130,9 @@ final class FastMaps {
         void entry(long key, int value);
     }
 
-    /** Three ints (the bits of a position) to a non-negative int. */
+    /**
+     * Three ints (the bits of a position) to a non-negative int.
+     */
     static final class TripleIntMap {
         private int[] kx, ky, kz;
         private int[] values;
@@ -152,7 +167,9 @@ final class FastMaps {
             }
         }
 
-        /** Stores the value for the key. */
+        /**
+         * Stores the value for the key.
+         */
         void put(int x, int y, int z, int value) {
             if (value < 0) {
                 throw new IllegalArgumentException("values must not be negative");

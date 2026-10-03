@@ -6,23 +6,42 @@ import vmath.core.Vec3f;
 import vmath.geo.Planef;
 
 /**
- * Dual-paraboloid mapping: two hemisphere images instead of the six faces of a cube map, for omnidirectional shadow maps and cheap probes. A direction
- * {@code d} (unit, in the hemisphere's view space where the front hemisphere looks along -Z) maps to {@code (x, y) / (1 - z)} in the unit disc, and the depth is the
- * distance from the centre, linearly between {@code near} and {@code far}.
+ * Dual-paraboloid mapping: two hemisphere images instead of the six faces of a cube map, for
+ * omnidirectional shadow maps and cheap probes.
  *
- * <p>The mapping is not projective: straight edges become curves, so geometry must be tessellated finely enough (or the vertex shader will cut corners), and the
- * seam between the hemispheres needs a little overlap. Compared with a cube map it costs two renders instead of six and wastes the corners of the images less,
- * and it loses on quality near the seam and on the tessellation requirement.
+ * <p>A direction {@code d} (unit, in the hemisphere's view space where the front hemisphere looks
+ * along -Z) maps to {@code (x, y) / (1 - z)} in the unit disc, and the depth is the distance from
+ * the centre, linearly between {@code near} and {@code far}.
  *
- * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time. The arrays and buffers you pass in are
- * not synchronised, so two threads must not write the same one.
+ * <p>The mapping is not projective: straight edges become curves, so geometry must be tessellated
+ * finely enough (or the vertex shader will cut corners), and the seam between the hemispheres needs
+ * a little overlap. Compared with a cube map it costs two renders instead of six and wastes the
+ * corners of the images less, and it loses on quality near the seam and on the tessellation
+ * requirement.
+ *
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the
+ * same time. The arrays and buffers you pass in are not synchronised, so two threads must not write
+ * the same one.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * Vec3f light = new Vec3f(0f, 5f, 0f);
+ * Mat4f view = DualParaboloid.view(0, light);                                      // front hemisphere
+ * float[] projected = new float[3];
+ * boolean visible = DualParaboloid.project(1f, 0f, -3f, 0.1f, 50f, projected);     // disc coordinates and depth
+ * }</pre>
  */
 @Experimental("the helper set may change")
 public final class DualParaboloid {
 
-    /** The hemisphere looking along -Z of the paraboloid's view space. */
+    /**
+     * The hemisphere looking along -Z of the paraboloid's view space.
+     */
     public static final int FRONT = 0;
-    /** The hemisphere looking along +Z of the paraboloid's view space. */
+    /**
+     * The hemisphere looking along +Z of the paraboloid's view space.
+     */
     public static final int BACK = 1;
 
     private DualParaboloid() {
@@ -34,20 +53,42 @@ public final class DualParaboloid {
         }
     }
 
-    /** The view matrix of a hemisphere with the centre at {@code position}: the front one looks along -Z, the back one along +Z (both with +Y up). */
+    /**
+     * Builds the view matrix of one hemisphere of the dual-paraboloid mapping; the two hemispheres
+     * look in opposite directions.
+     *
+     * @param hemisphere the hemisphere
+     * @param position the position; must not be {@code null}
+     * @return the view matrix of a hemisphere with the centre at {@code position}: the front one
+     *     looks along -Z, the back one along +Z (both with +Y up)
+     */
     public static Mat4f view(int hemisphere, Vec3f position) {
         check(hemisphere);
         return Mat4f.lookTo(position, new Vec3f(0f, 0f, hemisphere == FRONT ? -1f : 1f), new Vec3f(0f, 1f, 0f));
     }
 
-    /** The hemisphere a world direction belongs to; the equator ({@code z == 0}) goes to the front. */
+    /**
+     * Selects the hemisphere that a direction falls in; the equator goes to the front hemisphere.
+     *
+     * @param direction the direction; must not be {@code null}
+     * @return the hemisphere a world direction belongs to; the equator ({@code z == 0}) goes to the
+     *     front
+     */
     public static int hemisphereOf(Vec3f direction) {
         return direction.z() <= 0f ? FRONT : BACK;
     }
 
     /**
-     * The half-space a hemisphere covers, as a plane with the kept side {@code n . p + d >= 0}. A caster entirely on the negative side cannot appear in that hemisphere's
-     * image (add the overlap you render at the seam to the bounds before testing).
+     * Describes the half-space of one hemisphere as a plane, for clipping geometry that belongs to
+     * the other one.
+     *
+     * <p>A caster entirely on the negative side cannot appear in that hemisphere's image (add the
+     * overlap you render at the seam to the bounds before testing).
+     *
+     * @param hemisphere the hemisphere
+     * @param position the position; must not be {@code null}
+     * @return the half-space a hemisphere covers, as a plane with the kept side
+     *     {@code n . p + d >= 0}
      */
     public static Planef halfSpace(int hemisphere, Vec3f position) {
         check(hemisphere);
@@ -55,10 +96,18 @@ public final class DualParaboloid {
     }
 
     /**
-     * Maps a position in the hemisphere's view space to the disc: {@code out[0], out[1]} in the unit disc, {@code out[2]} the depth {@code (distance - near) / (far - near)},
-     * so {@code [0, 1]} between the planes.
+     * Maps a position in the hemisphere's view space to the disc: {@code out[0], out[1]} in the
+     * unit disc, {@code out[2]} the depth {@code (distance - near) / (far - near)}, so
+     * {@code [0, 1]} between the planes.
      *
-     * @return {@code false} if the point is at the centre or behind the hemisphere ({@code z > 0}); {@code out} is then not written
+     * @param x the x component
+     * @param y the y component
+     * @param z the z component
+     * @param near the distance to the near plane
+     * @param far the distance to the far plane
+     * @param out receives the result in {@code [0, 3)}
+     * @return {@code false} if the point is at the centre or behind the hemisphere ({@code z > 0});
+     *     {@code out} is then not written
      */
     public static boolean project(float x, float y, float z, float near, float far, float[] out) {
         float len = (float) Math.sqrt((double) x * x + (double) y * y + (double) z * z);
@@ -73,9 +122,14 @@ public final class DualParaboloid {
     }
 
     /**
-     * The unit direction (in the hemisphere's view space) that a point of the disc looks along, written to {@code out[0..2]}.
+     * Returns the unit direction (in the hemisphere's view space) that a point of the disc looks
+     * along, written to {@code out[0..2]}.
      *
-     * @return {@code false} if {@code (u, v)} is outside the unit disc ({@code out} is then not written)
+     * @param u the u coordinate on the disc
+     * @param v the v coordinate on the disc
+     * @param out receives the result in {@code [0, 3)}
+     * @return {@code false} if {@code (u, v)} is outside the unit disc ({@code out} is then not
+     *     written)
      */
     public static boolean direction(float u, float v, float[] out) {
         float n = u * u + v * v;
@@ -90,8 +144,15 @@ public final class DualParaboloid {
     }
 
     /**
-     * A GLSL function that does {@link #project} in a vertex shader: {@code viewPos} is in the hemisphere's view space; the result is the clip position
-     * ({@code w} is 1) and {@code side} is positive in front of the hemisphere, to be written to a clip distance. Compiled with glslang in {@code ShaderCompileTest}, never run on a GPU.
+     * Generates GLSL source for the vertex-shader projection of the dual-paraboloid mapping, which
+     * does the warp that a fixed-function pipeline cannot; clip triangles that cross the seam
+     * against the half-space.
+     *
+     * <p>Compiled with glslang in {@code ShaderCompileTest}, never run on a GPU.
+     *
+     * @return a GLSL function that does {@link #project} in a vertex shader: {@code viewPos} is in
+     *     the hemisphere's view space; the result is the clip position ({@code w} is 1) and
+     *     {@code side} is positive in front of the hemisphere, to be written to a clip distance
      */
     public static String glsl() {
         return """

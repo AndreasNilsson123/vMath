@@ -3,7 +3,10 @@ package vmath.gltf;
 import java.util.List;
 import java.util.Map;
 
-/** Typed reads of the parsed JSON tree for {@link Gltf}: every wrong shape is a {@link GltfException}, never a ClassCastException. */
+/**
+ * Typed reads of the parsed JSON tree for {@link Gltf}: every wrong shape is a
+ * {@link GltfException}, never a ClassCastException.
+ */
 final class JsonAccess {
 
     private JsonAccess() {

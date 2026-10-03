@@ -6,13 +6,25 @@ import vmath.core.Mat3f;
 import vmath.core.Vec3f;
 
 /**
- * Ray casts and shape queries. Ray routines return the distance {@code t} along the ray (in units of the ray
- * direction) of the first hit within {@code [0, tMax]}, or {@code +Infinity} for a miss, so
- * {@code t < tMax} and {@code Math.min} compose naturally when searching for the nearest hit. A ray that starts
- * inside a solid volume reports {@code t = 0}.
+ * Ray casts and shape queries.
  *
- * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time. The arrays and buffers you pass in are
- * not synchronised, so two threads must not write the same one.
+ * <p>Ray routines return the distance {@code t} along the ray (in units of the ray direction) of
+ * the first hit within {@code [0, tMax]}, or {@code +Infinity} for a miss, so {@code t < tMax} and
+ * {@code Math.min} compose naturally when searching for the nearest hit. A ray that starts inside a
+ * solid volume reports {@code t = 0}.
+ *
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the
+ * same time. The arrays and buffers you pass in are not synchronised, so two threads must not write
+ * the same one.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * Rayf ray = Rayf.of(new Vec3f(0f, 5f, 0f), new Vec3f(0f, -1f, 0f));
+ * float tBox = Intersectionf.rayAabb(ray, Aabbf.of(new Vec3f(-1f, -1f, -1f), new Vec3f(1f, 1f, 1f)), 100f);   // 4
+ * boolean hit = tBox != Float.POSITIVE_INFINITY;                    // misses are reported as positive infinity
+ * boolean spheres = Intersectionf.sphereCapsule(Spheref.of(Vec3f.ZERO, 1f), Capsulef.of(new Vec3f(0f, 1f, 0f), new Vec3f(0f, 3f, 0f), 0.5f));
+ * }</pre>
  */
 @GenerateDouble
 public final class Intersectionf {
@@ -20,7 +32,17 @@ public final class Intersectionf {
     private Intersectionf() {
     }
 
-    /** Slab test. Handles axis-parallel rays exactly (no NaN from 0 * infinity). */
+    /**
+     * Intersects a ray with a box with the slab method, clipping the ray interval against each pair
+     * of parallel planes; a ray that runs parallel to a slab and outside it misses.
+     *
+     * <p>Handles axis-parallel rays exactly (no NaN from 0 * infinity).
+     *
+     * @param ray the ray; must not be {@code null}
+     * @param box the box; must not be {@code null}
+     * @param tMax the largest ray parameter to test
+     * @return slab test
+     */
     public static float rayAabb(Rayf ray, Aabbf box, float tMax) {
         float tNear = 0f;
         float tFar = tMax;
@@ -48,7 +70,15 @@ public final class Intersectionf {
     }
 
     /**
-     * The distance {@code t} along the ray to the first point of the sphere, in units of the ray's direction: 0 when the origin is inside, {@code +Infinity} for a miss, for a sphere behind the origin and when the hit is beyond {@code tMax}.
+     * Intersects a ray with a sphere by solving a quadratic; the parameter is in units of the ray
+     * direction, so normalise the direction to get a distance.
+     *
+     * @param ray the ray; must not be {@code null}
+     * @param s the sphere; must not be {@code null}
+     * @param tMax the largest ray parameter to test
+     * @return the distance {@code t} along the ray to the first point of the sphere, in units of
+     *     the ray's direction: 0 when the origin is inside, {@code +Infinity} for a miss, for a
+     *     sphere behind the origin and when the hit is beyond {@code tMax}
      */
     public static float raySphere(Rayf ray, Spheref s, float tMax) {
         float lx = ray.ox() - s.cx(), ly = ray.oy() - s.cy(), lz = ray.oz() - s.cz();
@@ -69,7 +99,17 @@ public final class Intersectionf {
         return t <= tMax ? t : Float.POSITIVE_INFINITY;
     }
 
-    /** Hits the plane from either side. A ray parallel to the plane misses. */
+    /**
+     * Hits the plane from either side.
+     *
+     * <p>A ray parallel to the plane misses.
+     *
+     * @param ray the ray; must not be {@code null}
+     * @param p the plane; must not be {@code null}
+     * @param tMax the largest ray parameter to test
+     * @return the ray parameter {@code t} of the hit, or {@link Float#POSITIVE_INFINITY} if the ray
+     *     misses the plane or the hit lies beyond {@code tMax}
+     */
     public static float rayPlane(Rayf ray, Planef p, float tMax) {
         float denom = p.nx() * ray.dx() + p.ny() * ray.dy() + p.nz() * ray.dz();
         if (denom == 0f) {
@@ -84,9 +124,18 @@ public final class Intersectionf {
     }
 
     /**
-     * Watertight two-sided ray-triangle test (Woop, Benthin and Wald 2013): rays that pass exactly through a shared
-     * edge or vertex of adjacent triangles hit at least one of them, never slip between. Edge functions that come out
-     * zero are recomputed in double precision.
+     * Intersects a ray with a triangle with the watertight algorithm of Woop, Benthin and Wald,
+     * which does not leak through the shared edges of a mesh; the test is two-sided, so back faces
+     * hit as well.
+     *
+     * <p>Edge functions that come out zero are recomputed in double precision.
+     *
+     * @param ray the ray; must not be {@code null}
+     * @param tri the tri; must not be {@code null}
+     * @param tMax the largest ray parameter to test
+     * @return watertight two-sided ray-triangle test (Woop, Benthin and Wald 2013): rays that pass
+     *     exactly through a shared edge or vertex of adjacent triangles hit at least one of them,
+     *     never slip between
      */
     public static float rayTriangle(Rayf ray, Trianglef tri, float tMax) {
         float dx = ray.dx(), dy = ray.dy(), dz = ray.dz();
@@ -141,7 +190,16 @@ public final class Intersectionf {
         return t / det;
     }
 
-    /** Which side of {@code p} the box is on: {@link Containment#INSIDE} = fully in front, {@code OUTSIDE} = behind. */
+    /**
+     * Returns which side of {@code p} the box is on: {@link Containment#INSIDE} = fully in front,
+     * {@code OUTSIDE} = behind.
+     *
+     * @param p the plane; must not be {@code null}
+     * @param box the box; must not be {@code null}
+     * @return {@link Containment#INSIDE} if the box is fully in front of the plane,
+     *     {@link Containment#OUTSIDE} if it is behind and {@link Containment#INTERSECTING} if it
+     *     straddles
+     */
     public static int planeAabb(Planef p, Aabbf box) {
         float cx = (box.minX() + box.maxX()) * 0.5f, cy = (box.minY() + box.maxY()) * 0.5f;
         float cz = (box.minZ() + box.maxZ()) * 0.5f;
@@ -152,18 +210,40 @@ public final class Intersectionf {
         return s - r >= 0f ? Containment.INSIDE : s + r < 0f ? Containment.OUTSIDE : Containment.INTERSECTING;
     }
 
-    /** Which side of {@code p} the sphere is on; the plane normal must be unit length. */
+    /**
+     * Returns which side of {@code p} the sphere is on; the plane normal must be unit length.
+     *
+     * @param p the plane; must not be {@code null}
+     * @param s the sphere; must not be {@code null}
+     * @return {@link Containment#INSIDE} if the sphere is in front of the plane,
+     *     {@link Containment#OUTSIDE} if it is behind and {@link Containment#INTERSECTING} if it
+     *     straddles
+     */
     public static int planeSphere(Planef p, Spheref s) {
         float dist = p.distance(s.center());
         return dist >= s.radius() ? Containment.INSIDE : dist < -s.radius() ? Containment.OUTSIDE : Containment.INTERSECTING;
     }
 
-    /** Squared distance between a point and a triangle. */
+    /**
+     * Measures the squared distance from a point to a triangle by finding the closest point on its
+     * face, edges and vertices, which avoids the square root.
+     *
+     * @param p the vector; must not be {@code null}
+     * @param tri the tri; must not be {@code null}
+     * @return squared distance between a point and a triangle
+     */
     public static float pointTriangleDistanceSquared(Vec3f p, Trianglef tri) {
         return tri.closestPoint(p).distanceSquared(p);
     }
 
-    /** True when the sphere touches the triangle. */
+    /**
+     * Tests a sphere against a triangle by comparing the squared distance to the triangle with the
+     * squared radius.
+     *
+     * @param s the sphere; must not be {@code null}
+     * @param tri the tri; must not be {@code null}
+     * @return {@code true} when the sphere touches the triangle
+     */
     public static boolean sphereTriangle(Spheref s, Trianglef tri) {
         return pointTriangleDistanceSquared(s.center(), tri) <= s.radius() * s.radius();
     }
@@ -174,16 +254,30 @@ public final class Intersectionf {
     // written as "not separated", never as "overlapping".
 
     /**
-     * Squared distance between two segments (Ericson, Real-Time Collision Detection 5.1.9). Segments that are points, parallel, or end-to-end are
-     * handled.
+     * Measures the squared distance between two segments with the closest-point method of Ericson,
+     * which handles parallel segments and degenerate segments that are points.
+     *
+     * <p>Segments that are points, parallel, or end-to-end are handled.
+     *
+     * @param s the segment; must not be {@code null}
+     * @param t the segment; must not be {@code null}
+     * @return squared distance between two segments (Ericson, Real-Time Collision Detection 5.1.9)
      */
     public static float segmentSegmentDistanceSquared(Segmentf s, Segmentf t) {
         return closestSegmentPoints(s, t, null);
     }
 
     /**
-     * Like {@link #segmentSegmentDistanceSquared}, and also writes the parameters of the two nearest points to {@code st[0]} (on {@code s}) and
-     * {@code st[1]} (on {@code t}), each in [0, 1]. Returns the squared distance.
+     * Returns like {@link #segmentSegmentDistanceSquared}, and also writes the parameters of the
+     * two nearest points to {@code st[0]} (on {@code s}) and {@code st[1]} (on {@code t}), each in
+     * [0, 1].
+     *
+     * <p>Returns the squared distance.
+     *
+     * @param s the segment; must not be {@code null}
+     * @param t the segment; must not be {@code null}
+     * @param st receives the parameters of the nearest points in {@code [0, 2)}
+     * @return the squared distance
      */
     public static float segmentSegmentClosestParameters(Segmentf s, Segmentf t, float[] st) {
         return closestSegmentPoints(s, t, st);
@@ -232,22 +326,42 @@ public final class Intersectionf {
         return px * px + py * py + pz * pz;
     }
 
-    /** True when the two capsules share a point. */
+    /**
+     * Tests two capsules by comparing the distance between their axes with the sum of the radii.
+     *
+     * @param a the first capsule; must not be {@code null}
+     * @param b the second capsule; must not be {@code null}
+     * @return {@code true} when the two capsules share a point
+     */
     public static boolean capsuleCapsule(Capsulef a, Capsulef b) {
         float r = a.radius() + b.radius();
         return !(segmentSegmentDistanceSquared(a.segment(), b.segment()) > r * r);
     }
 
-    /** True when the sphere and the capsule share a point. */
+    /**
+     * Tests a sphere against a capsule by comparing the distance from the centre to the axis with
+     * the sum of the radii.
+     *
+     * @param s the sphere; must not be {@code null}
+     * @param c the capsule; must not be {@code null}
+     * @return {@code true} when the sphere and the capsule share a point
+     */
     public static boolean sphereCapsule(Spheref s, Capsulef c) {
         float r = s.radius() + c.radius();
         return !(c.segment().distanceSquared(s.center()) > r * r);
     }
 
     /**
-     * Squared distance between a segment and an axis-aligned box (0 when they touch or the segment is inside). Exact: the squared distance from a point
-     * moving along the segment to the box is a convex, piecewise quadratic function of the parameter, with pieces that change only where the segment
+     * Measures the squared distance between a segment and a box.
+     *
+     * <p>Exact: the squared distance from a point moving along the segment to the box is a convex,
+     * piecewise quadratic function of the parameter, with pieces that change only where the segment
      * crosses one of the six planes of the box, so each piece is minimised in closed form.
+     *
+     * @param seg the seg; must not be {@code null}
+     * @param box the box; must not be {@code null}
+     * @return squared distance between a segment and an axis-aligned box (0 when they touch or the
+     *     segment is inside)
      */
     public static float segmentAabbDistanceSquared(Segmentf seg, Aabbf box) {
         float[] p0 = {seg.ax(), seg.ay(), seg.az()};
@@ -308,14 +422,30 @@ public final class Intersectionf {
         return x * x + y * y + z * z;
     }
 
-    /** True when the capsule and the box share a point. */
+    /**
+     * Tests a capsule against a box by comparing the distance from the axis to the box with the
+     * radius.
+     *
+     * @param c the capsule; must not be {@code null}
+     * @param box the box; must not be {@code null}
+     * @return {@code true} when the capsule and the box share a point
+     */
     public static boolean capsuleAabb(Capsulef c, Aabbf box) {
         return !(segmentAabbDistanceSquared(c.segment(), box) > c.radius() * c.radius());
     }
 
     /**
-     * The first hit of the ray with the solid capsule within {@code [0, tMax]} (the smallest {@code t}, in units of the ray direction), or
-     * {@link Float#POSITIVE_INFINITY}; 0 when the ray starts inside. The capsule is its cylinder wall and two end spheres; the nearest of the three wins.
+     * Intersects a ray with a capsule within a distance range; the parameter is in units of the ray
+     * direction, so normalise the direction to get a distance.
+     *
+     * <p>The capsule is its cylinder wall and two end spheres; the nearest of the three wins.
+     *
+     * @param ray the ray; must not be {@code null}
+     * @param cap the cap; must not be {@code null}
+     * @param tMax the largest ray parameter to test
+     * @return the first hit of the ray with the solid capsule within {@code [0, tMax]} (the
+     *     smallest {@code t}, in units of the ray direction), or {@link Float#POSITIVE_INFINITY}; 0
+     *     when the ray starts inside
      */
     public static float rayCapsule(Rayf ray, Capsulef cap, float tMax) {
         if (cap.contains(ray.origin())) {
@@ -355,8 +485,15 @@ public final class Intersectionf {
     private static final float SAT_EPS = 1e-6f;
 
     /**
-     * True when the two oriented boxes share a point: the 15-axis separating axis test (Gottschalk; Ericson 4.4.1), where a small epsilon keeps the
-     * cross-product axes of (nearly) parallel edges from reporting a false separation.
+     * Tests two oriented boxes with the 15-axis separating axis test (three axes of each box and
+     * nine edge cross products), using a small epsilon to cope with parallel edges; conservative
+     * near-parallel configurations are reported as overlapping.
+     *
+     * @param a the first oriented box; must not be {@code null}
+     * @param b the second oriented box; must not be {@code null}
+     * @return {@code true} when the two oriented boxes share a point: the 15-axis separating axis
+     *     test (Gottschalk; Ericson 4.4.1), where a small epsilon keeps the cross-product axes of
+     *     (nearly) parallel edges from reporting a false separation
      */
     public static boolean obbObb(Obbf a, Obbf b) {
         Mat3f ra = a.axes(), rb = b.axes();
@@ -407,8 +544,13 @@ public final class Intersectionf {
     }
 
     /**
-     * True when the axis-aligned box and the triangle share a point: the 13-axis separating axis test (Akenine-Moller): the three box axes, the triangle's
-     * plane normal, and the nine cross products of a box axis with a triangle edge.
+     * Tests a box against a triangle with the 13-axis separating axis test of Akenine-Moller.
+     *
+     * @param box the box; must not be {@code null}
+     * @param tri the tri; must not be {@code null}
+     * @return {@code true} when the axis-aligned box and the triangle share a point: the 13-axis
+     *     separating axis test (Akenine-Moller): the three box axes, the triangle's plane normal,
+     *     and the nine cross products of a box axis with a triangle edge
      */
     public static boolean aabbTriangle(Aabbf box, Trianglef tri) {
         float cx = (box.minX() + box.maxX()) * 0.5f, cy = (box.minY() + box.maxY()) * 0.5f, cz = (box.minZ() + box.maxZ()) * 0.5f;
@@ -448,7 +590,16 @@ public final class Intersectionf {
         return !(Math.abs(dist) > rad);
     }
 
-    /** Ray against an oriented box; the distance along the ray ({@code 0} when the origin is inside), or {@code +Infinity} for a miss beyond {@code tMax}. */
+    /**
+     * Intersects a ray with an oriented box by transforming the ray into the box's frame and using
+     * the slab method; the parameter is in units of the ray direction.
+     *
+     * @param ray the ray; must not be {@code null}
+     * @param box the box; must not be {@code null}
+     * @param tMax the largest ray parameter to test
+     * @return ray against an oriented box; the distance along the ray ({@code 0} when the origin is
+     *     inside), or {@code +Infinity} for a miss beyond {@code tMax}
+     */
     public static float rayObb(Rayf ray, Obbf box, float tMax) {
         Vec3f o = box.toLocal(ray.origin());
         Vec3f d = box.rotation().conjugate().transform(ray.direction());
@@ -456,12 +607,28 @@ public final class Intersectionf {
         return rayAabb(Rayf.of(o, d), local, tMax); // the rotation is rigid, so t is the same in both frames
     }
 
-    /** True when the sphere and the oriented box share a point. */
+    /**
+     * Tests a sphere against an oriented box by comparing the squared distance to the box with the
+     * squared radius.
+     *
+     * @param s the sphere; must not be {@code null}
+     * @param box the box; must not be {@code null}
+     * @return {@code true} when the sphere and the oriented box share a point
+     */
     public static boolean sphereObb(Spheref s, Obbf box) {
         return !(box.distanceSquared(s.center()) > s.radius() * s.radius());
     }
 
-    /** Which side of {@code p} the oriented box is on, as for {@link #planeAabb}; the plane normal must be unit length. */
+    /**
+     * Returns which side of {@code p} the oriented box is on, as for {@link #planeAabb}; the plane
+     * normal must be unit length.
+     *
+     * @param p the plane; must not be {@code null}
+     * @param box the box; must not be {@code null}
+     * @return {@link Containment#INSIDE} if the box is in front of the plane,
+     *     {@link Containment#OUTSIDE} if it is behind and {@link Containment#INTERSECTING} if it
+     *     straddles
+     */
     public static int planeObb(Planef p, Obbf box) {
         Mat3f r = box.axes();
         float rad = box.hx() * Math.abs(p.nx() * r.m00() + p.ny() * r.m01() + p.nz() * r.m02())
@@ -471,7 +638,16 @@ public final class Intersectionf {
         return s - rad >= 0f ? Containment.INSIDE : s + rad < 0f ? Containment.OUTSIDE : Containment.INTERSECTING;
     }
 
-    /** Which side of {@code p} the triangle is on, as for {@link #planeAabb}: all vertices in front, all behind, or straddling. */
+    /**
+     * Returns which side of {@code p} the triangle is on, as for {@link #planeAabb}: all vertices
+     * in front, all behind, or straddling.
+     *
+     * @param p the plane; must not be {@code null}
+     * @param tri the tri; must not be {@code null}
+     * @return {@link Containment#INSIDE} if the triangle is in front of the plane,
+     *     {@link Containment#OUTSIDE} if it is behind and {@link Containment#INTERSECTING} if it
+     *     straddles
+     */
     public static int planeTriangle(Planef p, Trianglef tri) {
         float da = p.distance(tri.a()), db = p.distance(tri.b()), dc = p.distance(tri.c());
         float lo = Math.min(da, Math.min(db, dc)), hi = Math.max(da, Math.max(db, dc));
@@ -479,8 +655,17 @@ public final class Intersectionf {
     }
 
     /**
-     * Swept sphere against sphere: the first time {@code t} in [0, {@code tMax}] at which {@code a}, moving by {@code va} per unit time, touches {@code b}
-     * moving by {@code vb}; {@code 0} when they already overlap, {@code +Infinity} when they do not meet in time.
+     * Finds the first time two moving spheres touch by solving a quadratic in the relative motion;
+     * spheres that already overlap give zero.
+     *
+     * @param a the first sphere; must not be {@code null}
+     * @param va the vector; must not be {@code null}
+     * @param b the second sphere; must not be {@code null}
+     * @param vb the vector; must not be {@code null}
+     * @param tMax the largest ray parameter to test
+     * @return swept sphere against sphere: the first time {@code t} in [0, {@code tMax}] at which
+     *     {@code a}, moving by {@code va} per unit time, touches {@code b} moving by {@code vb};
+     *     {@code 0} when they already overlap, {@code +Infinity} when they do not meet in time
      */
     public static float sweepSphereSphere(Spheref a, Vec3f va, Spheref b, Vec3f vb, float tMax) {
         Vec3f d = a.center().sub(b.center());

@@ -1,32 +1,64 @@
 package vmath.anim;
 
 /**
- * Samples an {@link AnimationClip} into a {@link Pose}. One sampler per clip and playing instance: it remembers, for every track, the
- * key interval used last time, so playing a clip forward frame after frame finds the next interval by looking at the current one
- * and its neighbour instead of searching; jumping around in time falls back to a binary search and gives identical results.
+ * Samples an {@link AnimationClip} into a {@link Pose}.
  *
- * <p>{@link #sample} writes only the channels the clip animates, so start from the bind pose (or any base pose) and the joints the clip
- * does not mention keep their values. Nothing is allocated per call. Not thread-safe (it holds the cursors).
+ * <p>One sampler per clip and playing instance: it remembers, for every track, the key interval
+ * used last time, so playing a clip forward frame after frame finds the next interval by looking at
+ * the current one and its neighbour instead of searching; jumping around in time falls back to a
+ * binary search and gives identical results.
+ *
+ * <p>{@link #sample} writes only the channels the clip animates, so start from the bind pose (or
+ * any base pose) and the joints the clip does not mention keep their values. Nothing is allocated
+ * per call. Not thread-safe (it holds the cursors).
+ *
+ * <p><b>Thread safety.</b> Not thread-safe: it holds one cursor per track, so use one sampler per
+ * playing instance of a clip and thread. Nothing blocks and nothing is allocated per call.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * AnimationClip clip = AnimationClip.builder(1).translation(0, new float[] {0f, 1f}, new float[] {0f, 0f, 0f, 1f, 0f, 0f}).build();
+ * ClipSampler sampler = new ClipSampler(clip);                            // one per playing instance: it keeps cursors
+ * Pose pose = new Pose(1);
+ * for (float time = 0f; time < 3f; time += 1f / 60f) {
+ *     sampler.sample(time, true, pose);                                   // loops; nothing is allocated per call
+ * }
+ * }</pre>
  */
 public final class ClipSampler {
 
     private final AnimationClip clip;
     private final int[] cursor;
 
-    /** A sampler for {@code clip}, with every cursor at the start. */
+    /**
+     * Creates a sampler for {@code clip}, with every cursor at the start.
+     *
+     * @param clip the clip; must not be {@code null}
+     */
     public ClipSampler(AnimationClip clip) {
         this.clip = clip;
         this.cursor = new int[clip.trackCount()];
     }
 
-    /** The clip this sampler reads. */
+    /**
+     * Exposes the clip that the sampler reads.
+     *
+     * @return the clip this sampler reads
+     */
     public AnimationClip clip() {
         return clip;
     }
 
     /**
-     * Maps a playback time to a time inside the clip: with {@code loop} it wraps around the duration (also for negative times), without
-     * it clamps to {@code [0, duration]}. A clip of zero duration always gives 0. NaN gives 0.
+     * Maps a playback time to a time inside the clip: with {@code loop} it wraps around the
+     * duration (also for negative times), without it clamps to {@code [0, duration]}.
+     *
+     * <p>A clip of zero duration always gives 0. NaN gives 0.
+     *
+     * @param time the time
+     * @param loop whether loop
+     * @return the time inside the clip, in {@code [0, duration]}
      */
     public float wrap(float time, boolean loop) {
         float d = clip.duration();
@@ -40,7 +72,15 @@ public final class ClipSampler {
         return Math.max(0f, Math.min(d, time));
     }
 
-    /** Writes the value of every animated channel at {@code time} (see {@link #wrap}) into {@code pose}. */
+    /**
+     * Writes the value of every animated channel at {@code time} (see {@link #wrap}) into
+     * {@code pose}.
+     *
+     * @param time the time
+     * @param loop whether loop
+     * @param pose the pose; must not be {@code null}
+     * @throws IllegalArgumentException if {@code pose} does not have as many joints as the clip
+     */
     public void sample(float time, boolean loop, Pose pose) {
         if (pose.jointCount() != clip.jointCount()) {
             throw new IllegalArgumentException("pose has " + pose.jointCount() + " joints, the clip " + clip.jointCount());
@@ -53,8 +93,17 @@ public final class ClipSampler {
     }
 
     /**
-     * Like {@link #sample} but only for the channels of one {@code joint}: the other joints of {@code pose} are left as they are. For when a single joint is wanted (the root of
-     * {@link RootMotion}) and sampling the whole skeleton would be wasted.
+     * Samples only the channels of one {@code joint}, as {@link #sample} does for all of them: the
+     * other joints of {@code pose} are left as they are.
+     *
+     * <p>For when a single joint is wanted (the root of {@link RootMotion}) and sampling the whole
+     * skeleton would be wasted.
+     *
+     * @param time the time
+     * @param loop whether loop
+     * @param joint the joint index
+     * @param pose the pose; must not be {@code null}
+     * @throws IllegalArgumentException if {@code pose} does not have as many joints as the clip
      */
     public void sampleJoint(float time, boolean loop, int joint, Pose pose) {
         if (pose.jointCount() != clip.jointCount()) {
@@ -98,7 +147,10 @@ public final class ClipSampler {
         }
     }
 
-    /** Index {@code i} (relative to the track start) with {@code times[i] <= t < times[i + 1]}; t is strictly inside the track. */
+    /**
+     * Index {@code i} (relative to the track start) with {@code times[i] <= t < times[i + 1]}; t is
+     * strictly inside the track.
+     */
     private int findInterval(int track, int s, int n, float[] times, float t) {
         int c = cursor[track];
         if (c >= 0 && c + 1 < n && times[s + c] <= t && t < times[s + c + 1]) {

@@ -6,26 +6,49 @@ import vmath.geo.Aabbf;
 import vmath.geo.Spheref;
 
 /**
- * A loose octree over object boxes. The world is a cube that is halved repeatedly; every node's <em>loose</em> box is twice
- * as wide as its cell, so an object is stored in exactly one node, chosen by its centre and size, however it straddles cell
- * boundaries. An object goes as deep as its size allows: a node at depth {@code d} takes objects whose largest half-extent
- * is at most the cell's half-width. That single placement is what makes updates cheap (no duplicate entries as in
- * {@link UniformGrid}) and lets the tree cope with objects of very different sizes.
+ * A loose octree over object boxes.
  *
- * <p><b>Storage.</b> Nodes and objects are entries in plain arrays; children are created on demand and empty nodes are removed
- * again, so memory follows the objects, not the world size. An object is unlinked from its node in O(1), and {@link #move}
- * does nothing to the tree when the object still belongs to the same node.
+ * <p>The world is a cube that is halved repeatedly; every node's <em>loose</em> box is twice as
+ * wide as its cell, so an object is stored in exactly one node, chosen by its centre and size,
+ * however it straddles cell boundaries. An object goes as deep as its size allows: a node at depth
+ * {@code d} takes objects whose largest half-extent is at most the cell's half-width. That single
+ * placement is what makes updates cheap (no duplicate entries as in {@link UniformGrid}) and lets
+ * the tree cope with objects of very different sizes.
  *
- * <p><b>Catch-all root.</b> An object whose centre lies outside the world cube is kept at the root, which every query checks
- * object by object. Objects therefore never get lost, but a world that is too small makes queries slow.
+ * <p><b>Storage.</b> Nodes and objects are entries in plain arrays; children are created on demand
+ * and empty nodes are removed again, so memory follows the objects, not the world size. An object
+ * is unlinked from its node in O(1), and {@link #move} does nothing to the tree when the object
+ * still belongs to the same node.
  *
- * <p>Each object has a stable integer handle and an {@code int} of user data, as in {@link DynamicAabbTree}. Not thread-safe
- * for updates; concurrent read-only queries are fine with one {@link Query} per thread.
+ * <p><b>Catch-all root.</b> An object whose centre lies outside the world cube is kept at the root,
+ * which every query checks object by object. Objects therefore never get lost, but a world that is
+ * too small makes queries slow.
+ *
+ * <p>Each object has a stable integer handle and an {@code int} of user data, as in
+ * {@link DynamicAabbTree}. Not thread-safe for updates; concurrent read-only queries are fine with
+ * one {@link Query} per thread.
+ *
+ * <p><b>Thread safety.</b> Not thread-safe for updates. Concurrent read-only queries are safe if
+ * each thread uses its own {@link Query} and nobody modifies the tree meanwhile.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * LooseOctree octree = new LooseOctree(500f);                               // a world of half size 500 around the origin
+ * int handle = octree.insert(Aabbf.of(new Vec3f(1f, 1f, 1f), new Vec3f(2f, 2f, 2f)), 7);
+ * octree.move(handle, Aabbf.of(new Vec3f(3f, 1f, 1f), new Vec3f(4f, 2f, 2f)));
+ * LooseOctree.Query query = octree.newQuery();                              // one per thread
+ * Neighbors nearest = new Neighbors(4);
+ * nearest.reset(4);
+ * query.nearest(0f, 0f, 0f, nearest);
+ * }</pre>
  */
 public final class LooseOctree {
 
     private static final int NONE = -1;
-    /** Deepest level the constructor accepts. */
+    /**
+     * Deepest level the constructor accepts.
+     */
     public static final int MAX_DEPTH_LIMIT = 24;
 
     private final float rootX;
@@ -58,9 +81,17 @@ public final class LooseOctree {
     private int liveCount;
 
     /**
-     * @param centerX  centre of the world cube
+     * Creates an octree over the cube with the given centre and half size, subdivided up to
+     * {@code maxDepth} levels.
+     *
+     * @param centerX centre of the world cube
+     * @param centerY the center y
+     * @param centerZ the center z
      * @param halfSize half the world's edge length; objects centred outside it stay at the root
-     * @param maxDepth deepest level, {@code 1..MAX_DEPTH_LIMIT}; the smallest cell is {@code 2 * halfSize / 2^maxDepth} wide
+     * @param maxDepth deepest level, {@code 1..MAX_DEPTH_LIMIT}; the smallest cell is
+     *     {@code 2 * halfSize / 2^maxDepth} wide
+     * @throws IllegalArgumentException if the world does not have a finite centre and a positive
+     *     finite half size, or {@code maxDepth} is out of range
      */
     public LooseOctree(float centerX, float centerY, float centerZ, float halfSize, int maxDepth) {
         if (!(halfSize > 0f) || Float.isInfinite(halfSize) || !Float.isFinite(centerX) || !Float.isFinite(centerY)
@@ -78,35 +109,70 @@ public final class LooseOctree {
         newNode(NONE, centerX, centerY, centerZ, halfSize, 0); // node 0 is the root and is never freed
     }
 
-    /** A cube centred at the origin with 10 levels. */
+    /**
+     * Creates a cube centred at the origin with 10 levels.
+     *
+     * @param halfSize the half size
+     */
     public LooseOctree(float halfSize) {
         this(0f, 0f, 0f, halfSize, 10);
     }
 
-    /** The number of objects in the octree. */
+    /**
+     * Counts the objects in the octree.
+     *
+     * @return the number of objects in the octree
+     */
     public int size() {
         return liveCount;
     }
 
-    /** Nodes currently allocated (at least 1, the root). */
+    /**
+     * Counts the nodes that are currently allocated, which is a measure of the octree's memory use.
+     *
+     * @return nodes currently allocated (at least 1, the root)
+     */
     public int nodeCount() {
         return nodeCount;
     }
 
-    /** The depth limit the octree was built with: the root is level 0. */
+    /**
+     * Exposes the depth limit of the octree.
+     *
+     * @return the depth limit the octree was built with: the root is level 0
+     */
     public int maxDepth() {
         return maxDepth;
     }
 
     // ---------------------------------------------------------------- updates
 
-    /** Adds an object with the given box and returns its handle; {@code userData} is what queries report for it. */
+    /**
+     * Adds an object with the given box and returns its handle; {@code userData} is what queries
+     * report for it.
+     *
+     * @param b the second box; must not be {@code null}
+     * @param userData the user data of the object
+     * @return its handle
+     */
     public int insert(Aabbf b, int userData) {
         return insert(b.minX(), b.minY(), b.minZ(), b.maxX(), b.maxY(), b.maxZ(), userData);
     }
 
     /**
-     * Adds an object with the box given by its six bounds and returns its handle; {@code userData} is what queries report for it. The box must be finite and ordered ({@link IllegalArgumentException} otherwise).
+     * Adds an object with the box given by its six bounds and returns its handle; {@code userData}
+     * is what queries report for it.
+     *
+     * <p>The box must be finite and ordered ({@link IllegalArgumentException} otherwise).
+     *
+     * @param minX the smallest x coordinate
+     * @param minY the smallest y coordinate
+     * @param minZ the smallest z coordinate
+     * @param maxX the largest x coordinate
+     * @param maxY the largest y coordinate
+     * @param maxZ the largest z coordinate
+     * @param userData the user data of the object
+     * @return its handle
      */
     public int insert(float minX, float minY, float minZ, float maxX, float maxY, float maxZ, int userData) {
         checkBox(minX, minY, minZ, maxX, maxY, maxZ);
@@ -119,7 +185,11 @@ public final class LooseOctree {
         return h;
     }
 
-    /** Removes the object; its handle becomes invalid (and may be reused by a later insert). */
+    /**
+     * Removes the object; its handle becomes invalid (and may be reused by a later insert).
+     *
+     * @param handle the handle
+     */
     public void remove(int handle) {
         requireLive(handle);
         unlink(handle);
@@ -130,8 +200,19 @@ public final class LooseOctree {
     }
 
     /**
-     * Moves the object to a new box. Returns {@code true} if it changed nodes, {@code false} if it stayed in its node and only
+     * Moves the object to a new box.
+     *
+     * <p>Returns {@code true} if it changed nodes, {@code false} if it stayed in its node and only
      * the box was updated.
+     *
+     * @param handle the handle
+     * @param minX the smallest x coordinate
+     * @param minY the smallest y coordinate
+     * @param minZ the smallest z coordinate
+     * @param maxX the largest x coordinate
+     * @param maxY the largest y coordinate
+     * @param maxZ the largest z coordinate
+     * @return {@code true} if the object changed nodes; {@code false} if it stayed in its node
      */
     public boolean move(int handle, float minX, float minY, float minZ, float maxX, float maxY, float maxZ) {
         requireLive(handle);
@@ -146,12 +227,22 @@ public final class LooseOctree {
         return true;
     }
 
-    /** As the six-bounds {@code move}, with the box given as an {@link Aabbf}. */
+    /**
+     * Returns as the six-bounds {@code move}, with the box given as an {@link Aabbf}.
+     *
+     * @param handle the handle
+     * @param b the second box; must not be {@code null}
+     * @return {@code true} if the object changed nodes; {@code false} if it stayed in its node
+     */
     public boolean move(int handle, Aabbf b) {
         return move(handle, b.minX(), b.minY(), b.minZ(), b.maxX(), b.maxY(), b.maxZ());
     }
 
-    /** Removes every object and every node except the root. Capacity is kept. */
+    /**
+     * Removes every object and every node except the root.
+     *
+     * <p>Capacity is kept.
+     */
     public void clear() {
         Arrays.fill(alive, false);
         objectHigh = 0;
@@ -165,19 +256,36 @@ public final class LooseOctree {
 
     // ---------------------------------------------------------------- inspection
 
-    /** True when {@code handle} names an object currently in the octree. */
+    /**
+     * Tests whether a handle refers to an object that is currently in the octree.
+     *
+     * @param handle the handle
+     * @return {@code true} when {@code handle} names an object currently in the octree
+     */
     public boolean isValid(int handle) {
         return handle >= 0 && handle < objectHigh && alive[handle];
     }
 
-    /** The {@code userData} given when the object was inserted; {@link IllegalArgumentException} for a handle that is not in the octree. */
+    /**
+     * Reads the user data of an object, looked up by handle; an invalid handle is rejected.
+     *
+     * @param handle the handle
+     * @return the {@code userData} given when the object was inserted;
+     *     {@link IllegalArgumentException} for a handle that is not in the octree
+     */
     public int userData(int handle) {
         requireLive(handle);
         return item[handle];
     }
 
     /**
-     * The object's box as last given to {@code insert} or {@code move}; allocates the result. {@link IllegalArgumentException} for a handle that is not in the octree.
+     * Reads the box of an object as an object; allocates.
+     *
+     * <p>{@link IllegalArgumentException} for a handle that is not in the octree.
+     *
+     * @param handle the handle
+     * @return the object's box as last given to {@code insert} or {@code move}; allocates the
+     *     result
      */
     public Aabbf bounds(int handle) {
         requireLive(handle);
@@ -185,13 +293,26 @@ public final class LooseOctree {
         return new Aabbf(box[o], box[o + 1], box[o + 2], box[o + 3], box[o + 4], box[o + 5]);
     }
 
-    /** Depth of the node holding the object (0 = root). Shows how well sizes match the world. */
+    /**
+     * Reads the depth of the node that holds an object, which shows where the octree placed it.
+     *
+     * <p>Shows how well sizes match the world.
+     *
+     * @param handle the handle
+     * @return depth of the node holding the object (0 = root)
+     */
     public int depthOf(int handle) {
         requireLive(handle);
         return nodeDepth[objNode[handle]];
     }
 
-    /** Checks the internal invariants and throws {@link IllegalStateException} for the first violation. */
+    /**
+     * Checks the internal invariants and throws {@link IllegalStateException} for the first
+     * violation.
+     *
+     * @throws IllegalStateException if the tree is inconsistent: the message names the first
+     *     problem found
+     */
     public void validate() {
         int live = 0;
         int nodes = 0;
@@ -281,8 +402,10 @@ public final class LooseOctree {
     }
 
     /**
-     * The node an object with this box belongs in: as deep as the box's size allows, following its centre. With
-     * {@code create} false, returns {@link #NONE} when that node does not exist yet.
+     * The node an object with this box belongs in: as deep as the box's size allows, following its
+     * centre.
+     *
+     * <p>With {@code create} false, returns {@link #NONE} when that node does not exist yet.
      */
     private int locate(float x0, float y0, float z0, float x1, float y1, float z1, boolean create) {
         float cx = (x0 + x1) * 0.5f, cy = (y0 + y1) * 0.5f, cz = (z0 + z1) * 0.5f;
@@ -328,7 +451,9 @@ public final class LooseOctree {
         objectCount[n]++;
     }
 
-    /** Takes the object out of its node and removes nodes that became empty. */
+    /**
+     * Takes the object out of its node and removes nodes that became empty.
+     */
     private void unlink(int h) {
         int n = objNode[h];
         if (prev[h] != NONE) {
@@ -434,12 +559,23 @@ public final class LooseOctree {
 
     // ---------------------------------------------------------------- queries
 
-    /** A query object with its own traversal stack. Create one per thread; reuse it. */
+    /**
+     * Creates a query object with its own traversal stack, so that several threads can query the
+     * octree at the same time.
+     *
+     * <p>Create one per thread; reuse it.
+     *
+     * @return a query object with its own traversal stack
+     */
     public Query newQuery() {
         return new Query(this);
     }
 
-    /** Read-only queries on a {@link LooseOctree}. Results are the objects' user data. */
+    /**
+     * Read-only queries on a {@link LooseOctree}.
+     *
+     * <p>Results are the objects' user data.
+     */
     public static final class Query {
 
         private final LooseOctree tree;
@@ -452,12 +588,22 @@ public final class LooseOctree {
             this.tree = tree;
         }
 
-        /** Appends the user data of every object whose box overlaps {@code b} (touching counts). */
+        /**
+         * Appends the user data of every object whose box overlaps {@code b} (touching counts).
+         *
+         * @param b the second box; must not be {@code null}
+         * @param out receives the result; must not be {@code null}
+         */
         public void overlapAabb(Aabbf b, IntList out) {
             overlap(b.minX(), b.minY(), b.minZ(), b.maxX(), b.maxY(), b.maxZ(), 0f, 0f, 0f, -1f, out);
         }
 
-        /** Appends the user data of every object whose box touches {@code s}. */
+        /**
+         * Appends the user data of every object whose box touches {@code s}.
+         *
+         * @param s the sphere; must not be {@code null}
+         * @param out receives the result; must not be {@code null}
+         */
         public void overlapSphere(Spheref s, IntList out) {
             float r = s.radius();
             float pad = 4f * Math.ulp(Math.max(Math.abs(s.cx()) + Math.abs(s.cy()) + Math.abs(s.cz()), r));
@@ -508,9 +654,16 @@ public final class LooseOctree {
         }
 
         /**
-         * The {@code out.k()} objects whose boxes are closest to the point, nearest first; {@code out} holds their user data
-         * (ties: smaller user data). Nodes are visited nearest loose box first and skipped once they cannot beat the worst
+         * Finds the {@code out.k()} objects whose boxes are closest to the point, nearest first;
+         * {@code out} holds their user data (ties: smaller user data).
+         *
+         * <p>Nodes are visited nearest loose box first and skipped once they cannot beat the worst
          * neighbour kept.
+         *
+         * @param x the x component
+         * @param y the y component
+         * @param z the z component
+         * @param out receives the result; must not be {@code null}
          */
         public void nearest(float x, float y, float z, Neighbors out) {
             LooseOctree t = tree;

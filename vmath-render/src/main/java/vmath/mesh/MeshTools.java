@@ -5,29 +5,50 @@ import java.util.Arrays;
 /**
  * Normals and tangents for a {@link Mesh}.
  *
- * <p><b>Degenerate input never produces NaN.</b> Triangles with (almost) no area, and triangles whose UVs have no area, are
- * skipped when accumulating. A vertex left with nothing to accumulate gets a fixed fallback: normal {@code (0, 1, 0)}, and a tangent
- * chosen perpendicular to its normal with handedness {@code +1}. Non-finite positions are the caller's problem.
+ * <p><b>Degenerate input never produces NaN.</b> Triangles with (almost) no area, and triangles
+ * whose UVs have no area, are skipped when accumulating. A vertex left with nothing to accumulate
+ * gets a fixed fallback: normal {@code (0, 1, 0)}, and a tangent chosen perpendicular to its normal
+ * with handedness {@code +1}. Non-finite positions are the caller's problem.
  *
- * <p>All accumulation is done in {@code double}, one pass over the triangles, with a few temporary arrays sized to the mesh.
+ * <p>All accumulation is done in {@code double}, one pass over the triangles, with a few temporary
+ * arrays sized to the mesh.
  *
- * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time. The arrays and buffers you pass in are
- * not synchronised, so two threads must not write the same one.
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the
+ * same time. The arrays and buffers you pass in are not synchronised, so two threads must not write
+ * the same one.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * Mesh mesh = Primitives.box(1f, 1f, 1f);
+ * MeshTools.computeSmoothNormals(mesh);
+ * int[] split = MeshTools.computeNormalsWithCrease(mesh, (float) Math.toRadians(30));        // keeps the creases of a box
+ * mesh.enableUvs(0);
+ * MeshTools.computeTangents(mesh, 0);
+ * }</pre>
  */
 public final class MeshTools {
 
     private MeshTools() {
     }
 
-    /** Triangles whose doubled area is below this (relative to their edge lengths squared) count as degenerate. */
+    /**
+     * Triangles whose doubled area is below this (relative to their edge lengths squared) count as
+     * degenerate.
+     */
     private static final double DEGENERATE = 1e-12;
 
     // ---------------------------------------------------------------- normals
 
     /**
-     * Sets every vertex normal to the angle-weighted average of the face normals around it, so a triangle contributes to each of its
-     * corners in proportion to the angle it has there (which makes the result independent of how a surface is triangulated). The
-     * vertex count is unchanged and vertices are shared as they are: use {@link #computeNormalsWithCrease} to keep hard edges.
+     * Sets every vertex normal to the angle-weighted average of the face normals around it, so a
+     * triangle contributes to each of its corners in proportion to the angle it has there (which
+     * makes the result independent of how a surface is triangulated).
+     *
+     * <p>The vertex count is unchanged and vertices are shared as they are: use
+     * {@link #computeNormalsWithCrease} to keep hard edges.
+     *
+     * @param mesh the mesh; must not be {@code null}
      */
     public static void computeSmoothNormals(Mesh mesh) {
         mesh.enableNormals();
@@ -42,15 +63,25 @@ public final class MeshTools {
     }
 
     /**
-     * Smooth normals that keep creases: vertices are split where the faces around them meet at more than {@code creaseAngle}
-     * (radians), so a cube keeps 24 vertices with flat faces while a finely tessellated sphere keeps its vertex count and smooth
-     * shading. The faces at each vertex are grouped greedily: a group starts at the first unassigned face and takes every face whose
-     * normal is within {@code creaseAngle} of that first face's. The group order is deterministic but the grouping is not
-     * transitive, which is the usual practical definition of a crease angle.
+     * Splits vertices so that smooth shading is kept on gently curved surfaces and hard edges
+     * remain sharp; faces are grouped greedily around each vertex, and the grouping is not
+     * transitive.
      *
-     * <p>Every other stream (positions, UVs, tangents) is copied to the new vertices, so the surface does not change. Returns
-     * {@code remap} with one entry per vertex of the resulting mesh: the index of the original vertex it came from (the first
-     * {@code oldCount} entries are the identity), which is what to use to carry any extra per-vertex data of your own along.
+     * <p>The faces at each vertex are grouped greedily: a group starts at the first unassigned face
+     * and takes every face whose normal is within {@code creaseAngle} of that first face's. The
+     * group order is deterministic but the grouping is not transitive, which is the usual practical
+     * definition of a crease angle.
+     *
+     * <p>Every other stream (positions, UVs, tangents) is copied to the new vertices, so the
+     * surface does not change. Returns {@code remap} with one entry per vertex of the resulting
+     * mesh: the index of the original vertex it came from (the first {@code oldCount} entries are
+     * the identity), which is what to use to carry any extra per-vertex data of your own along.
+     *
+     * @param mesh the mesh; must not be {@code null}
+     * @param creaseAngle the crease angle
+     * @return the remap array with one entry per vertex of the resulting mesh: the index of the
+     *     original vertex it came from, where the first entries are the identity
+     * @throws IllegalArgumentException if {@code creaseAngle} is negative
      */
     public static int[] computeNormalsWithCrease(Mesh mesh, float creaseAngle) {
         if (!(creaseAngle >= 0f)) {
@@ -183,15 +214,23 @@ public final class MeshTools {
     // ---------------------------------------------------------------- tangents
 
     /**
-     * Computes tangents for UV set {@code uvSet} from the UV derivatives: for each triangle the direction in which {@code u}
-     * increases (the tangent) and in which {@code v} increases (the bitangent), accumulated at the corners with angle weights,
-     * then made perpendicular to the vertex normal (Gram-Schmidt). The handedness in {@code w} is {@code +1} when
-     * {@code cross(normal, tangent)} points the way {@code v} increases and {@code -1} for mirrored UVs, so the bitangent is
+     * Computes tangents for UV set {@code uvSet} from the UV derivatives: for each triangle the
+     * direction in which {@code u} increases (the tangent) and in which {@code v} increases (the
+     * bitangent), accumulated at the corners with angle weights, then made perpendicular to the
+     * vertex normal (Gram-Schmidt).
+     *
+     * <p>The handedness in {@code w} is {@code +1} when {@code cross(normal, tangent)} points the
+     * way {@code v} increases and {@code -1} for mirrored UVs, so the bitangent is
      * {@code cross(normal, tangent) * w}.
      *
-     * <p>This is the standard per-vertex accumulation used by most engines, not a bit-exact port of MikkTSpace. Normals and the UV
-     * set must exist (call a normals method first). Where UVs are mirrored across a shared vertex the accumulation averages the two
-     * sides; split such vertices (a hard UV seam is normally already split) to avoid that.
+     * <p>This is the standard per-vertex accumulation used by most engines, not a bit-exact port of
+     * MikkTSpace. Normals and the UV set must exist (call a normals method first). Where UVs are
+     * mirrored across a shared vertex the accumulation averages the two sides; split such vertices
+     * (a hard UV seam is normally already split) to avoid that.
+     *
+     * @param mesh the mesh; must not be {@code null}
+     * @param uvSet the uv set
+     * @throws IllegalStateException if the mesh has no normals or the UV set is not enabled
      */
     public static void computeTangents(Mesh mesh, int uvSet) {
         if (!mesh.hasNormals()) {
@@ -282,7 +321,8 @@ public final class MeshTools {
     // ---------------------------------------------------------------- shared geometry
 
     /**
-     * Adds the face normal of triangle {@code (a, b, c)} weighted by the angle at each corner into {@code acc} (x, y, z per vertex).
+     * Adds the face normal of triangle {@code (a, b, c)} weighted by the angle at each corner into
+     * {@code acc} (x, y, z per vertex).
      */
     private static void accumulate(float[] p, int a, int b, int c, double[] acc) {
         double[] n = new double[3];
@@ -299,8 +339,10 @@ public final class MeshTools {
     }
 
     /**
-     * Writes the unit face normal of a triangle to {@code n[nOff..nOff+2]} and the angles at its three corners to
-     * {@code ang[aOff..aOff+2]}. Returns false (leaving zeros) for a degenerate triangle.
+     * Writes the unit face normal of a triangle to {@code n[nOff..nOff+2]} and the angles at its
+     * three corners to {@code ang[aOff..aOff+2]}.
+     *
+     * <p>Returns false (leaving zeros) for a degenerate triangle.
      */
     private static boolean faceData(float[] p, int a, int b, int c, double[] n, int nOff, double[] ang, int aOff) {
         double ax = p[a * 3], ay = p[a * 3 + 1], az = p[a * 3 + 2];

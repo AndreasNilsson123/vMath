@@ -9,19 +9,36 @@ import vmath.core.Vec3f;
  * Fitting bounding volumes to point sets and to transformed boxes.
  *
  * <ul>
- *   <li>{@link #minimumSphere}: the <b>smallest</b> sphere that contains all the points (the algorithm of Welzl, in the move-to-front form with at most four support points).
- *       Unlike the cheap "centre of the box" sphere ({@link Aabbf#boundingSphere()}) it is optimal; for random points in a cube it is about 15% smaller in radius.</li>
- *   <li>{@link #pcaBox}: an oriented box whose axes are the principal axes of the point cloud (the eigenvectors of its covariance matrix). Fast and usually much tighter than the
- *       axis-aligned box for elongated, rotated shapes; not guaranteed to be the smallest oriented box.</li>
- *   <li>{@link #transformedBox}: the tightest box, oriented like the transform's rotation, around an axis-aligned box after a general affine transform (translation, rotation,
- *       non-uniform scale and shear); for a transform without shear it is exact.</li>
- *   <li>{@link #sphereOfTransformedBox}: the smallest sphere around an axis-aligned box after an affine transform.</li>
+ *   <li>{@link #minimumSphere}: the <b>smallest</b> sphere that contains all the points (the
+ *       algorithm of Welzl, in the move-to-front form with at most four support points). Unlike the
+ *       cheap "centre of the box" sphere ({@link Aabbf#boundingSphere()}) it is optimal; for random
+ *       points in a cube it is about 15% smaller in radius.</li>
+ *   <li>{@link #pcaBox}: an oriented box whose axes are the principal axes of the point cloud (the
+ *       eigenvectors of its covariance matrix). Fast and usually much tighter than the axis-aligned
+ *       box for elongated, rotated shapes; not guaranteed to be the smallest oriented box.</li>
+ *   <li>{@link #transformedBox}: the tightest box, oriented like the transform's rotation, around
+ *       an axis-aligned box after a general affine transform (translation, rotation, non-uniform
+ *       scale and shear); for a transform without shear it is exact.</li>
+ *   <li>{@link #sphereOfTransformedBox}: the smallest sphere around an axis-aligned box after an
+ *       affine transform.</li>
  * </ul>
  *
- * <p>The results are rounded to {@code float} in the safe direction: every input point is inside the returned volume as {@code float} arithmetic sees it (the sphere radius and
- * the box half extents are rounded up). The axis-aligned box of a transformed box is {@link Aabbf#transform(Mat4f)}.
+ * <p>The results are rounded to {@code float} in the safe direction: every input point is inside
+ * the returned volume as {@code float} arithmetic sees it (the sphere radius and the box half
+ * extents are rounded up). The axis-aligned box of a transformed box is
+ * {@link Aabbf#transform(Mat4f)}.
  *
- * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time.
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the
+ * same time.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * float[] points = {0f, 0f, 0f, 2f, 0f, 0f, 0f, 1f, 0f, 0f, 0f, 1f};
+ * Spheref sphere = BoundingVolumes.minimumSphere(points, 4);        // the smallest sphere around them
+ * Obbf box = BoundingVolumes.pcaBox(points, 4);                      // an oriented box along the principal axes
+ * Spheref moved = BoundingVolumes.sphereOfTransformedBox(Aabbf.of(Vec3f.ZERO, Vec3f.ONE), Mat4f.rotationY(0.5f));
+ * }</pre>
  */
 public final class BoundingVolumes {
 
@@ -33,9 +50,19 @@ public final class BoundingVolumes {
     // ------------------------------------------------------------ minimum sphere
 
     /**
-     * The smallest sphere that contains the {@code vertexCount} points ({@code x, y, z} triples) of {@code xyz} starting at float index {@code offset}. The points are visited in a
-     * fixed pseudo-random order (the input is copied, not modified), which makes the expected time linear in the number of points for any input order. At least one point is
-     * needed; {@link IllegalArgumentException} otherwise.
+     * Computes the smallest enclosing sphere of a point set with an iterative algorithm that gives
+     * the exact minimum; cost is linear in expectation, and the points are read from a flat
+     * coordinate array.
+     *
+     * <p>The points are visited in a fixed pseudo-random order (the input is copied, not modified),
+     * which makes the expected time linear in the number of points for any input order. At least
+     * one point is needed; {@link IllegalArgumentException} otherwise.
+     *
+     * @param xyz the three components
+     * @param offset the index of the first element to read or write
+     * @param vertexCount the number of vertices
+     * @return the smallest sphere that contains the {@code vertexCount} points ({@code x, y, z}
+     *     triples) of {@code xyz} starting at float index {@code offset}
      */
     public static Spheref minimumSphere(float[] xyz, int offset, int vertexCount) {
         checkPoints(xyz, offset, vertexCount);
@@ -76,7 +103,14 @@ public final class BoundingVolumes {
         return enclose(b, xyz, offset, vertexCount);
     }
 
-    /** {@link #minimumSphere(float[], int, int)} for points starting at index 0. */
+    /**
+     * Computes the smallest enclosing sphere of a point set from the start of the array; see the
+     * overload with an offset.
+     *
+     * @param xyz the three components
+     * @param vertexCount the number of vertices
+     * @return {@link #minimumSphere(float[], int, int)} for points starting at index 0
+     */
     public static Spheref minimumSphere(float[] xyz, int vertexCount) {
         return minimumSphere(xyz, 0, vertexCount);
     }
@@ -86,7 +120,10 @@ public final class BoundingVolumes {
         return dx * dx + dy * dy + dz * dz <= b[3] * (1 + INSIDE) + 1e-300;
     }
 
-    /** The smallest sphere of the points {@code 0 .. i - 1} with point {@code i} on its boundary, into {@code b}. */
+    /**
+     * The smallest sphere of the points {@code 0 .. i - 1} with point {@code i} on its boundary,
+     * into {@code b}.
+     */
     private static void ball1(double[] p, int i, double[] b, double[] t) {
         b[0] = p[3 * i];
         b[1] = p[3 * i + 1];
@@ -99,7 +136,10 @@ public final class BoundingVolumes {
         }
     }
 
-    /** The smallest sphere of the points {@code 0 .. j - 1} with points {@code j} and {@code i} on its boundary. */
+    /**
+     * The smallest sphere of the points {@code 0 .. j - 1} with points {@code j} and {@code i} on
+     * its boundary.
+     */
     private static void ball2(double[] p, int j, int i, double[] b, double[] t) {
         sphereOf2(p, i, j, b);
         for (int k = 0; k < j; k++) {
@@ -109,7 +149,10 @@ public final class BoundingVolumes {
         }
     }
 
-    /** The smallest sphere of the points {@code 0 .. k - 1} with points {@code k}, {@code j} and {@code i} on its boundary. */
+    /**
+     * The smallest sphere of the points {@code 0 .. k - 1} with points {@code k}, {@code j} and
+     * {@code i} on its boundary.
+     */
     private static void ball3(double[] p, int k, int j, int i, double[] b, double[] t) {
         sphereOf3(p, i, j, k, b);
         for (int l = 0; l < k; l++) {
@@ -127,7 +170,10 @@ public final class BoundingVolumes {
         out[3] = dx * dx + dy * dy + dz * dz;
     }
 
-    /** The smallest sphere through three points: centred at the circumcentre of the triangle (or the diameter sphere of the two farthest points when they are collinear). */
+    /**
+     * The smallest sphere through three points: centred at the circumcentre of the triangle (or the
+     * diameter sphere of the two farthest points when they are collinear).
+     */
     private static void sphereOf3(double[] p, int ia, int ib, int ic, double[] out) {
         double ax = p[3 * ia], ay = p[3 * ia + 1], az = p[3 * ia + 2];
         double ux = p[3 * ib] - ax, uy = p[3 * ib + 1] - ay, uz = p[3 * ib + 2] - az;
@@ -159,7 +205,10 @@ public final class BoundingVolumes {
         out[3] = ox * ox + oy * oy + oz * oz;
     }
 
-    /** The sphere through four points; when they are (nearly) coplanar the smallest sphere through the three that matter is kept. */
+    /**
+     * The sphere through four points; when they are (nearly) coplanar the smallest sphere through
+     * the three that matter is kept.
+     */
     private static void sphereOf4(double[] p, int ia, int ib, int ic, int id, double[] b, double[] t) {
         double ax = p[3 * ia], ay = p[3 * ia + 1], az = p[3 * ia + 2];
         double ux = p[3 * ib] - ax, uy = p[3 * ib + 1] - ay, uz = p[3 * ib + 2] - az;
@@ -181,7 +230,10 @@ public final class BoundingVolumes {
         b[3] = cx * cx + cy * cy + cz * cz;
     }
 
-    /** The float sphere around the float centre nearest to {@code b} that contains every point, its radius rounded up. */
+    /**
+     * The float sphere around the float centre nearest to {@code b} that contains every point, its
+     * radius rounded up.
+     */
     private static Spheref enclose(double[] b, float[] xyz, int offset, int count) {
         float cx = (float) b[0], cy = (float) b[1], cz = (float) b[2];
         double r2 = 0;
@@ -192,7 +244,9 @@ public final class BoundingVolumes {
         return new Spheref(cx, cy, cz, roundUp(Math.sqrt(r2)));
     }
 
-    /** The smallest float that is at least {@code v}. */
+    /**
+     * The smallest float that is at least {@code v}.
+     */
     private static float roundUp(double v) {
         float f = (float) v;
         return f < v ? Math.nextUp(f) : f;
@@ -201,12 +255,23 @@ public final class BoundingVolumes {
     // ------------------------------------------------------------ PCA box
 
     /**
-     * An oriented box around the {@code vertexCount} points of {@code xyz} (from float index {@code offset}) whose axes are the eigenvectors of the covariance matrix of the
-     * points, found by Jacobi rotations; the box is the tightest one in that frame. The axes form a right-handed frame (a proper rotation). For one point, or a set with no spread,
-     * the box has zero size. At least one point is needed.
+     * Fits an oriented bounding box by principal component analysis: the axes are the eigenvectors
+     * of the covariance matrix, which gives a good but not minimal box; works from a flat
+     * coordinate array.
      *
-     * <p>The covariance weighs every <em>point</em>, so a dense cluster pulls the axes towards itself; for a surface mesh, points sampled evenly over the surface (or the vertices of its
+     * <p>The axes form a right-handed frame (a proper rotation). For one point, or a set with no
+     * spread, the box has zero size. At least one point is needed.
+     *
+     * <p>The covariance weighs every <em>point</em>, so a dense cluster pulls the axes towards
+     * itself; for a surface mesh, points sampled evenly over the surface (or the vertices of its
      * {@link ConvexHull}) give a better frame than a vertex list with uneven density.
+     *
+     * @param xyz the three components
+     * @param offset the index of the first element to read or write
+     * @param vertexCount the number of vertices
+     * @return an oriented box around the {@code vertexCount} points of {@code xyz} (from float
+     *     index {@code offset}) whose axes are the eigenvectors of the covariance matrix of the
+     *     points, found by Jacobi rotations; the box is the tightest one in that frame
      */
     public static Obbf pcaBox(float[] xyz, int offset, int vertexCount) {
         checkPoints(xyz, offset, vertexCount);
@@ -245,12 +310,22 @@ public final class BoundingVolumes {
         return boxInFrame(xyz, offset, n, v);
     }
 
-    /** {@link #pcaBox(float[], int, int)} for points starting at index 0. */
+    /**
+     * Fits an oriented bounding box by principal component analysis to a point set from the start
+     * of the array; see the overload with an offset.
+     *
+     * @param xyz the three components
+     * @param vertexCount the number of vertices
+     * @return {@link #pcaBox(float[], int, int)} for points starting at index 0
+     */
     public static Obbf pcaBox(float[] xyz, int vertexCount) {
         return pcaBox(xyz, 0, vertexCount);
     }
 
-    /** The tightest box around the points in the frame whose axes are the columns of {@code v} (row-major 3x3), rounded outward to float. */
+    /**
+     * The tightest box around the points in the frame whose axes are the columns of {@code v}
+     * (row-major 3x3), rounded outward to float.
+     */
     private static Obbf boxInFrame(float[] xyz, int offset, int n, double[] v) {
         double[] lo = {Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY};
         double[] hi = {Double.NEGATIVE_INFINITY, Double.NEGATIVE_INFINITY, Double.NEGATIVE_INFINITY};
@@ -285,7 +360,10 @@ public final class BoundingVolumes {
         return new Obbf(cx, cy, cz, hx, hy, hz, q.x(), q.y(), q.z(), q.w());
     }
 
-    /** The eigen decomposition of the symmetric 3x3 matrix {@code a} (row-major, destroyed) by cyclic Jacobi rotations; the eigenvectors go to the columns of {@code v}. */
+    /**
+     * The eigen decomposition of the symmetric 3x3 matrix {@code a} (row-major, destroyed) by
+     * cyclic Jacobi rotations; the eigenvectors go to the columns of {@code v}.
+     */
     private static void jacobi(double[] a, double[] v) {
         v[0] = v[4] = v[8] = 1;
         v[1] = v[2] = v[3] = v[5] = v[6] = v[7] = 0;
@@ -332,10 +410,21 @@ public final class BoundingVolumes {
     // ------------------------------------------------------------ transformed boxes
 
     /**
-     * An oriented box around {@code box} after the affine transform {@code m} (the projection row is ignored): the matrix is factored as {@code T R Sh S}
-     * ({@link Mat4f#decomposeWithShear()}), and the box is oriented like {@code R}, with the half extents of the tightest box in that frame (Arvo's method applied to
-     * {@code Sh S}). For a transform without shear, that is a translation, rotation and scale (also non-uniform, also with a reflection), the result is <b>exactly</b> the transformed
-     * box; with shear it is the tightest box in the rotation's frame, which is larger. An empty box gives {@link IllegalArgumentException}.
+     * Fits an oriented box around a transformed box, factoring the matrix into rotation, shear and
+     * scale so that the result is tight; the projective row of the matrix is ignored.
+     *
+     * <p>For a transform without shear, that is a translation, rotation and scale (also
+     * non-uniform, also with a reflection), the result is <b>exactly</b> the transformed box; with
+     * shear it is the tightest box in the rotation's frame, which is larger. An empty box gives
+     * {@link IllegalArgumentException}.
+     *
+     * @param box the box; must not be {@code null}
+     * @param m the matrix; must not be {@code null}
+     * @return an oriented box around {@code box} after the affine transform {@code m} (the
+     *     projection row is ignored): the matrix is factored as {@code T R Sh S}
+     *     ({@link Mat4f#decomposeWithShear()}), and the box is oriented like {@code R}, with the
+     *     half extents of the tightest box in that frame (Arvo's method applied to {@code Sh S})
+     * @throws IllegalArgumentException if the box is empty
      */
     public static Obbf transformedBox(Aabbf box, Mat4f m) {
         if (box.isEmpty()) {
@@ -354,8 +443,17 @@ public final class BoundingVolumes {
     }
 
     /**
-     * The smallest sphere around {@code box} after the affine transform {@code m}: the minimum sphere of the eight transformed corners (the image of a box under an affine map is a
-     * parallelepiped, whose smallest enclosing sphere is determined by its vertices). The projection row of {@code m} is ignored.
+     * Fits a sphere around a transformed box from the eight transformed corners; exact for the
+     * affine image of a box, and cheaper to test against than an oriented box.
+     *
+     * <p>The projection row of {@code m} is ignored.
+     *
+     * @param box the box; must not be {@code null}
+     * @param m the matrix; must not be {@code null}
+     * @return the smallest sphere around {@code box} after the affine transform {@code m}: the
+     *     minimum sphere of the eight transformed corners (the image of a box under an affine map
+     *     is a parallelepiped, whose smallest enclosing sphere is determined by its vertices)
+     * @throws IllegalArgumentException if the box is empty
      */
     public static Spheref sphereOfTransformedBox(Aabbf box, Mat4f m) {
         if (box.isEmpty()) {

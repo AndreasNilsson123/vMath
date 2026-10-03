@@ -4,9 +4,13 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * A small strict JSON parser for glTF: objects become {@code Map<String, Object>}, arrays {@code List<Object>}, numbers {@code Double}, strings
- * {@code String}, booleans {@code Boolean} and null {@code null}. Nesting is limited to {@value #MAX_DEPTH} levels so that hostile input cannot overflow the
- * stack, and anything after the value, unescaped control characters in strings and malformed numbers are errors.
+ * A small strict JSON parser for glTF: objects become {@code Map<String, Object>}, arrays
+ * {@code List<Object>}, numbers {@code Double}, strings {@code String}, booleans {@code Boolean}
+ * and null {@code null}.
+ *
+ * <p>Nesting is limited to {@value #MAX_DEPTH} levels so that hostile input cannot overflow the
+ * stack, and anything after the value, unescaped control characters in strings and malformed
+ * numbers are errors.
  */
 final class Json {
 

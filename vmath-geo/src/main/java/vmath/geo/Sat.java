@@ -3,18 +3,37 @@ package vmath.geo;
 import vmath.annotations.Experimental;
 
 /**
- * The separating axis test for two {@link ConvexPolytope}s: two convex polytopes are disjoint exactly when some axis separates their projections, and it suffices to try the
- * face normals of both and the cross products of an edge direction of one with an edge direction of the other. The axes come from {@link ConvexPolytope#faceDirections()} and
+ * The separating axis test for two {@link ConvexPolytope}s: two convex polytopes are disjoint
+ * exactly when some axis separates their projections, and it suffices to try the face normals of
+ * both and the cross products of an edge direction of one with an edge direction of the other.
+ *
+ * <p>The axes come from {@link ConvexPolytope#faceDirections()} and
  * {@link ConvexPolytope#edgeDirections()}, which list each distinct direction once.
  *
- * <p>{@link #separation} returns the largest <em>signed separation</em> over all those axes: positive when the polytopes are apart along that axis (the gap between the two
- * projections), negative when they overlap along every axis, in which case its magnitude is the exact <b>penetration depth</b> (the smallest distance one polytope must move to
- * free itself) and the axis is the direction to move. When they are apart the value is only a <em>lower bound</em> of the distance between them (the gap along the best axis; the
- * true distance is larger when the closest features are not aligned with any of the axes): use {@link Gjk#distance} for the distance.
+ * <p>{@link #separation} returns the largest <em>signed separation</em> over all those axes:
+ * positive when the polytopes are apart along that axis (the gap between the two projections),
+ * negative when they overlap along every axis, in which case its magnitude is the exact
+ * <b>penetration depth</b> (the smallest distance one polytope must move to free itself) and the
+ * axis is the direction to move. When they are apart the value is only a <em>lower bound</em> of
+ * the distance between them (the gap along the best axis; the true distance is larger when the
+ * closest features are not aligned with any of the axes): use {@link Gjk#distance} for the
+ * distance.
  *
- * <p>The cost is O(F + E_a E_b) projections of the vertices (each projection scans the vertices of both polytopes), so it is meant for polytopes of up to a few dozen faces.
+ * <p>The cost is O(F + E_a E_b) projections of the vertices (each projection scans the vertices of
+ * both polytopes), so it is meant for polytopes of up to a few dozen faces.
  *
- * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time.
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the
+ * same time.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * ConvexPolytope a = ConvexPolytope.of(Aabbf.of(new Vec3f(-1f, -1f, -1f), new Vec3f(1f, 1f, 1f)));
+ * ConvexPolytope b = a.transformed(Quatf.rotationY(0.4f), new Vec3f(1.5f, 0f, 0f));
+ * double[] axis = new double[3];
+ * double separation = Sat.separation(a, b, axis);                      // negative when they overlap: the penetration depth
+ * boolean hit = Sat.intersects(a, b);
+ * }</pre>
  */
 @Experimental("the result may become an object with the witness features, as the penetration query of Gjk has")
 public final class Sat {
@@ -23,8 +42,18 @@ public final class Sat {
     }
 
     /**
-     * The largest signed separation of {@code a} and {@code b} over the separating axes (see the class comment). {@code axisOut} receives the unit axis, oriented from {@code a}
-     * towards {@code b}: moving {@code b} along it by {@code -separation} (when negative) just frees the two.
+     * Finds the axis of largest separation by testing the face and edge directions of both
+     * polytopes, which is the core of the separating axis test; a positive result means the
+     * polytopes are apart.
+     *
+     * <p>{@code axisOut} receives the unit axis, oriented from {@code a} towards {@code b}: moving
+     * {@code b} along it by {@code -separation} (when negative) just frees the two.
+     *
+     * @param a the first convex polytope; must not be {@code null}
+     * @param b the second convex polytope; must not be {@code null}
+     * @param axisOut the axis out
+     * @return the largest signed separation of {@code a} and {@code b} over the separating axes
+     *     (see the class comment)
      */
     public static double separation(ConvexPolytope a, ConvexPolytope b, double[] axisOut) {
         float[] va = a.vertices(), vb = b.vertices();
@@ -52,7 +81,17 @@ public final class Sat {
         return best;
     }
 
-    /** Whether the polytopes overlap (share at least a point): the separation is not positive on any axis. Touching counts as overlapping. */
+    /**
+     * Returns whether the polytopes overlap (share at least a point): the separation is not
+     * positive on any axis.
+     *
+     * <p>Touching counts as overlapping.
+     *
+     * @param a the first convex polytope; must not be {@code null}
+     * @param b the second convex polytope; must not be {@code null}
+     * @return {@code true} if the polytopes overlap (share at least a point): the separation is not
+     *     positive on any axis
+     */
     public static boolean intersects(ConvexPolytope a, ConvexPolytope b) {
         return separation(a, b, new double[3]) <= 0.0;
     }

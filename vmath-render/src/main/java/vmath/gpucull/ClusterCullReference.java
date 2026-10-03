@@ -7,19 +7,39 @@ import vmath.gl.GpuWriter;
 import vmath.geo.NormalCone;
 
 /**
- * The CPU reference of GPU-driven <b>cluster</b> culling with continuous level of detail: for every cluster of a {@link vmath.mesh.ClusterHierarchy}, choose it or not by the
- * projected error of its level and of its parent ({@code error * pixelScale / distance}: chosen when its own is within {@code pixelBudget} and its parent's is not, the rule of
- * {@link vmath.mesh.ClusterHierarchy#select}), then frustum test its bounding sphere, back-face test it with its normal cone ({@link NormalCone#backfacing}), and Hi-Z test the box
- * around its sphere. A survivor appends one indirect draw command ({@code DrawElementsIndirect}: its {@code firstIndex} and {@code indexCount}, one instance,
- * {@code baseInstance = } the cluster index, so the vertex shader finds the cluster through {@code gl_BaseInstance}) to the command buffer; on a GPU the slot comes from an atomic
- * counter and the draw count is read by {@code glMultiDrawElementsIndirectCount}. A command that does not fit in the buffer is dropped and counted.
+ * The CPU reference of GPU-driven <b>cluster</b> culling with continuous level of detail: for every
+ * cluster of a {@link vmath.mesh.ClusterHierarchy}, choose it or not by the projected error of its
+ * level and of its parent ({@code error * pixelScale / distance}: chosen when its own is within
+ * {@code pixelBudget} and its parent's is not, the rule of
+ * {@link vmath.mesh.ClusterHierarchy#select}), then frustum test its bounding sphere, back-face
+ * test it with its normal cone ({@link NormalCone#backfacing}), and Hi-Z test the box around its
+ * sphere.
  *
- * <p>Reads and writes the same bytes as the shader in {@link GpuCullGlsl#clusterShader}. Every test is conservative (NaN is never a separation), so the result may keep a cluster that
- * a perfect test would drop and never drops one that is needed. The set of chosen clusters is a cut of the hierarchy, which is what makes the surface crack free (see
- * {@link vmath.mesh.ClusterHierarchy}); the frustum, cone and Hi-Z tests only remove whole clusters from it.
+ * <p>A survivor appends one indirect draw command ({@code DrawElementsIndirect}: its
+ * {@code firstIndex} and {@code indexCount}, one instance, {@code baseInstance = } the cluster
+ * index, so the vertex shader finds the cluster through {@code gl_BaseInstance}) to the command
+ * buffer; on a GPU the slot comes from an atomic counter and the draw count is read by
+ * {@code glMultiDrawElementsIndirectCount}. A command that does not fit in the buffer is dropped
+ * and counted.
  *
- * <p><b>Thread safety.</b> Stateless: the pass is a static method. The {@link Counters}, the command buffer and the arrays you pass in are not
- * synchronised, so two threads must not share one of them.
+ * <p>Reads and writes the same bytes as the shader in {@link GpuCullGlsl#clusterShader}. Every test
+ * is conservative (NaN is never a separation), so the result may keep a cluster that a perfect test
+ * would drop and never drops one that is needed. The set of chosen clusters is a cut of the
+ * hierarchy, which is what makes the surface crack free (see {@link vmath.mesh.ClusterHierarchy});
+ * the frustum, cone and Hi-Z tests only remove whole clusters from it.
+ *
+ * <p><b>Thread safety.</b> Stateless: the pass is a static method. The {@link Counters}, the
+ * command buffer and the arrays you pass in are not synchronised, so two threads must not share one
+ * of them.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * ClusterCullReference.Counters counters = new ClusterCullReference.Counters();
+ * counters.reset();
+ * // view: a ClusterCullView record written to a MemorySegment, clusters: the ClusterCullObject records, out: the indirect draw commands
+ * // ClusterCullReference.cull(view, clusters, hzb, out, counters);                         // the CPU reference of the compute shader
+ * }</pre>
  */
 @Experimental("the pass structure may change")
 public final class ClusterCullReference {
@@ -27,29 +47,49 @@ public final class ClusterCullReference {
     private ClusterCullReference() {
     }
 
-    /** What a pass did. */
+    /**
+     * What a pass did.
+     */
     public static final class Counters {
-        /** Counters that start at zero. */
+        /**
+         * Counters that start at zero.
+         */
         public Counters() {
         }
 
-        /** Clusters looked at, before any test. */
+        /**
+         * Clusters looked at, before any test.
+         */
         public int clusters;
-        /** Clusters whose level of detail is the right one for the view. */
+        /**
+         * Clusters whose level of detail is the right one for the view.
+         */
         public int lodSelected;
-        /** Of those, the ones inside the frustum. */
+        /**
+         * Of those, the ones inside the frustum.
+         */
         public int inFrustum;
-        /** Of those, the ones removed as back facing. */
+        /**
+         * Of those, the ones removed as back facing.
+         */
         public int backFacing;
-        /** Of the remaining ones, the ones hidden by the Hi-Z pyramid. */
+        /**
+         * Of the remaining ones, the ones hidden by the Hi-Z pyramid.
+         */
         public int occluded;
-        /** Commands written. */
+        /**
+         * Commands written.
+         */
         public int drawn;
-        /** Survivors dropped because the command buffer was full. */
+        /**
+         * Survivors dropped because the command buffer was full.
+         */
         public int overflow;
         private final HizState hiz = new HizState();
 
-        /** Sets every counter to zero. */
+        /**
+         * Sets every counter to zero.
+         */
         public void reset() {
             clusters = 0;
             lodSelected = 0;
@@ -65,7 +105,11 @@ public final class ClusterCullReference {
         return GpuWriter.getFloat(s, offset);
     }
 
-    /** The projected error of a cluster measured against a sphere, in pixels: {@code error * pixelScale / max(distance to the sphere's near side, 1e-4)}; infinite for an infinite error. */
+    /**
+     * The projected error of a cluster measured against a sphere, in pixels:
+     * {@code error * pixelScale / max(distance to the sphere's near side, 1e-4)}; infinite for an
+     * infinite error.
+     */
     static float projected(float error, float cx, float cy, float cz, float r, float ex, float ey, float ez, float pixelScale) {
         if (error == Float.POSITIVE_INFINITY) {
             return Float.POSITIVE_INFINITY;
@@ -76,7 +120,15 @@ public final class ClusterCullReference {
     }
 
     /**
-     * One pass over every cluster, appending to {@code out} (cleared first). {@code hzb} may be null to skip the occlusion test.
+     * Makes one pass over every cluster, appending the survivors to {@code out} (cleared first).
+     *
+     * <p>{@code hzb} may be null to skip the occlusion test.
+     *
+     * @param view the view; must not be {@code null}
+     * @param clusters the clusters; must not be {@code null}
+     * @param hzb the hzb; may be {@code null}
+     * @param out receives the result; must not be {@code null}
+     * @param counters the counters; must not be {@code null}
      */
     public static void cull(MemorySegment view, MemorySegment clusters, HiZPyramid hzb, DrawCommandBuffer out, Counters counters) {
         int n = GpuWriter.getInt(view, ClusterCullViewGpu.OFFSET_CLUSTER_COUNT);

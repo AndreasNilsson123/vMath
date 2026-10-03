@@ -4,7 +4,10 @@ import java.lang.foreign.MemorySegment;
 import vmath.geo.DepthRange;
 import vmath.gl.GpuWriter;
 
-/** The parts of a view block that the Hi-Z box test needs, read once per pass instead of once per object. */
+/**
+ * The parts of a view block that the Hi-Z box test needs, read once per pass instead of once per
+ * object.
+ */
 final class HizState {
 
     private static final DepthRange[] RANGES = DepthRange.values(); // values() clones its array on every call

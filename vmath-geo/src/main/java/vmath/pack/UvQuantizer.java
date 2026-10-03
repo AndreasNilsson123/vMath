@@ -3,12 +3,26 @@ package vmath.pack;
 import vmath.annotations.Experimental;
 
 /**
- * Texture-coordinate quantization onto a grid of {@code 2^bits} levels per axis inside a rectangle, for 1 to 16 bits. A set of UVs that stays inside {@code [0, 1]} fits the
- * unit rectangle (a plain unorm16 or unorm12 is then enough); UVs that tile or wrap need a rectangle that covers their range. {@link #fit} finds it from the data.
- * The error is half a step, {@code extent / (2 * (2^bits - 1))}, per axis: 7.6e-6 of the extent at 16 bits, and 1.2e-4 at 12.
+ * Texture-coordinate quantization onto a grid of {@code 2^bits} levels per axis inside a rectangle,
+ * for 1 to 16 bits.
  *
- * <p><b>Thread safety.</b> Immutable after construction, so it can be shared between threads freely. The arrays it hands out are its own storage: do
- * not modify them.
+ * <p>A set of UVs that stays inside {@code [0, 1]} fits the unit rectangle (a plain unorm16 or
+ * unorm12 is then enough); UVs that tile or wrap need a rectangle that covers their range.
+ * {@link #fit} finds it from the data. The error is half a step,
+ * {@code extent / (2 * (2^bits - 1))}, per axis: 7.6e-6 of the extent at 16 bits, and 1.2e-4 at 12.
+ *
+ * <p><b>Thread safety.</b> Immutable after construction, so it can be shared between threads
+ * freely. The arrays it hands out are its own storage: do not modify them.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * float[] uv = {0.1f, 0.2f, 0.9f, 0.8f};
+ * UvQuantizer quantizer = UvQuantizer.fit(uv, 2, 16);                    // the smallest rectangle around the coordinates
+ * short[] packed = new short[2];
+ * quantizer.pack(0.5f, 0.5f, packed, 0);
+ * float u = quantizer.unpackU(packed[0] & 0xFFFF);
+ * }</pre>
  */
 @Experimental("the set of helpers may grow")
 public final class UvQuantizer {
@@ -20,7 +34,18 @@ public final class UvQuantizer {
     private final int bits;
     private final int levels;
 
-    /** A quantizer for the rectangle {@code [minU, maxU] x [minV, maxV]}, which must not be inverted or contain non-finite values. */
+    /**
+     * Creates a quantizer for the rectangle {@code [minU, maxU] x [minV, maxV]}, which must not be
+     * inverted or contain non-finite values.
+     *
+     * @param minU the min u
+     * @param minV the min v
+     * @param maxU the max u
+     * @param maxV the max v
+     * @param bits the number of bits
+     * @throws IllegalArgumentException if the rectangle is not finite or is inverted, or
+     *     {@code bits} is not in {@code [1, 16]}
+     */
     public UvQuantizer(float minU, float minV, float maxU, float maxV, int bits) {
         if (!(maxU >= minU && maxV >= minV) || !Float.isFinite(minU + maxU + minV + maxV)) {
             throw new IllegalArgumentException("the rectangle must be finite and not inverted");
@@ -36,7 +61,17 @@ public final class UvQuantizer {
         this.levels = (1 << bits) - 1;
     }
 
-    /** The quantizer for the smallest rectangle around the first {@code count} pairs of {@code uv} ({@code u, v, u, v, ...}); {@code [0, 1]} if there are none. */
+    /**
+     * Fits a quantizer to the bounds of a set of texture coordinates, with a unit square as the
+     * fallback for an empty set.
+     *
+     * @param uv the coordinates as {@code u, v} pairs
+     * @param count the number of elements
+     * @param bits the number of bits
+     * @return the quantizer for the smallest rectangle around the first {@code count} pairs of
+     *     {@code uv} ({@code u, v, u, v, ...}); {@code [0, 1]} if there are none
+     * @throws IllegalArgumentException if a coordinate is not finite
+     */
     public static UvQuantizer fit(float[] uv, int count, int bits) {
         if (count <= 0) {
             return new UvQuantizer(0f, 0f, 1f, 1f, bits);
@@ -55,68 +90,130 @@ public final class UvQuantizer {
         return new UvQuantizer(u0, v0, u1, v1, bits);
     }
 
-    /** The number of bits per coordinate. */
+    /**
+     * Exposes the bit count per coordinate.
+     *
+     * @return the number of bits per coordinate
+     */
     public int bits() {
         return bits;
     }
 
-    /** The smallest u the rectangle covers. */
+    /**
+     * Exposes the lower u bound of the covered rectangle.
+     *
+     * @return the smallest u the rectangle covers
+     */
     public float minU() {
         return minU;
     }
 
-    /** The smallest v the rectangle covers. */
+    /**
+     * Exposes the lower v bound of the covered rectangle.
+     *
+     * @return the smallest v the rectangle covers
+     */
     public float minV() {
         return minV;
     }
 
-    /** The extent of the rectangle in u. */
+    /**
+     * Exposes the u extent of the covered rectangle.
+     *
+     * @return the extent of the rectangle in u
+     */
     public float sizeU() {
         return sizeU;
     }
 
-    /** The extent of the rectangle in v. */
+    /**
+     * Exposes the v extent of the covered rectangle.
+     *
+     * @return the extent of the rectangle in v
+     */
     public float sizeV() {
         return sizeV;
     }
 
-    /** The largest code, {@code 2^bits - 1}. */
+    /**
+     * Computes the largest code from the bit count.
+     *
+     * @return the largest code, {@code 2^bits - 1}
+     */
     public int levels() {
         return levels;
     }
 
-    /** The code of {@code u} (clamped to the rectangle). */
+    /**
+     * Quantizes a u coordinate to a code by scaling it to the rectangle and rounding; values
+     * outside the rectangle are clamped.
+     *
+     * @param u the u coordinate
+     * @return the code of {@code u} (clamped to the rectangle)
+     */
     public int quantizeU(float u) {
         return sizeU > 0f ? Quantize.unorm((u - minU) / sizeU, bits) : 0;
     }
 
-    /** The code of {@code v} (clamped to the rectangle). */
+    /**
+     * Quantizes a v coordinate to a code by scaling it to the rectangle and rounding; values
+     * outside the rectangle are clamped.
+     *
+     * @param v the v coordinate
+     * @return the code of {@code v} (clamped to the rectangle)
+     */
     public int quantizeV(float v) {
         return sizeV > 0f ? Quantize.unorm((v - minV) / sizeV, bits) : 0;
     }
 
-    /** Writes the two codes of {@code (u, v)} to {@code dst[offset]} and {@code dst[offset + 1]} as unsigned 16-bit values. */
+    /**
+     * Writes the two codes of {@code (u, v)} to {@code dst[offset]} and {@code dst[offset + 1]} as
+     * unsigned 16-bit values.
+     *
+     * @param u the u coordinate
+     * @param v the v coordinate
+     * @param dst receives the result
+     * @param offset the index of the first element to read or write
+     */
     public void pack(float u, float v, short[] dst, int offset) {
         dst[offset] = (short) quantizeU(u);
         dst[offset + 1] = (short) quantizeV(v);
     }
 
-    /** The u that {@code code} stands for. */
+    /**
+     * Dequantizes a code to a u coordinate.
+     *
+     * @param code the code
+     * @return the u that {@code code} stands for
+     */
     public float unpackU(int code) {
         return minU + (float) ((double) (code & levels) / levels * sizeU);
     }
 
-    /** The v that {@code code} stands for. */
+    /**
+     * Dequantizes a code to a v coordinate.
+     *
+     * @param code the code
+     * @return the v that {@code code} stands for
+     */
     public float unpackV(int code) {
         return minV + (float) ((double) (code & levels) / levels * sizeV);
     }
 
-    /** The largest error in u for points inside the rectangle. */
+    /**
+     * Computes the worst-case quantisation error in u, which is half a step.
+     *
+     * @return the largest error in u for points inside the rectangle
+     */
     public float maxErrorU() {
         return sizeU / (2f * levels);
     }
 
-    /** The largest error in v for points inside the rectangle. */
+    /**
+     * Computes the worst-case quantisation error in v, which is half a step.
+     *
+     * @return the largest error in v for points inside the rectangle
+     */
     public float maxErrorV() {
         return sizeV / (2f * levels);
     }

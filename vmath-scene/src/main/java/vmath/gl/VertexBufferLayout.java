@@ -7,9 +7,13 @@ import java.util.Set;
 import vmath.annotations.Experimental;
 
 /**
- * The layout of one interleaved vertex buffer: named attributes with their shader locations, formats and byte offsets, and the stride. It turns into what each API
- * wants: {@link #glFormats} (the arguments of {@code glVertexAttribFormat} / {@code glVertexAttribIFormat} for one binding), {@link #vkAttributes} and
- * {@link #vkBinding} (the Vulkan vertex input structs' values) and {@link #glslInputs} (the {@code layout(location = n) in ...} declarations), so the three cannot
+ * The layout of one interleaved vertex buffer: named attributes with their shader locations,
+ * formats and byte offsets, and the stride.
+ *
+ * <p>It turns into what each API wants: {@link #glFormats} (the arguments of
+ * {@code glVertexAttribFormat} / {@code glVertexAttribIFormat} for one binding),
+ * {@link #vkAttributes} and {@link #vkBinding} (the Vulkan vertex input structs' values) and
+ * {@link #glslInputs} (the {@code layout(location = n) in ...} declarations), so the three cannot
  * disagree about an offset.
  *
  * <pre>{@code
@@ -20,28 +24,60 @@ import vmath.annotations.Experimental;
  *         .build();   // offsets 0, 12, 16; stride 20
  * }</pre>
  *
- * <p>Attributes are placed one after another, each aligned to its component size; the stride is rounded up to a multiple of 4. Use {@code attributeAt} to put an
- * attribute at a given offset (to match a buffer that was written by other code).
+ * <p>Attributes are placed one after another, each aligned to its component size; the stride is
+ * rounded up to a multiple of 4. Use {@code attributeAt} to put an attribute at a given offset (to
+ * match a buffer that was written by other code).
  *
- * <p><b>Thread safety.</b> Immutable after construction, so it can be shared between threads freely. The arrays it hands out are its own storage: do
- * not modify them.
+ * <p><b>Thread safety.</b> Immutable after construction, so it can be shared between threads
+ * freely. The arrays it hands out are its own storage: do not modify them.
  */
 @Experimental("the description may gain binding and divisor details")
 public final class VertexBufferLayout {
 
-    /** One attribute: its shader input name, location, format and byte offset in the vertex. */
+    /**
+     * One attribute: its shader input name, location, format and byte offset in the vertex.
+     *
+     * @param name the name; must not be {@code null}
+     * @param location the location
+     * @param format the format; must not be {@code null}
+     * @param offset the index of the first element to read or write
+     */
     public record Attribute(String name, int location, VertexFormat format, int offset) {
     }
 
-    /** The arguments of {@code glVertexAttribFormat} (or {@code glVertexAttribIFormat} when {@code integer}) for one attribute; the offset is {@code relativeOffset}. */
+    /**
+     * The arguments of {@code glVertexAttribFormat} (or {@code glVertexAttribIFormat} when
+     * {@code integer}) for one attribute; the offset is {@code relativeOffset}.
+     *
+     * @param location the location
+     * @param size the size
+     * @param type the type
+     * @param normalized whether normalized
+     * @param integer whether integer
+     * @param relativeOffset the relative offset
+     */
     public record GlFormat(int location, int size, int type, boolean normalized, boolean integer, int relativeOffset) {
     }
 
-    /** The values of one {@code VkVertexInputAttributeDescription}. */
+    /**
+     * The values of one {@code VkVertexInputAttributeDescription}.
+     *
+     * @param location the location
+     * @param binding the binding
+     * @param format the format
+     * @param offset the index of the first element to read or write
+     */
     public record VkAttribute(int location, int binding, int format, int offset) {
     }
 
-    /** The values of one {@code VkVertexInputBindingDescription}; {@code perInstance} selects {@code VK_VERTEX_INPUT_RATE_INSTANCE}. */
+    /**
+     * The values of one {@code VkVertexInputBindingDescription}; {@code perInstance} selects
+     * {@code VK_VERTEX_INPUT_RATE_INSTANCE}.
+     *
+     * @param binding the binding
+     * @param stride the distance between consecutive elements
+     * @param perInstance whether per instance
+     */
     public record VkBinding(int binding, int stride, boolean perInstance) {
     }
 
@@ -55,27 +91,50 @@ public final class VertexBufferLayout {
         this.perInstance = perInstance;
     }
 
-    /** A builder for a layout; attributes are laid out in the order they are added. */
+    /**
+     * Starts a builder for a vertex layout; attributes are packed in the order they are added.
+     *
+     * @return a builder for a layout; attributes are laid out in the order they are added
+     */
     public static Builder builder() {
         return new Builder();
     }
 
-    /** The attributes in memory order. */
+    /**
+     * Exposes the attributes in memory order.
+     *
+     * @return the attributes in memory order
+     */
     public List<Attribute> attributes() {
         return attributes;
     }
 
-    /** Bytes from one vertex to the next. */
+    /**
+     * Exposes the distance between consecutive vertices.
+     *
+     * @return bytes from one vertex to the next
+     */
     public int stride() {
         return stride;
     }
 
-    /** {@code true} if the buffer advances per instance (divisor 1 in OpenGL, instance input rate in Vulkan) rather than per vertex. */
+    /**
+     * Returns {@code true} if the buffer advances per instance (divisor 1 in OpenGL, instance input
+     * rate in Vulkan) rather than per vertex.
+     *
+     * @return {@code true} if the buffer advances per instance, {@code false} if per vertex
+     */
     public boolean perInstance() {
         return perInstance;
     }
 
-    /** The attribute with this name. */
+    /**
+     * Looks up an attribute by name; unknown names are rejected.
+     *
+     * @param name the name; must not be {@code null}
+     * @return the attribute with this name
+     * @throws IllegalArgumentException if the layout has no attribute of that name
+     */
     public Attribute attribute(String name) {
         for (Attribute a : attributes) {
             if (a.name().equals(name)) {
@@ -85,7 +144,12 @@ public final class VertexBufferLayout {
         throw new IllegalArgumentException("no attribute '" + name + "'");
     }
 
-    /** Arguments for the OpenGL 4.3 {@code glVertexAttribFormat} family, in attribute order. */
+    /**
+     * Converts the layout to the arguments of the OpenGL 4.3 attribute format calls, one entry per
+     * attribute.
+     *
+     * @return arguments for the OpenGL 4.3 {@code glVertexAttribFormat} family, in attribute order
+     */
     public List<GlFormat> glFormats() {
         List<GlFormat> out = new ArrayList<>();
         for (Attribute a : attributes) {
@@ -95,7 +159,13 @@ public final class VertexBufferLayout {
         return out;
     }
 
-    /** The Vulkan attribute descriptions for a buffer bound at {@code binding}. */
+    /**
+     * Converts the layout to Vulkan attribute descriptions for a vertex buffer bound at a given
+     * binding.
+     *
+     * @param binding the binding
+     * @return the Vulkan attribute descriptions for a buffer bound at {@code binding}
+     */
     public List<VkAttribute> vkAttributes(int binding) {
         List<VkAttribute> out = new ArrayList<>();
         for (Attribute a : attributes) {
@@ -104,12 +174,23 @@ public final class VertexBufferLayout {
         return out;
     }
 
-    /** The Vulkan binding description for a buffer bound at {@code binding}. */
+    /**
+     * Converts the layout to the Vulkan binding description for a vertex buffer bound at a given
+     * binding.
+     *
+     * @param binding the binding
+     * @return the Vulkan binding description for a buffer bound at {@code binding}
+     */
     public VkBinding vkBinding(int binding) {
         return new VkBinding(binding, stride, perInstance);
     }
 
-    /** The vertex shader input declarations, one line per attribute: {@code layout(location = 0) in vec3 position;}. */
+    /**
+     * Generates the vertex shader input declarations that match the layout, as source text.
+     *
+     * @return the vertex shader input declarations, one line per attribute:
+     *     {@code layout(location = 0) in vec3 position;}
+     */
     public String glslInputs() {
         StringBuilder sb = new StringBuilder();
         for (Attribute a : attributes) {
@@ -118,7 +199,9 @@ public final class VertexBufferLayout {
         return sb.toString();
     }
 
-    /** Fluent builder for {@link VertexBufferLayout}. */
+    /**
+     * Fluent builder for {@link VertexBufferLayout}.
+     */
     public static final class Builder {
         private final List<Attribute> list = new ArrayList<>();
         private final Set<String> names = new HashSet<>();
@@ -130,13 +213,32 @@ public final class VertexBufferLayout {
         private Builder() {
         }
 
-        /** Adds an attribute after the previous one, aligned to its component size. */
+        /**
+         * Adds an attribute after the previous one, aligned to its component size.
+         *
+         * @param name the name; must not be {@code null}
+         * @param location the location
+         * @param format the format; must not be {@code null}
+         * @return this builder, for chaining
+         */
         public Builder attribute(String name, int location, VertexFormat format) {
             int a = format.alignment();
             return attributeAt(name, location, format, (cursor + a - 1) / a * a);
         }
 
-        /** Adds an attribute at an explicit byte offset (a multiple of the component size). Later {@code attribute} calls continue after it. */
+        /**
+         * Adds an attribute at an explicit byte offset (a multiple of the component size).
+         *
+         * <p>Later {@code attribute} calls continue after it.
+         *
+         * @param name the name; may be {@code null}
+         * @param location the location
+         * @param format the format; must not be {@code null}
+         * @param offset the index of the first element to read or write
+         * @return this builder, for chaining
+         * @throws IllegalArgumentException if the name is missing or duplicate, the location is
+         *     invalid or duplicate, or the offset is not a multiple of the component size
+         */
         public Builder attributeAt(String name, int location, VertexFormat format, int offset) {
             if (name == null || name.isBlank()) {
                 throw new IllegalArgumentException("an attribute needs a name");
@@ -156,13 +258,22 @@ public final class VertexBufferLayout {
             return this;
         }
 
-        /** Marks the buffer as advancing per instance rather than per vertex. */
+        /**
+         * Marks the buffer as advancing per instance rather than per vertex.
+         *
+         * @return this builder, for chaining
+         */
         public Builder perInstance() {
             perInstance = true;
             return this;
         }
 
-        /** Builds the layout; {@link IllegalStateException} when no attribute was added. */
+        /**
+         * Builds the layout; {@link IllegalStateException} when no attribute was added.
+         *
+         * @return the layout, never {@code null}
+         * @throws IllegalStateException if no attribute was added
+         */
         public VertexBufferLayout build() {
             if (list.isEmpty()) {
                 throw new IllegalStateException("a vertex buffer layout needs at least one attribute");
@@ -170,7 +281,15 @@ public final class VertexBufferLayout {
             return new VertexBufferLayout(list, (minStride + 3) & ~3, perInstance);
         }
 
-        /** Builds with an explicit stride, for buffers whose vertices are padded beyond the attributes. */
+        /**
+         * Builds with an explicit stride, for buffers whose vertices are padded beyond the
+         * attributes.
+         *
+         * @param stride the distance between consecutive elements
+         * @return the layout, never {@code null}
+         * @throws IllegalStateException if no attribute was added
+         * @throws IllegalArgumentException if {@code stride} is smaller than the attributes need
+         */
         public VertexBufferLayout build(int stride) {
             if (list.isEmpty()) {
                 throw new IllegalStateException("a vertex buffer layout needs at least one attribute");

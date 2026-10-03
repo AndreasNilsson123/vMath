@@ -9,31 +9,44 @@ import vmath.spatial.CullContext;
 import vmath.spatial.CullStage;
 
 /**
- * A {@link CullStage} that keeps only the objects that can throw a shadow onto what the camera sees in one cascade.
+ * A {@link CullStage} that keeps only the objects that can throw a shadow onto what the camera sees
+ * in one cascade.
  *
- * <p>A cascade's own frustum ({@link Cascade#frustum()}) is the volume the shadow map covers: a box around the slice, pushed toward
- * the light by the caster distance. That is the right volume for <em>rendering</em> the map, but it is much bigger than
- * necessary for <em>deciding what to render</em>, because a stabilised cascade is fitted around the slice's bounding sphere.
- * This stage tests each object against the slice itself: in light space the light travels straight down, so an object can only
- * shadow the slice if
+ * <p>A cascade's own frustum ({@link Cascade#frustum()}) is the volume the shadow map covers: a box
+ * around the slice, pushed toward the light by the caster distance. That is the right volume for
+ * <em>rendering</em> the map, but it is much bigger than necessary for <em>deciding what to
+ * render</em>, because a stabilised cascade is fitted around the slice's bounding sphere. This
+ * stage tests each object against the slice itself: in light space the light travels straight down,
+ * so an object can only shadow the slice if
  * <ul>
- *   <li>its footprint (its box's extent along the light's two sideways axes) overlaps the slice's footprint, and</li>
- *   <li>it is not entirely on the far side of the slice: some part of it is at least as close to the light as the slice's most
- *       distant point.</li>
- * </ul>
- * Both tests use axis-aligned boxes in light space, so they are conservative: an object that shadows any point of the slice is
- * never removed (the tests check this by sampling shadow rays). {@code margin} widens the footprint test by a light-space distance,
- * typically the shadow filter radius, so that blurred penumbrae are not clipped.
+ *   <li>its footprint (its box's extent along the light's two sideways axes) overlaps the slice's
+ *       footprint, and</li>
+ *   <li>it is not entirely on the far side of the slice: some part of it is at least as close to
+ *       the light as the slice's most distant point.</li>
+ * </ul> Both tests use axis-aligned boxes in light space, so they are conservative: an object that
+ * shadows any point of the slice is never removed (the tests check this by sampling shadow rays).
+ * {@code margin} widens the footprint test by a light-space distance, typically the shadow filter
+ * radius, so that blurred penumbrae are not clipped.
  *
- * <p>The stage does not look at the depth range of the shadow map. Combine it with a frustum stage fed with
- * {@link Cascade#frustum()} (through the {@link CullContext}) to also drop casters beyond the map's near plane:
- * {@code CullPipeline.of(new CullStages.Frustum(), new CascadeCasters(camera, cascade, margin))}, run with a context whose frustum
- * is the cascade's.
+ * <p>The stage does not look at the depth range of the shadow map. Combine it with a frustum stage
+ * fed with {@link Cascade#frustum()} (through the {@link CullContext}) to also drop casters beyond
+ * the map's near plane:
+ * {@code CullPipeline.of(new CullStages.Frustum(), new CascadeCasters(camera, cascade, margin))},
+ * run with a context whose frustum is the cascade's.
  *
  * <p>Instances are immutable; {@code cull} allocates nothing.
  *
- * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time. The arrays and buffers you pass in are
- * not synchronised, so two threads must not write the same one.
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the
+ * same time. The arrays and buffers you pass in are not synchronised, so two threads must not write
+ * the same one.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * Cameraf camera = Cameraf.lookingAt(new Vec3f(0f, 5f, 10f), Vec3f.ZERO, Vec3f.UNIT_Y, 1f, 1.5f, 0.1f, 200f, DepthRange.of(ClipSpace.OPENGL));
+ * Cascades.Cascade cascade = Cascades.fit(camera, 0.1f, 30f, new Vec3f(0.3f, -1f, 0.2f), 2048, true, 100f, DepthRange.of(ClipSpace.OPENGL));
+ * CullStage casters = new CascadeCasters(camera, cascade, 1f);               // keeps what can cast a shadow into the slice
+ * }</pre>
  */
 public final class CascadeCasters implements CullStage {
 
@@ -59,7 +72,15 @@ public final class CascadeCasters implements CullStage {
     private final float sliceMaxY;
 
     /**
-     * A stage for {@code cascade}, cut from {@code camera}'s view. {@code margin} (at least 0, a light-space distance such as the shadow filter radius) widens the footprint test.
+     * Creates a stage for {@code cascade}, cut from {@code camera}'s view.
+     *
+     * <p>{@code margin} (at least 0, a light-space distance such as the shadow filter radius)
+     * widens the footprint test.
+     *
+     * @param camera the camera; must not be {@code null}
+     * @param cascade the cascade; must not be {@code null}
+     * @param margin the margin
+     * @throws IllegalArgumentException if {@code margin} is negative
      */
     public CascadeCasters(Cameraf camera, Cascade cascade, float margin) {
         if (!(margin >= 0f)) {

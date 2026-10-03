@@ -5,23 +5,44 @@ import vmath.annotations.Experimental;
 import vmath.core.Predicates;
 
 /**
- * Polygon utilities on plain {@code float[]} vertex arrays: the orientation and area of a polygon, point containment, a simplicity test, ear-clipping triangulation (of
- * simple polygons, with holes, and of planar polygons in 3D) and Sutherland-Hodgman clipping against a half-plane or a convex polygon.
+ * Polygon utilities on plain {@code float[]} vertex arrays: the orientation and area of a polygon,
+ * point containment, a simplicity test, ear-clipping triangulation (of simple polygons, with holes,
+ * and of planar polygons in 3D) and Sutherland-Hodgman clipping against a half-plane or a convex
+ * polygon.
  *
- * <p>A 2D polygon is {@code count} vertices stored as {@code x0, y0, x1, y1, ...}, without repeating the first vertex at the end; a 3D polygon is stored as
- * {@code x, y, z} triples. <b>Counter-clockwise</b> means counter-clockwise with x to the right and y up. Every decision that could flip on rounding (which way a polygon
- * turns, whether a vertex is convex, whether a point lies inside a triangle or on which side of an edge) is made with the exact {@link Predicates#orient2d} on the float
- * coordinates, which convert to double exactly: so a collinear triple is reliably collinear and a polygon is never mistaken for its mirror image. Areas and the
- * coordinates of clip intersections are computed in double and rounded to float at the end.
+ * <p>A 2D polygon is {@code count} vertices stored as {@code x0, y0, x1, y1, ...}, without
+ * repeating the first vertex at the end; a 3D polygon is stored as {@code x, y, z} triples.
+ * <b>Counter-clockwise</b> means counter-clockwise with x to the right and y up. Every decision
+ * that could flip on rounding (which way a polygon turns, whether a vertex is convex, whether a
+ * point lies inside a triangle or on which side of an edge) is made with the exact
+ * {@link Predicates#orient2d} on the float coordinates, which convert to double exactly: so a
+ * collinear triple is reliably collinear and a polygon is never mistaken for its mirror image.
+ * Areas and the coordinates of clip intersections are computed in double and rounded to float at
+ * the end.
  *
- * <p><b>Triangulation</b> clips ears from a doubly linked ring of vertices; a vertex whose two edges are collinear is removed without emitting a triangle, which can leave a
- * T-junction along that edge but never changes the area. Holes are joined to the outer ring by bridges (Eberly's method, as in the earcut library), after which the ring is clipped like
- * a simple polygon; the triangles index the <em>original</em> vertices and a bridge vertex appears in more triangles than an ordinary one. The result is only defined for
- * polygons that are simple (the boundary does not cross or touch itself, holes are inside the outer ring and do not overlap): for others the method returns -1 when it gets stuck,
- * and otherwise may return triangles that do not tile the region; {@link #isSimple} tests the first condition exactly. It is O(n^2) in the worst case, which is fine for
- * polygons of hundreds of vertices and slow for hundreds of thousands.
+ * <p><b>Triangulation</b> clips ears from a doubly linked ring of vertices; a vertex whose two
+ * edges are collinear is removed without emitting a triangle, which can leave a T-junction along
+ * that edge but never changes the area. Holes are joined to the outer ring by bridges (Eberly's
+ * method, as in the earcut library), after which the ring is clipped like a simple polygon; the
+ * triangles index the <em>original</em> vertices and a bridge vertex appears in more triangles than
+ * an ordinary one. The result is only defined for polygons that are simple (the boundary does not
+ * cross or touch itself, holes are inside the outer ring and do not overlap): for others the method
+ * returns -1 when it gets stuck, and otherwise may return triangles that do not tile the region;
+ * {@link #isSimple} tests the first condition exactly. It is O(n^2) in the worst case, which is
+ * fine for polygons of hundreds of vertices and slow for hundreds of thousands.
  *
- * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time. The arrays you pass in are not synchronised.
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the
+ * same time. The arrays you pass in are not synchronised.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * float[] square = {0f, 0f, 1f, 0f, 1f, 1f, 0f, 1f};                  // x, y pairs, counter-clockwise
+ * double area = Polygons.signedArea(square, 4);                        // 1
+ * boolean inside = Polygons.contains(square, 4, 0.5f, 0.5f);
+ * int[] triangles = new int[3 * (4 - 2)];
+ * int count = Polygons.triangulate(square, 4, triangles);              // 2 triangles, as vertex index triples
+ * }</pre>
  */
 @Experimental("the set of operations may grow (constrained and Delaunay triangulation, polygon boolean operations)")
 public final class Polygons {
@@ -31,7 +52,16 @@ public final class Polygons {
 
     // ---------------------------------------------------------------- orientation, area, containment
 
-    /** The signed area of a 2D polygon: positive when it is counter-clockwise. Computed in double; for a self-intersecting polygon it is the signed sum of its loops. */
+    /**
+     * Computes the signed area of a polygon with the shoelace formula; the sign tells the winding,
+     * and the polygon must not self-intersect for the value to be an area.
+     *
+     * <p>Computed in double; for a self-intersecting polygon it is the signed sum of its loops.
+     *
+     * @param xy the vertices as {@code x, y} pairs
+     * @param count the number of elements
+     * @return the signed area of a 2D polygon: positive when it is counter-clockwise
+     */
     public static double signedArea(float[] xy, int count) {
         checkPolygon(xy, count, 2);
         double sum = 0.0;
@@ -42,8 +72,15 @@ public final class Polygons {
     }
 
     /**
-     * The winding of a simple 2D polygon: 1 counter-clockwise, -1 clockwise, 0 when it has no area (all vertices collinear, or fewer than three). Decided exactly with the
-     * orientation at the lowest-leftmost vertex, which is always a convex vertex of a simple polygon, so it does not depend on the rounding of an area sum.
+     * Classifies the winding direction of a polygon from the sign of its area.
+     *
+     * <p>Decided exactly with the orientation at the lowest-leftmost vertex, which is always a
+     * convex vertex of a simple polygon, so it does not depend on the rounding of an area sum.
+     *
+     * @param xy the vertices as {@code x, y} pairs
+     * @param count the number of elements
+     * @return the winding of a simple 2D polygon: 1 counter-clockwise, -1 clockwise, 0 when it has
+     *     no area (all vertices collinear, or fewer than three)
      */
     public static int winding(float[] xy, int count) {
         checkPolygon(xy, count, 2);
@@ -77,8 +114,17 @@ public final class Polygons {
     }
 
     /**
-     * Whether the point is inside a 2D polygon or on its boundary, by the nonzero winding rule (for a simple polygon every point of the interior has winding &plusmn;1). The
-     * crossing decisions are exact.
+     * Returns whether the point is inside a 2D polygon or on its boundary, by the nonzero winding
+     * rule (for a simple polygon every point of the interior has winding &plusmn;1).
+     *
+     * <p>The crossing decisions are exact.
+     *
+     * @param xy the vertices as {@code x, y} pairs
+     * @param count the number of elements
+     * @param px the x coordinate of the point
+     * @param py the y coordinate of the point
+     * @return {@code true} if the point is inside a 2D polygon or on its boundary, by the nonzero
+     *     winding rule (for a simple polygon every point of the interior has winding &plusmn;1)
      */
     public static boolean contains(float[] xy, int count, float px, float py) {
         checkPolygon(xy, count, 2);
@@ -101,8 +147,17 @@ public final class Polygons {
     }
 
     /**
-     * Whether the polygon is simple: no two edges that are not neighbours share a point, and neighbouring edges meet only at their common vertex (so no repeated vertex and no
-     * vertex touching an edge). The test is exact and O(n^2).
+     * Returns whether the polygon is simple: no two edges that are not neighbours share a point,
+     * and neighbouring edges meet only at their common vertex (so no repeated vertex and no vertex
+     * touching an edge).
+     *
+     * <p>The test is exact and O(n^2).
+     *
+     * @param xy the vertices as {@code x, y} pairs
+     * @param count the number of elements
+     * @return {@code true} if the polygon is simple: no two edges that are not neighbours share a
+     *     point, and neighbouring edges meet only at their common vertex (so no repeated vertex and
+     *     no vertex touching an edge)
      */
     public static boolean isSimple(float[] xy, int count) {
         checkPolygon(xy, count, 2);
@@ -145,7 +200,9 @@ public final class Polygons {
         return (o1 == 0.0 && onSegment(p, a, b, c)) || (o2 == 0.0 && onSegment(p, a, b, d)) || (o3 == 0.0 && onSegment(p, c, d, a)) || (o4 == 0.0 && onSegment(p, c, d, b));
     }
 
-    /** Whether point {@code q}, known to be collinear with {@code a-b}, lies within the segment. */
+    /**
+     * Whether point {@code q}, known to be collinear with {@code a-b}, lies within the segment.
+     */
     private static boolean onSegment(float[] p, int a, int b, int q) {
         return Math.min(p[2 * a], p[2 * b]) <= p[2 * q] && p[2 * q] <= Math.max(p[2 * a], p[2 * b])
                 && Math.min(p[2 * a + 1], p[2 * b + 1]) <= p[2 * q + 1] && p[2 * q + 1] <= Math.max(p[2 * a + 1], p[2 * b + 1]);
@@ -160,19 +217,36 @@ public final class Polygons {
     // ---------------------------------------------------------------- triangulation
 
     /**
-     * Triangulates a simple 2D polygon (either winding) by ear clipping and writes the triangles as vertex index triples, counter-clockwise, to {@code out}. Returns the number
-     * of triangles, at most {@code count - 2}; {@code out} needs {@code 3 * (count - 2)} ints. Returns -1 when the polygon cannot be triangulated (fewer than three vertices, or
-     * no ear can be found because the polygon is not simple or has no area).
+     * Triangulates a simple 2D polygon (either winding) by ear clipping and writes the triangles as
+     * vertex index triples, counter-clockwise, to {@code out}.
+     *
+     * <p>Returns the number of triangles, at most {@code count - 2}; {@code out} needs
+     * {@code 3 * (count - 2)} ints. Returns -1 when the polygon cannot be triangulated (fewer than
+     * three vertices, or no ear can be found because the polygon is not simple or has no area).
+     *
+     * @param xy the vertices as {@code x, y} pairs
+     * @param count the number of elements
+     * @param out receives the result
+     * @return the number of triangles, at most {@code count - 2}
      */
     public static int triangulate(float[] xy, int count, int[] out) {
         return triangulate(xy, new int[] {count}, out);
     }
 
     /**
-     * Triangulates a polygon with holes. The vertices of all rings are in {@code xy} one after the other, {@code ringEnds[i]} being the vertex index at which ring {@code i} ends
-     * (so ring 0, the outer boundary, is vertices {@code 0 .. ringEnds[0] - 1}); the rings may have either winding. The triangles are written to {@code out} as index
-     * triples into {@code xy}, counter-clockwise, and their number is returned; {@code out} needs {@code 3 * (total vertices + 2 * holes - 2)} ints. Returns -1 when no
-     * triangulation was found (see the class comment).
+     * Triangulates a polygon with holes.
+     *
+     * <p>The vertices of all rings are in {@code xy} one after the other, {@code ringEnds[i]} being
+     * the vertex index at which ring {@code i} ends (so ring 0, the outer boundary, is vertices
+     * {@code 0 .. ringEnds[0] - 1}); the rings may have either winding. The triangles are written
+     * to {@code out} as index triples into {@code xy}, counter-clockwise, and their number is
+     * returned; {@code out} needs {@code 3 * (total vertices + 2 * holes - 2)} ints. Returns -1
+     * when no triangulation was found (see the class comment).
+     *
+     * @param xy the vertices as {@code x, y} pairs
+     * @param ringEnds the ring ends (at least 1 elements)
+     * @param out receives the result
+     * @return -1 when no triangulation was found (see the class comment)
      */
     public static int triangulate(float[] xy, int[] ringEnds, int[] out) {
         int total = ringEnds[ringEnds.length - 1];
@@ -193,8 +267,18 @@ public final class Polygons {
     }
 
     /**
-     * Triangulates a planar polygon in 3D ({@code x, y, z} triples): the polygon is projected along the dominant axis of its Newell normal and triangulated there; the triangles
-     * are counter-clockwise seen from the side the Newell normal points to, and index the original vertices. Same contract and return value as the 2D method.
+     * Triangulates a planar polygon in 3D ({@code x, y, z} triples): the polygon is projected along
+     * the dominant axis of its Newell normal and triangulated there; the triangles are
+     * counter-clockwise seen from the side the Newell normal points to, and index the original
+     * vertices.
+     *
+     * <p>Same contract and return value as the 2D method.
+     *
+     * @param xyz the three components
+     * @param count the number of elements
+     * @param out receives the result
+     * @return the number of triangles written, or -1 if the polygon cannot be triangulated (same
+     *     contract as the 2D method)
      */
     public static int triangulate3(float[] xyz, int count, int[] out) {
         checkPolygon(xyz, count, 3);
@@ -223,7 +307,10 @@ public final class Polygons {
         return triangulate(xy, count, out);
     }
 
-    /** A doubly linked ring of vertices for ear clipping, in arrays; node indices are not vertex indices because bridges duplicate vertices. */
+    /**
+     * A doubly linked ring of vertices for ear clipping, in arrays; node indices are not vertex
+     * indices because bridges duplicate vertices.
+     */
     private static final class Ring {
         final float[] xy;
         final int[] vertex;
@@ -246,7 +333,9 @@ public final class Polygons {
             return xy[2 * vertex[n] + 1];
         }
 
-        /** Orientation of the nodes a, b, c: positive when they turn counter-clockwise (exact). */
+        /**
+         * Orientation of the nodes a, b, c: positive when they turn counter-clockwise (exact).
+         */
         double orient(int a, int b, int c) {
             return Predicates.orient2d(x(a), y(a), x(b), y(b), x(c), y(c));
         }
@@ -255,7 +344,10 @@ public final class Polygons {
             return x(a) == x(b) && y(a) == y(b);
         }
 
-        /** Builds the ring of vertices {@code from .. to - 1} as counter-clockwise ({@code ccw}) or clockwise; returns a node of it, or -1 for fewer than three vertices. */
+        /**
+         * Builds the ring of vertices {@code from .. to - 1} as counter-clockwise ({@code ccw}) or
+         * clockwise; returns a node of it, or -1 for fewer than three vertices.
+         */
         int build(int from, int to, boolean ccw) {
             if (to - from < 3) {
                 return -1;
@@ -288,7 +380,10 @@ public final class Polygons {
             prev[next[n]] = prev[n];
         }
 
-        /** Removes repeated and collinear vertices; returns a surviving node, or -1 when nothing is left. */
+        /**
+         * Removes repeated and collinear vertices; returns a surviving node, or -1 when nothing is
+         * left.
+         */
         int filter(int start) {
             int p = start;
             boolean again;
@@ -317,7 +412,10 @@ public final class Polygons {
             return p;
         }
 
-        /** Whether the point (node p) lies in or on the triangle a, b, c, which is counter-clockwise. */
+        /**
+         * Whether the point (node p) lies in or on the triangle a, b, c, which is
+         * counter-clockwise.
+         */
         boolean inTriangle(int a, int b, int c, int p) {
             return orient(a, b, p) >= 0.0 && orient(b, c, p) >= 0.0 && orient(c, a, p) >= 0.0;
         }
@@ -338,7 +436,9 @@ public final class Polygons {
             return true;
         }
 
-        /** Clips ears until the ring is gone; returns the triangle count or -1. */
+        /**
+         * Clips ears until the ring is gone; returns the triangle count or -1.
+         */
         int clip(int start, int[] out) {
             int count = 0;
             int ear = start;
@@ -437,7 +537,9 @@ public final class Polygons {
             return outer;
         }
 
-        /** Splits the ring at nodes a and b by two coincident bridge edges; returns the copy of b. */
+        /**
+         * Splits the ring at nodes a and b by two coincident bridge edges; returns the copy of b.
+         */
         int split(int a, int b) {
             int a2 = nodes++, b2 = nodes++;
             vertex[a2] = vertex[a];
@@ -454,7 +556,10 @@ public final class Polygons {
             return b2;
         }
 
-        /** A node of the outer ring that the leftmost vertex of the hole can see: the vertex of the nearest edge hit by a ray to the left, or a reflex vertex in front of it. */
+        /**
+         * A node of the outer ring that the leftmost vertex of the hole can see: the vertex of the
+         * nearest edge hit by a ray to the left, or a reflex vertex in front of it.
+         */
         int findBridge(int hole, int outer) {
             double hx = x(hole), hy = y(hole);
             double qx = Double.NEGATIVE_INFINITY;
@@ -501,7 +606,9 @@ public final class Polygons {
             return (o1 >= 0 && o2 >= 0 && o3 >= 0) || (o1 <= 0 && o2 <= 0 && o3 <= 0);
         }
 
-        /** Whether the diagonal from node a towards node b starts inside the polygon at a. */
+        /**
+         * Whether the diagonal from node a towards node b starts inside the polygon at a.
+         */
         boolean locallyInside(int a, int b) {
             return orient(prev[a], a, next[a]) > 0.0
                     ? orient(a, b, next[a]) <= 0.0 && orient(a, prev[a], b) <= 0.0
@@ -512,9 +619,22 @@ public final class Polygons {
     // ---------------------------------------------------------------- clipping
 
     /**
-     * Clips a 2D polygon against the half-plane {@code a x + b y + c >= 0} (Sutherland-Hodgman) and returns the number of vertices written to {@code out}, which needs room for
-     * {@code count + 1} vertices (2 floats each). The polygon may be concave; the part on the positive side may then be joined by degenerate edges along the clip line. A vertex
-     * exactly on the line counts as inside. The side of each vertex is computed in double.
+     * Clips a 2D polygon against the half-plane {@code a x + b y + c >= 0} (Sutherland-Hodgman) and
+     * returns the number of vertices written to {@code out}, which needs room for {@code count + 1}
+     * vertices (2 floats each).
+     *
+     * <p>The polygon may be concave; the part on the positive side may then be joined by degenerate
+     * edges along the clip line. A vertex exactly on the line counts as inside. The side of each
+     * vertex is computed in double.
+     *
+     * @param xy the vertices as {@code x, y} pairs
+     * @param count the number of elements
+     * @param a the coefficient of x in the half-plane equation
+     * @param b the coefficient of y in the half-plane equation
+     * @param c the constant term of the half-plane equation
+     * @param out receives the result
+     * @return the number of vertices written to {@code out}, which needs room for {@code count + 1}
+     *     vertices (2 floats each)
      */
     public static int clipHalfPlane(float[] xy, int count, float a, float b, float c, float[] out) {
         checkPolygon(xy, count, 2);
@@ -538,10 +658,22 @@ public final class Polygons {
     }
 
     /**
-     * Clips a 2D polygon against a <b>convex</b> clip polygon (either winding) by Sutherland-Hodgman, and returns the number of vertices written to {@code out}, which needs room
-     * for {@code count + clipCount} vertices (2 floats each); the result is empty (0) when they do not overlap. With a concave subject polygon the output can contain
-     * degenerate edges along the clip boundary (the standard limitation of the algorithm). The inside tests use the exact orientation of the clip edges; the intersection
-     * points are computed in double and rounded.
+     * Clips a 2D polygon against a <b>convex</b> clip polygon (either winding) by
+     * Sutherland-Hodgman, and returns the number of vertices written to {@code out}, which needs
+     * room for {@code count + clipCount} vertices (2 floats each); the result is empty (0) when
+     * they do not overlap.
+     *
+     * <p>With a concave subject polygon the output can contain degenerate edges along the clip
+     * boundary (the standard limitation of the algorithm). The inside tests use the exact
+     * orientation of the clip edges; the intersection points are computed in double and rounded.
+     *
+     * @param subject the subject
+     * @param count the number of elements
+     * @param clip the clip
+     * @param clipCount the clip count
+     * @param out receives the result
+     * @return the number of vertices written to {@code out}, which needs room for
+     *     {@code count + clipCount} vertices (2 floats each)
      */
     public static int clipConvex(float[] subject, int count, float[] clip, int clipCount, float[] out) {
         checkPolygon(subject, count, 2);
@@ -586,8 +718,21 @@ public final class Polygons {
     }
 
     /**
-     * Clips a 3D polygon against the half-space {@code a x + b y + c z + d >= 0} and returns the number of vertices written to {@code out}, which needs room for
-     * {@code count + 1} vertices (3 floats each). Vertices on the plane count as inside.
+     * Clips a 3D polygon against the half-space {@code a x + b y + c z + d >= 0} and returns the
+     * number of vertices written to {@code out}, which needs room for {@code count + 1} vertices (3
+     * floats each).
+     *
+     * <p>Vertices on the plane count as inside.
+     *
+     * @param xyz the three components
+     * @param count the number of elements
+     * @param a the coefficient of x in the plane equation
+     * @param b the coefficient of y in the plane equation
+     * @param c the coefficient of z in the plane equation
+     * @param d the constant term of the plane equation
+     * @param out receives the result
+     * @return the number of vertices written to {@code out}, which needs room for {@code count + 1}
+     *     vertices (3 floats each)
      */
     public static int clipPlane3(float[] xyz, int count, float a, float b, float c, float d, float[] out) {
         checkPolygon(xyz, count, 3);

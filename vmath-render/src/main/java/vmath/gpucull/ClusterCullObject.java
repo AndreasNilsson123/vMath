@@ -7,14 +7,28 @@ import vmath.core.Vec4f;
 import vmath.mesh.ClusterHierarchy;
 
 /**
- * One cluster of a {@link ClusterHierarchy} as a GPU-driven cluster culling pass reads it: 80 bytes in std430 (four {@code vec4}s, two floats, two uints).
+ * One cluster of a {@link ClusterHierarchy} as a GPU-driven cluster culling pass reads it: 80 bytes
+ * in std430 (four {@code vec4}s, two floats, two uints).
+ *
+ * <p><b>Thread safety.</b> Immutable: instances can be shared between threads without
+ * synchronization.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * Mesh mesh = Primitives.uvSphere(1f, 32, 16);
+ * ClusterHierarchy hierarchy = ClusterHierarchy.build(mesh, 64, 124, 4);
+ * ClusterCullObject first = ClusterCullObject.of(hierarchy, 0, 0);                         // the record for cluster 0, for the GPU buffer
+ * }</pre>
  *
  * @param sphere       {@code xyz}: centre, {@code w}: radius of the bounding sphere of the cluster's own geometry (for the frustum, cone and Hi-Z tests)
  * @param cone         {@code xyz}: normal cone axis, {@code w}: cutoff (the sine of its half angle, 1 means "never back-face culled"), as for {@link vmath.spatial.ConeCull}
  * @param lodSphere    {@code xyz} and {@code w}: the sphere that the error of this cluster is measured against (see {@link ClusterHierarchy#lodError})
- * @param parentSphere the same for the group that replaces this cluster; the radius is irrelevant when {@code parentError} is infinite
+ *
+ * @param parentSphere the same for the group that replaces this cluster; the radius is irrelevant
+ *     when {@code parentError} is infinite
  * @param lodError     error of this cluster's simplification, 0 for the original detail
- * @param parentError  error of the parent group, {@code +Infinity} for a root
+ * @param parentError error of the parent group, {@code +Infinity} for a root
  * @param firstIndex   first index of the cluster in the shared index buffer
  * @param indexCount   number of indices (three per triangle)
  */
@@ -23,7 +37,15 @@ import vmath.mesh.ClusterHierarchy;
 public record ClusterCullObject(Vec4f sphere, Vec4f cone, Vec4f lodSphere, Vec4f parentSphere, float lodError, float parentError, @GpuUint int firstIndex,
                                 @GpuUint int indexCount) {
 
-    /** The record for cluster {@code c} of a hierarchy, whose indices start at {@code firstIndex} of the shared index buffer. */
+    /**
+     * Builds the record that the culling shader reads for one cluster of a hierarchy.
+     *
+     * @param h the cluster hierarchy; must not be {@code null}
+     * @param c the cluster index
+     * @param firstIndex the first index
+     * @return the record for cluster {@code c} of a hierarchy, whose indices start at
+     *     {@code firstIndex} of the shared index buffer
+     */
     public static ClusterCullObject of(ClusterHierarchy h, int c, int firstIndex) {
         return new ClusterCullObject(new Vec4f(h.sphereX(c), h.sphereY(c), h.sphereZ(c), h.sphereRadius(c)), new Vec4f(h.coneAxisX(c), h.coneAxisY(c), h.coneAxisZ(c), h.coneCutoff(c)),
                 new Vec4f(h.lodCenterX(c), h.lodCenterY(c), h.lodCenterZ(c), h.lodRadius(c)), new Vec4f(h.parentCenterX(c), h.parentCenterY(c), h.parentCenterZ(c), h.parentRadius(c)),

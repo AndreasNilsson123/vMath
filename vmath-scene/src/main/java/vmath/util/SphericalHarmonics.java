@@ -3,36 +3,71 @@ package vmath.util;
 import vmath.core.Quatf;
 
 /**
- * Real spherical harmonics up to the second band (nine coefficients per colour channel): a compact, smooth representation of a function on the sphere, used for diffuse ambient
- * light (an irradiance environment map in 27 numbers), light probes and low-frequency visibility.
+ * Real spherical harmonics up to the second band (nine coefficients per colour channel): a compact,
+ * smooth representation of a function on the sphere, used for diffuse ambient light (an irradiance
+ * environment map in 27 numbers), light probes and low-frequency visibility.
  *
- * <p><b>Basis and layout.</b> The nine basis functions {@code Y_lm} are the real, orthonormal ones of Ramamoorthi and Hanrahan ("An Efficient Representation for Irradiance Environment
+ * <p><b>Basis and layout.</b> The nine basis functions {@code Y_lm} are the real, orthonormal ones
+ * of Ramamoorthi and Hanrahan ("An Efficient Representation for Irradiance Environment
  * Maps", 2001), with the index {@code l * l + l + m}: 0 is the constant, 1 to 3 are proportional to {@code y, z, x}, and 4 to 8 are proportional to {@code xy, yz, 3z^2 - 1, xz,
  * x^2 - y^2}. A set of coefficients for the three channels red, green and blue is a {@code float[27]} with the three channels of coefficient {@code i} at {@code 3 i} to
- * {@code 3 i + 2}, which is the layout a shader uniform array of {@code vec3} wants. The directions are unit vectors in a frame with the y axis up (the frame itself is
- * irrelevant to the mathematics; the same one must be used for projecting and evaluating).
+ * {@code 3 i + 2}, which is the layout a shader uniform array of {@code vec3} wants. The directions
+ * are unit vectors in a frame with the y axis up (the frame itself is irrelevant to the
+ * mathematics; the same one must be used for projecting and evaluating).
  *
- * <p><b>Operations.</b> {@link #project} turns a function on the sphere into coefficients by numerical integration with a Gauss-Legendre quadrature that integrates the basis products exactly;
- * {@link #evaluate} reconstructs the function; {@link #irradiance} gives the diffuse irradiance at a surface normal (the cosine-weighted integral of the radiance over the hemisphere) exactly
- * for the band-limited function, with the factors {@code pi, 2 pi / 3, pi / 4} of the clamped-cosine kernel; {@link #rotate} turns the whole environment by a rotation without going
- * back to the function; {@link #addDirectionalLight} and {@link #addConstant} build an environment from lights.
+ * <p><b>Operations.</b> {@link #project} turns a function on the sphere into coefficients by
+ * numerical integration with a Gauss-Legendre quadrature that integrates the basis products
+ * exactly; {@link #evaluate} reconstructs the function; {@link #irradiance} gives the diffuse
+ * irradiance at a surface normal (the cosine-weighted integral of the radiance over the hemisphere)
+ * exactly for the band-limited function, with the factors {@code pi, 2 pi / 3, pi / 4} of the
+ * clamped-cosine kernel; {@link #rotate} turns the whole environment by a rotation without going
+ * back to the function; {@link #addDirectionalLight} and {@link #addConstant} build an environment
+ * from lights.
  *
- * <p>Two bands cannot represent sharp features: the reconstruction of a bright small light rings and goes negative, and only the <em>irradiance</em> (a heavily smoothed quantity, accurate
- * to a few per cent for typical environments) is well represented. Do not use these coefficients for specular reflection.
+ * <p>Two bands cannot represent sharp features: the reconstruction of a bright small light rings
+ * and goes negative, and only the <em>irradiance</em> (a heavily smoothed quantity, accurate to a
+ * few per cent for typical environments) is well represented. Do not use these coefficients for
+ * specular reflection.
  *
- * <p><b>Thread safety.</b> Stateless apart from constants computed once: every method may be called from any number of threads at the same time.
+ * <p><b>Thread safety.</b> Stateless apart from constants computed once: every method may be called
+ * from any number of threads at the same time.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * float[] coefficients = new float[SphericalHarmonics.LENGTH];
+ * SphericalHarmonics.addConstant(coefficients, 0.2, 0.3, 0.4);                    // an ambient colour
+ * SphericalHarmonics.addDirectionalLight(coefficients, 0.0, -1.0, 0.0, 3.0, 3.0, 3.0);
+ * double[] irradiance = new double[3];
+ * SphericalHarmonics.irradiance(coefficients, 0.0, 1.0, 0.0, irradiance);          // for a surface that faces up
+ * }</pre>
  */
 public final class SphericalHarmonics {
 
-    /** The number of basis functions, and of coefficients per colour channel. */
+    /**
+     * The number of basis functions, and of coefficients per colour channel.
+     */
     public static final int COEFFICIENTS = 9;
-    /** The length of a coefficient array for the three colour channels, {@code 3 * COEFFICIENTS}. */
+    /**
+     * The length of a coefficient array for the three colour channels, {@code 3 * COEFFICIENTS}.
+     */
     public static final int LENGTH = 3 * COEFFICIENTS;
 
-    /** A function on the sphere with a colour value in each direction: an environment map, as the numbers {@link #project} integrates. */
+    /**
+     * A function on the sphere with a colour value in each direction: an environment map, as the
+     * numbers {@link #project} integrates.
+     */
     @FunctionalInterface
     public interface Radiance {
-        /** Writes the red, green and blue values for the unit direction {@code (x, y, z)} to {@code out[0 .. 3)}. */
+        /**
+         * Writes the red, green and blue values for the unit direction {@code (x, y, z)} to
+         * {@code out[0 .. 3)}.
+         *
+         * @param x the x component
+         * @param y the y component
+         * @param z the z component
+         * @param out receives the result
+         */
         void radiance(double x, double y, double z, double[] out);
     }
 
@@ -42,10 +77,16 @@ public final class SphericalHarmonics {
     private static final double C2B = 0.31539156525252005; // sqrt(5) / (4 sqrt(pi))
     private static final double C2C = 0.5462742152960396; // sqrt(15) / (4 sqrt(pi))
 
-    /** The factors of the clamped-cosine kernel by band: {@code pi}, {@code 2 pi / 3}, {@code pi / 4}, in the order of the coefficients. */
+    /**
+     * The factors of the clamped-cosine kernel by band: {@code pi}, {@code 2 pi / 3},
+     * {@code pi / 4}, in the order of the coefficients.
+     */
     private static final double[] COSINE = {Math.PI, 2 * Math.PI / 3, 2 * Math.PI / 3, 2 * Math.PI / 3, Math.PI / 4, Math.PI / 4, Math.PI / 4, Math.PI / 4, Math.PI / 4};
 
-    /** Nine well-spread directions and the inverse of the matrix of the basis at them: used to rotate the coefficients. */
+    /**
+     * Nine well-spread directions and the inverse of the matrix of the basis at them: used to
+     * rotate the coefficients.
+     */
     private static final double[][] ROTATION_DIRECTIONS = new double[COEFFICIENTS][3];
     private static final double[][] INVERSE = new double[COEFFICIENTS][COEFFICIENTS];
 
@@ -68,7 +109,10 @@ public final class SphericalHarmonics {
     private SphericalHarmonics() {
     }
 
-    /** Inverts the square matrix {@code a} into {@code out} by Gauss-Jordan elimination with partial pivoting; the matrix of the rotation directions is well conditioned. */
+    /**
+     * Inverts the square matrix {@code a} into {@code out} by Gauss-Jordan elimination with partial
+     * pivoting; the matrix of the rotation directions is well conditioned.
+     */
     private static void invert(double[][] a, double[][] out) {
         int n = a.length;
         double[][] w = new double[n][2 * n];
@@ -119,7 +163,14 @@ public final class SphericalHarmonics {
     }
 
     /**
-     * Writes the nine basis functions for the direction {@code (x, y, z)} to {@code out[0 .. 9)}. The direction is normalised first, and must not be zero.
+     * Writes the nine basis functions for the direction {@code (x, y, z)} to {@code out[0 .. 9)}.
+     *
+     * <p>The direction is normalised first, and must not be zero.
+     *
+     * @param x the x component
+     * @param y the y component
+     * @param z the z component
+     * @param out receives the result
      */
     public static void basis(double x, double y, double z, double[] out) {
         double l = Math.sqrt(x * x + y * y + z * z);
@@ -129,10 +180,22 @@ public final class SphericalHarmonics {
     // ------------------------------------------------------------ projection and evaluation
 
     /**
-     * Projects {@code env} onto the basis: {@code coefficient_i = integral of env * Y_i over the sphere}, written to {@code out[0 .. 27)} (see the class comment for the layout).
-     * The integral is evaluated by a product quadrature with {@code n} Gauss-Legendre nodes in the cosine of the polar angle and {@code 2 n} equally spaced azimuths, which is exact for
-     * any polynomial of degree below {@code 2 n} in the direction; for a smooth environment a small {@code n} (8 to 16) already gives the coefficients to float precision. The
-     * environment is evaluated {@code 2 n^2} times. A function with a jump, such as a sun disc, converges only slowly.
+     * Projects {@code env} onto the basis:
+     * {@code coefficient_i = integral of env * Y_i over the sphere}, written to
+     * {@code out[0 .. 27)} (see the class comment for the layout).
+     *
+     * <p>The integral is evaluated by a product quadrature with {@code n} Gauss-Legendre nodes in
+     * the cosine of the polar angle and {@code 2 n} equally spaced azimuths, which is exact for any
+     * polynomial of degree below {@code 2 n} in the direction; for a smooth environment a small
+     * {@code n} (8 to 16) already gives the coefficients to float precision. The environment is
+     * evaluated {@code 2 n^2} times. A function with a jump, such as a sun disc, converges only
+     * slowly.
+     *
+     * @param env the env; must not be {@code null}
+     * @param n the number of elements
+     * @param out receives the result
+     * @throws IllegalArgumentException if {@code n} is not in {@code [1, 4096]} or {@code out} is
+     *     too short
      */
     public static void project(Radiance env, int n, float[] out) {
         if (n < 1 || n > 4096) {
@@ -167,7 +230,10 @@ public final class SphericalHarmonics {
         }
     }
 
-    /** The nodes and weights of the {@code n}-point Gauss-Legendre rule on {@code [-1, 1]}, found by Newton's method on the Legendre polynomial. */
+    /**
+     * The nodes and weights of the {@code n}-point Gauss-Legendre rule on {@code [-1, 1]}, found by
+     * Newton's method on the Legendre polynomial.
+     */
     private static void gaussLegendre(int n, double[] nodes, double[] weights) {
         for (int i = 0; i < n; i++) {
             double z = Math.cos(Math.PI * (i + 0.75) / (n + 0.5)), pp = 1;
@@ -190,21 +256,43 @@ public final class SphericalHarmonics {
         }
     }
 
-    /** Reconstructs the function at the unit direction {@code (x, y, z)} from the coefficients: {@code sum of coefficient_i * Y_i}, written to {@code out[0 .. 3)}. */
+    /**
+     * Reconstructs the function at the unit direction {@code (x, y, z)} from the coefficients:
+     * {@code sum of coefficient_i * Y_i}, written to {@code out[0 .. 3)}.
+     *
+     * @param coefficients the coefficients
+     * @param x the x component
+     * @param y the y component
+     * @param z the z component
+     * @param out receives the result
+     */
     public static void evaluate(float[] coefficients, double x, double y, double z, double[] out) {
         weighted(coefficients, x, y, z, false, out);
     }
 
     /**
-     * The irradiance at a surface with the normal {@code (nx, ny, nz)} (need not be unit) from the environment of the coefficients: the integral of {@code radiance * max(0, n . w)} over the
-     * sphere of directions {@code w}, computed with the factors {@code pi}, {@code 2 pi / 3} and {@code pi / 4} of the clamped cosine per band. Exact when the environment really is
-     * band-limited. For a Lambertian surface the outgoing radiance is {@code albedo / pi} times this. Written to {@code out[0 .. 3)}.
+     * Computes the irradiance at a surface with the normal {@code (nx, ny, nz)} (need not be unit)
+     * from the environment of the coefficients: the integral of {@code radiance * max(0, n . w)}
+     * over the sphere of directions {@code w}, computed with the factors {@code pi},
+     * {@code 2 pi / 3} and {@code pi / 4} of the clamped cosine per band.
+     *
+     * <p>Exact when the environment really is band-limited. For a Lambertian surface the outgoing
+     * radiance is {@code albedo / pi} times this. Written to {@code out[0 .. 3)}.
+     *
+     * @param coefficients the coefficients
+     * @param nx the x component of the normal
+     * @param ny the y component of the normal
+     * @param nz the z component of the normal
+     * @param out receives the result
      */
     public static void irradiance(float[] coefficients, double nx, double ny, double nz, double[] out) {
         weighted(coefficients, nx, ny, nz, true, out);
     }
 
-    /** The sum of the coefficients times the basis at the direction, each optionally times the cosine-kernel factor of its band; no allocation. */
+    /**
+     * The sum of the coefficients times the basis at the direction, each optionally times the
+     * cosine-kernel factor of its band; no allocation.
+     */
     private static void weighted(float[] c, double dx, double dy, double dz, boolean cosine, double[] out) {
         double l = Math.sqrt(dx * dx + dy * dy + dz * dz);
         double x = dx / l, y = dy / l, z = dz / l;
@@ -226,8 +314,14 @@ public final class SphericalHarmonics {
     }
 
     /**
-     * Multiplies each coefficient by the factor of the clamped-cosine kernel for its band, producing coefficients whose {@link #evaluate} is the {@link #irradiance}: what a renderer
-     * uploads once per probe so that the shader only evaluates a polynomial. {@code out} may be the same array as {@code coefficients}.
+     * Multiplies each coefficient by the factor of the clamped-cosine kernel for its band,
+     * producing coefficients whose {@link #evaluate} is the {@link #irradiance}: what a renderer
+     * uploads once per probe so that the shader only evaluates a polynomial.
+     *
+     * <p>{@code out} may be the same array as {@code coefficients}.
+     *
+     * @param coefficients the coefficients
+     * @param out receives the result
      */
     public static void convolveWithCosine(float[] coefficients, float[] out) {
         for (int k = 0; k < COEFFICIENTS; k++) {
@@ -239,7 +333,15 @@ public final class SphericalHarmonics {
 
     // ------------------------------------------------------------ building environments
 
-    /** Adds a constant environment of the colour {@code (r, g, b)} to the coefficients: {@code coefficient_0 += colour / Y_0 = colour * 2 sqrt(pi)}. */
+    /**
+     * Adds a constant environment of the colour {@code (r, g, b)} to the coefficients:
+     * {@code coefficient_0 += colour / Y_0 = colour * 2 sqrt(pi)}.
+     *
+     * @param coefficients the coefficients (at least 3 elements)
+     * @param r the red component
+     * @param g the green component
+     * @param b the blue component
+     */
     public static void addConstant(float[] coefficients, double r, double g, double b) {
         coefficients[0] += (float) (r / C0);
         coefficients[1] += (float) (g / C0);
@@ -247,9 +349,21 @@ public final class SphericalHarmonics {
     }
 
     /**
-     * Adds a directional light from the direction {@code (dx, dy, dz)} (pointing from the surface towards the light, need not be unit) to the coefficients: a delta function of weight
-     * {@code (r, g, b)}, so that the {@link #irradiance} of a surface facing the light squarely is about that colour (it is the band-limited approximation of {@code max(0, n . d)}, which
-     * overshoots by up to 6% there). {@code r, g, b} are the irradiance on a surface perpendicular to the light.
+     * Adds a directional light from the direction {@code (dx, dy, dz)} (pointing from the surface
+     * towards the light, need not be unit) to the coefficients: a delta function of weight
+     * {@code (r, g, b)}, so that the {@link #irradiance} of a surface facing the light squarely is
+     * about that colour (it is the band-limited approximation of {@code max(0, n . d)}, which
+     * overshoots by up to 6% there).
+     *
+     * <p>{@code r, g, b} are the irradiance on a surface perpendicular to the light.
+     *
+     * @param coefficients the coefficients
+     * @param dx the x component of the direction
+     * @param dy the y component of the direction
+     * @param dz the z component of the direction
+     * @param r the red component
+     * @param g the green component
+     * @param b the blue component
      */
     public static void addDirectionalLight(float[] coefficients, double dx, double dy, double dz, double r, double g, double b) {
         double[] y = new double[COEFFICIENTS];
@@ -264,9 +378,18 @@ public final class SphericalHarmonics {
     // ------------------------------------------------------------ rotation
 
     /**
-     * Rotates the environment by {@code rotation} (a unit quaternion): the environment seen from the rotated frame, that is {@code f'(w) = f(rotation^-1 w)}, so a light that was in
-     * direction {@code d} is in direction {@code rotation d} afterwards. The rotation is exact for the band-limited function (the nine coefficients transform among themselves) and
-     * is computed by sampling the basis at nine fixed directions, not from the function. {@code out} must not be the same array as {@code coefficients}.
+     * Rotates the environment by {@code rotation} (a unit quaternion): the environment seen from
+     * the rotated frame, that is {@code f'(w) = f(rotation^-1 w)}, so a light that was in direction
+     * {@code d} is in direction {@code rotation d} afterwards.
+     *
+     * <p>The rotation is exact for the band-limited function (the nine coefficients transform among
+     * themselves) and is computed by sampling the basis at nine fixed directions, not from the
+     * function. {@code out} must not be the same array as {@code coefficients}.
+     *
+     * @param coefficients the coefficients
+     * @param rotation the rotation; must not be {@code null}
+     * @param out receives the result
+     * @throws IllegalArgumentException if the output is the same array as the input
      */
     public static void rotate(float[] coefficients, Quatf rotation, float[] out) {
         if (out == coefficients) {

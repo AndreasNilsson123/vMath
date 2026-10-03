@@ -5,34 +5,53 @@ import vmath.core.Mat4f;
 import vmath.geo.Aabbf;
 
 /**
- * A small software depth buffer for occlusion culling: rasterize a few big occluders, then ask whether an object's box is hidden
- * behind them.
+ * A small software depth buffer for occlusion culling: rasterize a few big occluders, then ask
+ * whether an object's box is hidden behind them.
  *
- * <p><b>Conservative in both directions that matter.</b> The buffer must never report an object hidden that could be seen, so
- * two things are done differently from a normal renderer:
+ * <p><b>Conservative in both directions that matter.</b> The buffer must never report an object
+ * hidden that could be seen, so two things are done differently from a normal renderer:
  * <ul>
- *   <li><b>Coverage is inner-conservative.</b> A pixel counts as covered only if the occluder covers the <em>whole</em> pixel
- *       square (tested at the corner of the square that is worst for each polygon edge), never merely its centre. Occluders are
- *       rasterized as whole convex polygons (a box face is one quad, not two triangles), because two triangles would leave a
+ *   <li><b>Coverage is inner-conservative.</b> A pixel counts as covered only if the occluder
+ *       covers the <em>whole</em> pixel square (tested at the corner of the square that is worst
+ *       for each polygon edge), never merely its centre. Occluders are rasterized as whole convex
+ *       polygons (a box face is one quad, not two triangles), because two triangles would leave a
  *       seam of uncovered pixels along their shared edge.</li>
- *   <li><b>Depth is the occluder's farthest point in the pixel.</b> The buffer stores {@code 1 / w} (larger is nearer; {@code w}
- *       is the distance along the view axis) and, for a covered pixel, the smallest value the occluder has anywhere inside it,
- *       so a box behind that value is behind the occluder wherever in the pixel it lies. Where several occluders cover a pixel the
- *       nearest one is kept.</li>
- * </ul>
- * A small margin is added on top of both (a thousandth of a pixel, and a relative 1e-5 in depth) to cover rounding.
+ *   <li><b>Depth is the occluder's farthest point in the pixel.</b> The buffer stores {@code 1 / w}
+ *       (larger is nearer; {@code w} is the distance along the view axis) and, for a covered pixel,
+ *       the smallest value the occluder has anywhere inside it, so a box behind that value is
+ *       behind the occluder wherever in the pixel it lies. Where several occluders cover a pixel
+ *       the nearest one is kept.</li>
+ * </ul> A small margin is added on top of both (a thousandth of a pixel, and a relative 1e-5 in
+ * depth) to cover rounding.
  *
- * <p><b>Testing an object</b> ({@link #isHidden}): its eight corners give a screen rectangle (rounded outwards) and its nearest
- * depth; the object is hidden only if every pixel of the rectangle holds an occluder at least that near. A min-reduced pyramid
- * (Hi-Z) lets the test read a handful of texels instead of the whole rectangle. Anything that reaches the near plane, or has a
+ * <p><b>Testing an object</b> ({@link #isHidden}): its eight corners give a screen rectangle
+ * (rounded outwards) and its nearest depth; the object is hidden only if every pixel of the
+ * rectangle holds an occluder at least that near. A min-reduced pyramid (Hi-Z) lets the test read a
+ * handful of texels instead of the whole rectangle. Anything that reaches the near plane, or has a
  * non-finite corner, is reported visible.
  *
- * <p><b>Limits.</b> Perspective projections only: the {@code w} used for depth is the distance along the view axis, and near
- * clipping is done against a plane {@code w >= nearW}. Occluders are treated as opaque and two-sided; boxes must be solid.
- * Use an occluder only if it really is opaque (a wall, a terrain chunk, a building), never a tree or a window.
+ * <p><b>Limits.</b> Perspective projections only: the {@code w} used for depth is the distance
+ * along the view axis, and near clipping is done against a plane {@code w >= nearW}. Occluders are
+ * treated as opaque and two-sided; boxes must be solid. Use an occluder only if it really is opaque
+ * (a wall, a terrain chunk, a building), never a tree or a window.
  *
- * <p><b>Threads.</b> Building (begin, add..., finish) is single-threaded. After {@link #finish()} the buffer is read-only and
- * {@link #isHidden} can be called from any number of threads. All work is done in {@code double}, into preallocated arrays.
+ * <p><b>Threads.</b> Building (begin, add..., finish) is single-threaded. After {@link #finish()}
+ * the buffer is read-only and {@link #isHidden} can be called from any number of threads. All work
+ * is done in {@code double}, into preallocated arrays.
+ *
+ * <p><b>Thread safety.</b> Building a frame ({@code begin}, the {@code add} methods and
+ * {@code finish}) must happen on one thread. After {@link #finish()} the buffer is read-only and
+ * {@link #isHidden} can be called from any number of threads. Nothing blocks.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * DepthBuffer depth = new DepthBuffer(256, 128);                        // small: it is only for culling
+ * depth.begin(Mat4f.perspective(1f, 2f, 0.1f, 100f, ClipSpace.OPENGL).mul(Mat4f.lookAt(new Vec3f(0f, 0f, 5f), Vec3f.ZERO, Vec3f.UNIT_Y)), 0.1f);
+ * depth.addBox(Aabbf.of(new Vec3f(-2f, -2f, -1f), new Vec3f(2f, 2f, 0f)));      // a big occluder
+ * depth.finish();
+ * boolean hidden = depth.isHidden(Aabbf.of(new Vec3f(-0.5f, -0.5f, -3f), new Vec3f(0.5f, 0.5f, -2f)));
+ * }</pre>
  */
 public final class DepthBuffer {
 
@@ -40,7 +59,10 @@ public final class DepthBuffer {
     private static final double DEPTH_SAFETY = 1e-5;
     private static final double QUERY_SAFETY = 1e-4;
 
-    /** Most vertices of a polygon passed to {@link #addPolygon} (clipping against the near plane adds one more). */
+    /**
+     * Most vertices of a polygon passed to {@link #addPolygon} (clipping against the near plane
+     * adds one more).
+     */
     public static final int MAX_POLYGON_VERTICES = 7;
 
     private final int width;
@@ -74,7 +96,14 @@ public final class DepthBuffer {
     private final float[] boxCorners = new float[24];
     private final float[] quad = new float[12];
 
-    /** A buffer of {@code width x height} pixels; something like 256 x 128 is usually plenty for culling. */
+    /**
+     * Creates a buffer of {@code width x height} pixels; something like 256 x 128 is usually plenty
+     * for culling.
+     *
+     * @param width the width
+     * @param height the height
+     * @throws IllegalArgumentException if {@code width} or {@code height} is not positive
+     */
     public DepthBuffer(int width, int height) {
         if (width < 1 || height < 1) {
             throw new IllegalArgumentException("size must be positive: " + width + "x" + height);
@@ -92,24 +121,42 @@ public final class DepthBuffer {
         }
     }
 
-    /** The width of the finest level, in pixels. */
+    /**
+     * Exposes the width of the finest level in pixels.
+     *
+     * @return the width of the finest level, in pixels
+     */
     public int width() {
         return width;
     }
 
-    /** The height of the finest level, in pixels. */
+    /**
+     * Exposes the height of the finest level in pixels.
+     *
+     * @return the height of the finest level, in pixels
+     */
     public int height() {
         return height;
     }
 
-    /** Number of pyramid levels (level 0 is the full-resolution buffer). */
+    /**
+     * Counts the levels of the depth pyramid.
+     *
+     * @return number of pyramid levels (level 0 is the full-resolution buffer)
+     */
     public int levels() {
         return level.length;
     }
 
     /**
-     * Starts a frame: empties the buffer and sets the camera. {@code nearW} is the smallest view distance kept when clipping
-     * occluders and the distance below which an object counts as reaching the near plane; use the camera's near distance.
+     * Starts a frame: empties the buffer and sets the camera.
+     *
+     * <p>{@code nearW} is the smallest view distance kept when clipping occluders and the distance
+     * below which an object counts as reaching the near plane; use the camera's near distance.
+     *
+     * @param viewProjection the view projection; must not be {@code null}
+     * @param nearW the near w
+     * @throws IllegalArgumentException if {@code nearW} is not positive
      */
     public void begin(Mat4f viewProjection, float nearW) {
         if (!(nearW > 0f)) {
@@ -134,12 +181,25 @@ public final class DepthBuffer {
 
     // ---------------------------------------------------------------- occluders
 
-    /** Adds a solid box as an occluder. */
+    /**
+     * Adds a solid box as an occluder.
+     *
+     * @param b the second box; must not be {@code null}
+     */
     public void addBox(Aabbf b) {
         addBox(b.minX(), b.minY(), b.minZ(), b.maxX(), b.maxY(), b.maxZ());
     }
 
-    /** Adds a solid box as an occluder (six quads, so there is no seam inside a face). */
+    /**
+     * Adds a solid box as an occluder (six quads, so there is no seam inside a face).
+     *
+     * @param x0 the x coordinate of the first corner
+     * @param y0 the y coordinate of the first corner
+     * @param z0 the z coordinate of the first corner
+     * @param x1 the x coordinate of the second corner
+     * @param y1 the y coordinate of the second corner
+     * @param z1 the z coordinate of the second corner
+     */
     public void addBox(float x0, float y0, float z0, float x1, float y1, float z1) {
         float[] c = boxCorners;
         for (int i = 0; i < 8; i++) { // corner bits: 1 = x, 2 = y, 4 = z
@@ -163,7 +223,14 @@ public final class DepthBuffer {
         addPolygon(quad, 4);
     }
 
-    /** Adds {@code triangleCount} triangles stored as nine floats each ({@code x, y, z} per vertex) from {@code offset}. */
+    /**
+     * Adds {@code triangleCount} triangles stored as nine floats each ({@code x, y, z} per vertex)
+     * from {@code offset}.
+     *
+     * @param positions the positions
+     * @param offset the index of the first element to read or write
+     * @param triangleCount the triangle count
+     */
     public void addTriangles(float[] positions, int offset, int triangleCount) {
         for (int t = 0; t < triangleCount; t++) {
             int o = offset + t * 9;
@@ -172,7 +239,19 @@ public final class DepthBuffer {
         }
     }
 
-    /** Adds one opaque, two-sided triangle in world space. */
+    /**
+     * Adds one opaque, two-sided triangle in world space.
+     *
+     * @param x0 the x coordinate of the first vertex
+     * @param y0 the y coordinate of the first vertex
+     * @param z0 the z coordinate of the first vertex
+     * @param x1 the x coordinate of the second vertex
+     * @param y1 the y coordinate of the second vertex
+     * @param z1 the z coordinate of the second vertex
+     * @param x2 the x coordinate of the third vertex
+     * @param y2 the y coordinate of the third vertex
+     * @param z2 the z coordinate of the third vertex
+     */
     public void addTriangle(float x0, float y0, float z0, float x1, float y1, float z1, float x2, float y2, float z2) {
         quad[0] = x0;
         quad[1] = y0;
@@ -187,9 +266,16 @@ public final class DepthBuffer {
     }
 
     /**
-     * Adds one opaque, two-sided <b>convex, planar</b> polygon of {@code count} vertices given as {@code x, y, z} triples in world
-     * space, in either winding order. Two polygons that share an edge do not cover the pixels along it: build a bigger polygon
+     * Adds one opaque, two-sided <b>convex, planar</b> polygon of {@code count} vertices given as
+     * {@code x, y, z} triples in world space, in either winding order.
+     *
+     * <p>Two polygons that share an edge do not cover the pixels along it: build a bigger polygon
      * when a flat surface is made of several pieces.
+     *
+     * @param positions the positions
+     * @param count the number of elements
+     * @throws IllegalStateException if {@link #begin} has not been called
+     * @throws IllegalArgumentException if {@code count} is not in {@code [3, MAX_POLYGON_VERTICES]}
      */
     public void addPolygon(float[] positions, int count) {
         if (!begun) {
@@ -230,7 +316,9 @@ public final class DepthBuffer {
         }
     }
 
-    /** Rasterizes a convex polygon of {@code m} vertices (each: clip x, clip y, clip w). */
+    /**
+     * Rasterizes a convex polygon of {@code m} vertices (each: clip x, clip y, clip w).
+     */
     private void rasterize(double[] v, int m) {
         for (int i = 0; i < m; i++) {
             double w = v[i * 3 + 2];
@@ -320,7 +408,12 @@ public final class DepthBuffer {
 
     // ---------------------------------------------------------------- pyramid
 
-    /** Builds the min-reduced pyramid. Called automatically by {@link #isHidden} if needed; call it yourself before querying from several threads. */
+    /**
+     * Builds the min-reduced pyramid.
+     *
+     * <p>Called automatically by {@link #isHidden} if needed; call it yourself before querying from
+     * several threads.
+     */
     public void finish() {
         if (mipsValid) {
             return;
@@ -348,18 +441,39 @@ public final class DepthBuffer {
         mipsValid = true;
     }
 
-    /** The stored occluder depth {@code 1 / w} of pixel {@code (x, y)} at pyramid {@code level}: 0 means nothing covers it. */
+    /**
+     * Reads the stored depth of a pixel at a level of the pyramid; the buffer stores the reciprocal
+     * of the depth, so zero means that nothing was drawn.
+     *
+     * @param x the x component
+     * @param y the y component
+     * @param lvl the lvl
+     * @return the stored occluder depth {@code 1 / w} of pixel {@code (x, y)} at pyramid
+     *     {@code level}: 0 means nothing covers it
+     */
     public float invDepth(int x, int y, int lvl) {
         finish();
         return level[lvl][y * levelWidth[lvl] + x];
     }
 
-    /** Full-resolution stored depth ({@code 1 / w}) of pixel {@code (x, y)}; see {@link #invDepth(int, int, int)}. */
+    /**
+     * Reads the stored depth of a pixel at the finest level; the buffer stores the reciprocal of
+     * the depth.
+     *
+     * @param x the x component
+     * @param y the y component
+     * @return full-resolution stored depth ({@code 1 / w}) of pixel {@code (x, y)}; see
+     *     {@link #invDepth(int, int, int)}
+     */
     public float invDepth(int x, int y) {
         return level[0][y * width + x];
     }
 
-    /** Number of full-resolution pixels currently covered by some occluder. */
+    /**
+     * Counts the pixels at full resolution that an occluder covers.
+     *
+     * @return number of full-resolution pixels currently covered by some occluder
+     */
     public int coveredPixels() {
         int n = 0;
         for (float v : level[0]) {
@@ -372,14 +486,32 @@ public final class DepthBuffer {
 
     // ---------------------------------------------------------------- queries
 
-    /** {@link #isHidden(float, float, float, float, float, float)} for an {@link Aabbf}. */
+    /**
+     * Returns {@link #isHidden(float, float, float, float, float, float)} for an {@link Aabbf}.
+     *
+     * @param b the second box; must not be {@code null}
+     * @return {@code true} if the box is certainly hidden by the content of the buffer;
+     *     {@code false} if it may be visible
+     */
     public boolean isHidden(Aabbf b) {
         return isHidden(b.minX(), b.minY(), b.minZ(), b.maxX(), b.maxY(), b.maxZ());
     }
 
     /**
-     * True only if the box is certainly hidden behind the occluders added since {@link #begin}. False means "possibly
-     * visible": the box may be visible, reach the near plane, be off screen, or have non-finite bounds.
+     * Tests a box against the occluders that were rasterised since the last begin; conservative, so
+     * only a box that is certainly hidden is reported as hidden.
+     *
+     * <p>False means "possibly visible": the box may be visible, reach the near plane, be off
+     * screen, or have non-finite bounds.
+     *
+     * @param x0 the x coordinate of the first corner
+     * @param y0 the y coordinate of the first corner
+     * @param z0 the z coordinate of the first corner
+     * @param x1 the x coordinate of the second corner
+     * @param y1 the y coordinate of the second corner
+     * @param z1 the z coordinate of the second corner
+     * @return {@code true} only if the box is certainly hidden behind the occluders added since
+     *     {@link #begin}
      */
     public boolean isHidden(float x0, float y0, float z0, float x1, float y1, float z1) {
         if (!begun) {

@@ -5,24 +5,45 @@ import vmath.geo.DepthRange;
 import vmath.occlusion.HiZ;
 
 /**
- * A CPU model of the Hi-Z texture of GPU-driven occlusion culling: a depth image followed by successively half-sized copies, each texel the <em>farthest</em> depth of
- * the (up to) four texels below it, so that a texel can answer "is everything under me nearer than this?" for a whole screen region at once.
+ * A CPU model of the Hi-Z texture of GPU-driven occlusion culling: a depth image followed by
+ * successively half-sized copies, each texel the <em>farthest</em> depth of the (up to) four texels
+ * below it, so that a texel can answer "is everything under me nearer than this?" for a whole
+ * screen region at once.
  *
- * <p><b>Depth convention.</b> Depth images are what the API wrote: conventional depth (near maps to 0, or -1) or reversed-Z (near maps to 1). The pyramid converts every texel to
- * one internal ordering, <em>farness</em>, where a larger value is farther ({@code z} for [0, 1], {@code (z + 1) / 2} for [-1, 1], {@code 1 - z} for reversed-Z) and reduces
- * with {@code max}. {@link #farness} is the same conversion for the nearest depth of an object, so the test is the same in every convention. (A shader would keep the API depth and
- * pick {@code max} or {@code min} accordingly; the two are the same test.)
+ * <p><b>Depth convention.</b> Depth images are what the API wrote: conventional depth (near maps to
+ * 0, or -1) or reversed-Z (near maps to 1). The pyramid converts every texel to one internal
+ * ordering, <em>farness</em>, where a larger value is farther ({@code z} for [0, 1],
+ * {@code (z + 1) / 2} for [-1, 1], {@code 1 - z} for reversed-Z) and reduces with {@code max}.
+ * {@link #farness} is the same conversion for the nearest depth of an object, so the test is the
+ * same in every convention. (A shader would keep the API depth and pick {@code max} or {@code min}
+ * accordingly; the two are the same test.)
  *
- * <p><b>Sizes</b> follow {@link HiZ#mipSize}: halved rounding up, down to one texel. A texel of level {@code n + 1} covers the texels {@code 2x, 2x + 1} and {@code 2y, 2y + 1}
- * of level {@code n} that exist, so every texel has exactly one parent and nothing under a texel is left out, for any size, not only powers of two.
+ * <p><b>Sizes</b> follow {@link HiZ#mipSize}: halved rounding up, down to one texel. A texel of
+ * level {@code n + 1} covers the texels {@code 2x, 2x + 1} and {@code 2y, 2y + 1} of level
+ * {@code n} that exist, so every texel has exactly one parent and nothing under a texel is left
+ * out, for any size, not only powers of two.
  *
- * <p><b>The test</b> ({@link #isHidden}). A screen rectangle (NDC) and the nearest farness of the object. The level is the smallest one at which the rectangle spans at most one
- * texel in each direction, so it touches at most 2 x 2 texels; the object is hidden when its nearest farness is beyond the farthest of those texels, which means every pixel under
- * the rectangle is covered by something nearer. It is <b>sound</b>: it never reports hidden an object whose rectangle has a pixel that shows something at least as far as the object's
- * nearest point (checked against a per-pixel test in {@code HiZPyramidTest}); it may report visible an object that is in fact hidden, which costs a draw, never an image error.
+ * <p><b>The test</b> ({@link #isHidden}). A screen rectangle (NDC) and the nearest farness of the
+ * object. The level is the smallest one at which the rectangle spans at most one texel in each
+ * direction, so it touches at most 2 x 2 texels; the object is hidden when its nearest farness is
+ * beyond the farthest of those texels, which means every pixel under the rectangle is covered by
+ * something nearer. It is <b>sound</b>: it never reports hidden an object whose rectangle has a
+ * pixel that shows something at least as far as the object's nearest point (checked against a
+ * per-pixel test in {@code HiZPyramidTest}); it may report visible an object that is in fact
+ * hidden, which costs a draw, never an image error.
  *
- * <p><b>Thread safety.</b> Read-only once built by {@link #fromDepth}: the query methods can be called from any number of threads, and {@link #reduce}
- * must have finished before the pyramid is shared.
+ * <p><b>Thread safety.</b> Read-only once built by {@link #fromDepth}: the query methods can be
+ * called from any number of threads, and {@link #reduce} must have finished before the pyramid is
+ * shared.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * float[] depth = new float[256 * 128];                                                      // a depth image, row-major
+ * HiZPyramid pyramid = HiZPyramid.fromDepth(depth, 256, 128, DepthRange.of(ClipSpace.OPENGL), false);
+ * int levels = pyramid.levels();
+ * boolean hidden = pyramid.isHidden(10f, 10f, 20f, 20f, HiZPyramid.farness(0.5f, DepthRange.of(ClipSpace.OPENGL)));
+ * }</pre>
  */
 @Experimental("the pyramid model and its test may change")
 public final class HiZPyramid {
@@ -48,8 +69,21 @@ public final class HiZPyramid {
     }
 
     /**
-     * Builds the pyramid from a depth image (row-major, {@code width * height} values, in the convention {@code range}). {@code yDown} says whether row 0 is at NDC y = +1
-     * (D3D-style clip space, and Vulkan with a flipped projection) or at y = -1 (OpenGL); it only matters for mapping NDC rectangles to texels.
+     * Builds the pyramid from a depth image (row-major, {@code width * height} values, in the
+     * convention {@code range}).
+     *
+     * <p>{@code yDown} says whether row 0 is at NDC y = +1 (D3D-style clip space, and Vulkan with a
+     * flipped projection) or at y = -1 (OpenGL); it only matters for mapping NDC rectangles to
+     * texels.
+     *
+     * @param depth the depth
+     * @param width the width
+     * @param height the height
+     * @param range the range; must not be {@code null}
+     * @param yDown whether y down
+     * @return the pyramid, never {@code null}
+     * @throws IllegalArgumentException if the depth image does not have {@code width * height}
+     *     values
      */
     public static HiZPyramid fromDepth(float[] depth, int width, int height, DepthRange range, boolean yDown) {
         if (depth.length < (long) width * height) {
@@ -64,7 +98,10 @@ public final class HiZPyramid {
         return p;
     }
 
-    /** Rebuilds all levels above the first from level 0, which a caller may have filled through {@link #level(int)}. */
+    /**
+     * Rebuilds all levels above the first from level 0, which a caller may have filled through
+     * {@link #level(int)}.
+     */
     public void reduce() {
         for (int l = 1; l < levels; l++) {
             int w = widths[l], h = heights[l], pw = widths[l - 1], ph = heights[l - 1];
@@ -80,7 +117,14 @@ public final class HiZPyramid {
         }
     }
 
-    /** The farness of an API depth value: larger is farther in every convention. */
+    /**
+     * Converts a stored depth value to a farness, which increases with distance in every depth
+     * convention, so that the pyramid code needs no per-convention branches.
+     *
+     * @param depth the depth
+     * @param range the range; must not be {@code null}
+     * @return the farness of an API depth value: larger is farther in every convention
+     */
     public static float farness(float depth, DepthRange range) {
         return switch (range) {
             case ZERO_TO_ONE -> depth;
@@ -89,45 +133,96 @@ public final class HiZPyramid {
         };
     }
 
-    /** The number of levels, from the full-resolution level 0 down to a single texel. */
+    /**
+     * Counts the levels of the pyramid, from full resolution down to one texel.
+     *
+     * @return the number of levels, from the full-resolution level 0 down to a single texel
+     */
     public int levels() {
         return levels;
     }
 
-    /** The width in texels of {@code level} (0 is the finest). */
+    /**
+     * Reads the width of a level of the pyramid.
+     *
+     * @param level the level
+     * @return the width in texels of {@code level} (0 is the finest)
+     */
     public int width(int level) {
         return widths[level];
     }
 
-    /** The height in texels of {@code level} (0 is the finest). */
+    /**
+     * Reads the height of a level of the pyramid.
+     *
+     * @param level the level
+     * @return the height in texels of {@code level} (0 is the finest)
+     */
     public int height(int level) {
         return heights[level];
     }
 
-    /** Whether row 0 of every level is at NDC y = +1 (the top of the screen), as in a Vulkan-style framebuffer. */
+    /**
+     * Returns whether row 0 of every level is at NDC y = +1 (the top of the screen), as in a
+     * Vulkan-style framebuffer.
+     *
+     * @return {@code true} if row 0 of every level is at NDC y = +1 (the top of the screen), as in
+     *     a Vulkan-style framebuffer
+     */
     public boolean yDown() {
         return yDown;
     }
 
-    /** The depth convention of the depth values this pyramid was built from. */
+    /**
+     * Exposes the depth convention of the source depth values.
+     *
+     * @return the depth convention of the depth values this pyramid was built from
+     */
     public DepthRange depthRange() {
         return range;
     }
 
-    /** The live farness values of a level (row-major). Level 0 may be written, then call {@link #reduce()}. */
+    /**
+     * Exposes the data of one level as the live internal array, which should not be modified.
+     *
+     * <p>Level 0 may be written, then call {@link #reduce()}.
+     *
+     * @param level the level
+     * @return the live farness values of a level (row-major)
+     */
     public float[] level(int level) {
         return farness[level];
     }
 
-    /** The farness of a texel. */
+    /**
+     * Reads one texel of the pyramid.
+     *
+     * @param level the level
+     * @param x the x component
+     * @param y the y component
+     * @return the farness of a texel
+     */
     public float at(int level, int x, int y) {
         return farness[level][y * widths[level] + x];
     }
 
     /**
-     * True when an object whose screen rectangle is {@code [minX, maxX] x [minY, maxY]} (NDC) and whose nearest point has farness {@code nearestFarness} is hidden behind what the
-     * pyramid holds. The rectangle is clamped to the screen; anything not finite or not on the screen at all is "not hidden". The comparison is strict, so an object exactly as far as the
-     * farthest texel is kept.
+     * Tests an object's screen rectangle against the pyramid by comparing its nearest depth with
+     * the farthest depth in the covered texels; conservative, since a {@code false} result never
+     * hides a visible object.
+     *
+     * <p>The rectangle is clamped to the screen; anything not finite or not on the screen at all is
+     * "not hidden". The comparison is strict, so an object exactly as far as the farthest texel is
+     * kept.
+     *
+     * @param minX the smallest x coordinate
+     * @param minY the smallest y coordinate
+     * @param maxX the largest x coordinate
+     * @param maxY the largest y coordinate
+     * @param nearestFarness the nearest farness
+     * @return {@code true} when an object whose screen rectangle is
+     *     {@code [minX, maxX] x [minY, maxY]} (NDC) and whose nearest point has farness
+     *     {@code nearestFarness} is hidden behind what the pyramid holds
      */
     public boolean isHidden(float minX, float minY, float maxX, float maxY, float nearestFarness) {
         if (!(minX <= maxX) || !(minY <= maxY) || Float.isNaN(nearestFarness)) {

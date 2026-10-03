@@ -1,47 +1,108 @@
 package vmath.physics;
 
 /**
- * The impulse math of contacts between two {@link RigidBody}s: relative velocity at a contact point, the effective mass that the contact sees, the impulse that stops (or bounces) an
- * approach along the normal, Coulomb friction along two tangents, and a sequential-impulse solver for a whole {@link ContactManifold}. Only the math: finding the contacts, the
- * broad phase, islands and sleeping are the job of an engine.
+ * The impulse math of contacts between two {@link RigidBody}s: relative velocity at a contact
+ * point, the effective mass that the contact sees, the impulse that stops (or bounces) an approach
+ * along the normal, Coulomb friction along two tangents, and a sequential-impulse solver for a
+ * whole {@link ContactManifold}.
  *
- * <p><b>The normal constraint.</b> For a contact point {@code p} with normal {@code n} (from body A to body B) the speed with which the bodies separate there is
- * {@code vn = (v_B(p) - v_A(p)) . n}, where {@code v(p) = v + w x r} and {@code r} is the point relative to the centre of mass. An impulse {@code J = lambda n} on B and {@code -J} on A changes
- * it by {@code lambda / k} with the <em>effective mass</em> {@code 1 / k},
- * {@code k = 1/m_A + 1/m_B + ((r_A x n) . I_A^-1 (r_A x n)) + ((r_B x n) . I_B^-1 (r_B x n))}. The solver wants {@code vn >= s}, with {@code s} the target separating speed made of the
- * restitution (the bounce: {@code e * (-vn_0)} when the bodies approach faster than a threshold) and the position correction (the Baumgarte term {@code beta / dt * max(0, depth - slop)}
- * that pushes overlapping bodies apart over a few frames); the accumulated impulse of a point is clamped to be non-negative, since contacts push and never pull. A speculative contact (negative
- * depth) lets the bodies approach by exactly the gap in one step.
+ * <p>Only the math: finding the contacts, the broad phase, islands and sleeping are the job of an
+ * engine.
  *
- * <p><b>Friction</b> acts along two tangents perpendicular to the normal ({@link #tangentBasis}): each accumulated friction impulse is clamped to {@code mu} times the accumulated normal
- * impulse of the point (the friction pyramid; the cone would clamp the length of the pair instead).
+ * <p><b>The normal constraint.</b> For a contact point {@code p} with normal {@code n} (from body A
+ * to body B) the speed with which the bodies separate there is {@code vn = (v_B(p) - v_A(p)) . n},
+ * where {@code v(p) = v + w x r} and {@code r} is the point relative to the centre of mass. An
+ * impulse {@code J = lambda n} on B and {@code -J} on A changes it by {@code lambda / k} with the
+ * <em>effective mass</em> {@code 1 / k},
+ * {@code k = 1/m_A + 1/m_B + ((r_A x n) . I_A^-1 (r_A x n)) + ((r_B x n) . I_B^-1 (r_B x n))}. The
+ * solver wants {@code vn >= s}, with {@code s} the target separating speed made of the restitution
+ * (the bounce: {@code e * (-vn_0)} when the bodies approach faster than a threshold) and the
+ * position correction (the Baumgarte term {@code beta / dt * max(0, depth - slop)} that pushes
+ * overlapping bodies apart over a few frames); the accumulated impulse of a point is clamped to be
+ * non-negative, since contacts push and never pull. A speculative contact (negative depth) lets the
+ * bodies approach by exactly the gap in one step.
  *
- * <p><b>Thread safety.</b> Stateless apart from the bodies and manifold you pass in, which it modifies: do not share them between threads.
+ * <p><b>Friction</b> acts along two tangents perpendicular to the normal ({@link #tangentBasis}):
+ * each accumulated friction impulse is clamped to {@code mu} times the accumulated normal impulse
+ * of the point (the friction pyramid; the cone would clamp the length of the pair instead).
+ *
+ * <p><b>Thread safety.</b> Stateless apart from the bodies and manifold you pass in, which it
+ * modifies: do not share them between threads.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * RigidBody ground = new RigidBody();                                      // no mass: static
+ * RigidBody box = new RigidBody(MassProperties.box(0.5, 0.5, 0.5, 1.0));
+ * box.setPose(0.0, 0.49, 0.0, 0.0, 0.0, 0.0, 1.0);
+ * ContactManifold manifold = new ContactManifold();
+ * manifold.setNormal(0.0, 1.0, 0.0);
+ * manifold.add(0.0, 0.0, 0.0, 0.0, -0.01, 0.0, 0.01, 1);
+ * ContactSolver.Params params = new ContactSolver.Params();
+ * ContactSolver.solveAll(new RigidBody[] {ground}, new RigidBody[] {box}, new ContactManifold[] {manifold}, 1, params, 1.0 / 60);
+ * box.integrate(1.0 / 60);
+ * }</pre>
  */
 public final class ContactSolver {
 
-    /** The settings of {@link #solve}: a struct of public fields with the usual defaults. */
+    /**
+     * The settings of {@link #solve}: a struct of public fields with the usual defaults.
+     */
     public static final class Params {
-        /** The coefficient of restitution of the pair: 0 stops the approach, 1 reverses it elastically. Default 0. */
+        /**
+         * The coefficient of restitution of the pair: 0 stops the approach, 1 reverses it
+         * elastically.
+         *
+         * <p>Default 0.
+         */
         public double restitution;
-        /** The coefficient of friction of the pair. Default 0.5. */
+        /**
+         * The coefficient of friction of the pair.
+         *
+         * <p>Default 0.5.
+         */
         public double friction = 0.5;
-        /** The share of the penetration that is removed per second as a speed, times the time step: the Baumgarte factor, usually 0.1 to 0.3. Default 0.2. */
+        /**
+         * The share of the penetration that is removed per second as a speed, times the time step:
+         * the Baumgarte factor, usually 0.1 to 0.3.
+         *
+         * <p>Default 0.2.
+         */
         public double beta = 0.2;
-        /** The penetration that is tolerated without correction, which keeps resting contacts from jittering. Default 0.005. */
+        /**
+         * The penetration that is tolerated without correction, which keeps resting contacts from
+         * jittering.
+         *
+         * <p>Default 0.005.
+         */
         public double slop = 0.005;
-        /** The approach speed below which there is no bounce, which keeps resting bodies from bouncing forever. Default 1. */
+        /**
+         * The approach speed below which there is no bounce, which keeps resting bodies from
+         * bouncing forever.
+         *
+         * <p>Default 1.
+         */
         public double restitutionThreshold = 1.0;
         /**
-         * Whether the penetration is removed with split impulses: the correction moves the bodies through bias velocities that are discarded after the step, so that it adds no energy to the
-         * real velocities (a box on the ground no longer creeps and rolls). When off, the correction is added to the normal velocity target (plain Baumgarte). Default true.
+         * Whether the penetration is removed with split impulses: the correction moves the bodies
+         * through bias velocities that are discarded after the step, so that it adds no energy to
+         * the real velocities (a box on the ground no longer creeps and rolls).
+         *
+         * <p>When off, the correction is added to the normal velocity target (plain Baumgarte).
+         * Default true.
          */
         public boolean splitImpulse = true;
-        /** The number of sweeps over the contact points. Default 10. */
+        /**
+         * The number of sweeps over the contact points.
+         *
+         * <p>Default 10.
+         */
         public int iterations = 10;
         private final double[] t1 = new double[3], t2 = new double[3];
 
-        /** The default settings. */
+        /**
+         * Creates the default settings.
+         */
         public Params() {
         }
     }
@@ -49,19 +110,39 @@ public final class ContactSolver {
     private ContactSolver() {
     }
 
-    /** The friction coefficient of a pair of surfaces: the geometric mean, the usual rule. */
+    /**
+     * Combines the friction coefficients of two surfaces with the geometric mean, the usual mixing
+     * rule.
+     *
+     * @param a the friction coefficient of the first surface
+     * @param b the friction coefficient of the second surface
+     * @return the friction coefficient of a pair of surfaces: the geometric mean, the usual rule
+     */
     public static double combineFriction(double a, double b) {
         return Math.sqrt(a * b);
     }
 
-    /** The restitution of a pair of surfaces: the larger of the two, the usual rule. */
+    /**
+     * Combines the restitution of two surfaces by taking the larger one, the usual mixing rule.
+     *
+     * @param a the restitution of the first surface
+     * @param b the restitution of the second surface
+     * @return the restitution of a pair of surfaces: the larger of the two, the usual rule
+     */
     public static double combineRestitution(double a, double b) {
         return Math.max(a, b);
     }
 
     /**
-     * Two unit vectors {@code t1}, {@code t2} that are perpendicular to the unit vector {@code n} and to each other (the continuous construction of Duff et al.), written to the arrays'
-     * first three elements.
+     * Computes two unit vectors {@code t1}, {@code t2} that are perpendicular to the unit vector
+     * {@code n} and to each other (the continuous construction of Duff et al.) and writes them to
+     * the first three elements of the arrays.
+     *
+     * @param nx the x component of the normal
+     * @param ny the y component of the normal
+     * @param nz the z component of the normal
+     * @param t1 receives the first tangent in {@code [0, 3)} (at least 3 elements)
+     * @param t2 receives the second tangent in {@code [0, 3)} (at least 3 elements)
      */
     public static void tangentBasis(double nx, double ny, double nz, double[] t1, double[] t2) {
         double sign = Math.copySign(1.0, nz);
@@ -74,7 +155,22 @@ public final class ContactSolver {
         t2[2] = -ny;
     }
 
-    /** The speed with which the bodies separate at the world point {@code (px, py, pz)} along the unit normal {@code n} pointing from A to B: {@code (v_B(p) - v_A(p)) . n}; negative when they approach. */
+    /**
+     * Evaluates the velocity of one body relative to the other at a world point, projected on the
+     * contact normal; negative values mean the bodies approach.
+     *
+     * @param a the first rigid body; must not be {@code null}
+     * @param b the second rigid body; must not be {@code null}
+     * @param px the x coordinate of the point
+     * @param py the y coordinate of the point
+     * @param pz the z coordinate of the point
+     * @param nx the x component of the normal
+     * @param ny the y component of the normal
+     * @param nz the z component of the normal
+     * @return the speed with which the bodies separate at the world point {@code (px, py, pz)}
+     *     along the unit normal {@code n} pointing from A to B: {@code (v_B(p) - v_A(p)) . n};
+     *     negative when they approach
+     */
     public static double relativeNormalVelocity(RigidBody a, RigidBody b, double px, double py, double pz, double nx, double ny, double nz) {
         double rax = px - a.px, ray = py - a.py, raz = pz - a.pz, rbx = px - b.px, rby = py - b.py, rbz = pz - b.pz;
         double vx = (b.vx + b.wy * rbz - b.wz * rby) - (a.vx + a.wy * raz - a.wz * ray);
@@ -83,7 +179,9 @@ public final class ContactSolver {
         return vx * nx + vy * ny + vz * nz;
     }
 
-    /** As {@link #relativeNormalVelocity} but for the bias velocities of the split impulse. */
+    /**
+     * As {@link #relativeNormalVelocity} but for the bias velocities of the split impulse.
+     */
     private static double relativeBiasVelocity(RigidBody a, RigidBody b, double px, double py, double pz, double nx, double ny, double nz) {
         double rax = px - a.px, ray = py - a.py, raz = pz - a.pz, rbx = px - b.px, rby = py - b.py, rbz = pz - b.pz;
         double vx = (b.bvx + b.bwy * rbz - b.bwz * rby) - (a.bvx + a.bwy * raz - a.bwz * ray);
@@ -93,8 +191,22 @@ public final class ContactSolver {
     }
 
     /**
-     * The effective mass for impulses along the unit direction {@code d} at the world point {@code p}: {@code 1 / (1/m_A + 1/m_B + (r_A x d) . I_A^-1 (r_A x d) + (r_B x d) . I_B^-1 (r_B x d))}.
-     * Zero when both bodies are static.
+     * Computes the effective mass seen by an impulse at a point in a direction, which combines the
+     * linear and the rotational inertia of both bodies; a static body contributes nothing.
+     *
+     * <p>Zero when both bodies are static.
+     *
+     * @param a the first rigid body; must not be {@code null}
+     * @param b the second rigid body; must not be {@code null}
+     * @param px the x coordinate of the point
+     * @param py the y coordinate of the point
+     * @param pz the z coordinate of the point
+     * @param dx the x component of the direction
+     * @param dy the y component of the direction
+     * @param dz the z component of the direction
+     * @return the effective mass for impulses along the unit direction {@code d} at the world point
+     *     {@code p}:
+     *     {@code 1 / (1/m_A + 1/m_B + (r_A x d) . I_A^-1 (r_A x d) + (r_B x d) . I_B^-1 (r_B x d))}
      */
     public static double effectiveMass(RigidBody a, RigidBody b, double px, double py, double pz, double dx, double dy, double dz) {
         double k = a.inverseMass() + b.inverseMass() + angularTerm(a, px, py, pz, dx, dy, dz) + angularTerm(b, px, py, pz, dx, dy, dz);
@@ -113,9 +225,26 @@ public final class ContactSolver {
     }
 
     /**
-     * One normal impulse step at the world point {@code p} with the unit normal {@code n} (from A to B): changes the velocities of the bodies so that the separating speed there becomes
-     * {@code targetSeparatingVelocity} as far as the clamping allows (the accumulated impulse stays non-negative), and returns the new accumulated impulse. Pass the accumulated impulse of earlier
-     * calls for the same point, or 0.
+     * Applies one sequential-impulse iteration along the contact normal, clamping the accumulated
+     * impulse so that contacts can push but never pull; call it repeatedly over all contacts to
+     * converge.
+     *
+     * <p>Pass the accumulated impulse of earlier calls for the same point, or 0.
+     *
+     * @param a the first rigid body; must not be {@code null}
+     * @param b the second rigid body; must not be {@code null}
+     * @param px the x coordinate of the point
+     * @param py the y coordinate of the point
+     * @param pz the z coordinate of the point
+     * @param nx the x component of the normal
+     * @param ny the y component of the normal
+     * @param nz the z component of the normal
+     * @param targetSeparatingVelocity the target separating velocity
+     * @param accumulated the accumulated
+     * @return one normal impulse step at the world point {@code p} with the unit normal {@code n}
+     *     (from A to B): changes the velocities of the bodies so that the separating speed there
+     *     becomes {@code targetSeparatingVelocity} as far as the clamping allows (the accumulated
+     *     impulse stays non-negative), and returns the new accumulated impulse
      */
     public static double solveNormal(RigidBody a, RigidBody b, double px, double py, double pz, double nx, double ny, double nz, double targetSeparatingVelocity, double accumulated) {
         double k = effectiveMass(a, b, px, py, pz, nx, ny, nz);
@@ -128,8 +257,23 @@ public final class ContactSolver {
     }
 
     /**
-     * One friction impulse step along the unit tangent {@code t} at the point {@code p}: removes the sliding speed along {@code t} as far as the friction limit {@code maxImpulse}
-     * ({@code mu} times the normal impulse) allows, and returns the new accumulated friction impulse, which stays within {@code [-maxImpulse, maxImpulse]}.
+     * Applies one sequential-impulse iteration of friction along a tangent, clamped by the friction
+     * limit, which in turn depends on the normal impulse; call it after the normal step.
+     *
+     * @param a the first rigid body; must not be {@code null}
+     * @param b the second rigid body; must not be {@code null}
+     * @param px the x coordinate of the point
+     * @param py the y coordinate of the point
+     * @param pz the z coordinate of the point
+     * @param tx the x component of the unit tangent
+     * @param ty the y component of the unit tangent
+     * @param tz the z component of the unit tangent
+     * @param maxImpulse the max impulse
+     * @param accumulated the accumulated
+     * @return one friction impulse step along the unit tangent {@code t} at the point {@code p}:
+     *     removes the sliding speed along {@code t} as far as the friction limit {@code maxImpulse}
+     *     ({@code mu} times the normal impulse) allows, and returns the new accumulated friction
+     *     impulse, which stays within {@code [-maxImpulse, maxImpulse]}
      */
     public static double solveFriction(RigidBody a, RigidBody b, double px, double py, double pz, double tx, double ty, double tz, double maxImpulse, double accumulated) {
         double k = effectiveMass(a, b, px, py, pz, tx, ty, tz);
@@ -141,15 +285,36 @@ public final class ContactSolver {
         return next;
     }
 
-    /** Applies the impulse {@code J} at the world point {@code p} to B and {@code -J} to A. */
+    /**
+     * Applies the impulse {@code J} at the world point {@code p} to B and {@code -J} to A.
+     *
+     * @param a the first rigid body; must not be {@code null}
+     * @param b the second rigid body; must not be {@code null}
+     * @param px the x coordinate of the point
+     * @param py the y coordinate of the point
+     * @param pz the z coordinate of the point
+     * @param jx the x component of the impulse
+     * @param jy the y component of the impulse
+     * @param jz the z component of the impulse
+     */
     public static void apply(RigidBody a, RigidBody b, double px, double py, double pz, double jx, double jy, double jz) {
         a.applyImpulseAtPoint(-jx, -jy, -jz, px, py, pz);
         b.applyImpulseAtPoint(jx, jy, jz, px, py, pz);
     }
 
     /**
-     * Solves the contact of one manifold by sequential impulses over {@code dt}: {@link #prepare}, {@code params.iterations} calls of {@link #sweep}, then {@link #correct}. Use this for a pair that is
-     * independent of the others; for bodies that touch several others (a stack, a pile) use {@link #solveAll}, because the contacts must be solved together to converge.
+     * Solves the contact of one manifold by sequential impulses over {@code dt}: {@link #prepare},
+     * {@code params.iterations} calls of {@link #sweep}, then {@link #correct}.
+     *
+     * <p>Use this for a pair that is independent of the others; for bodies that touch several
+     * others (a stack, a pile) use {@link #solveAll}, because the contacts must be solved together
+     * to converge.
+     *
+     * @param a the first rigid body; must not be {@code null}
+     * @param b the second rigid body; must not be {@code null}
+     * @param m the contact manifold; must not be {@code null}
+     * @param params the params; must not be {@code null}
+     * @param dt the time step in seconds
      */
     public static void solve(RigidBody a, RigidBody b, ContactManifold m, Params params, double dt) {
         prepare(a, b, m, params, dt);
@@ -160,8 +325,19 @@ public final class ContactSolver {
     }
 
     /**
-     * Solves a set of manifolds together: {@code manifolds[k]} is the contact between {@code a[k]} and {@code b[k]} for {@code k < count}. All are prepared (warm started), then
-     * {@code params.iterations} sweeps run over the whole set, so that impulses propagate through stacks, and the penetration is removed last. The manifolds keep their impulses for the next frame.
+     * Solves a set of manifolds together: {@code manifolds[k]} is the contact between {@code a[k]}
+     * and {@code b[k]} for {@code k < count}.
+     *
+     * <p>All are prepared (warm started), then {@code params.iterations} sweeps run over the whole
+     * set, so that impulses propagate through stacks, and the penetration is removed last. The
+     * manifolds keep their impulses for the next frame.
+     *
+     * @param a the first rigid body; must not be {@code null}
+     * @param b the second rigid body; must not be {@code null}
+     * @param manifolds the manifolds; must not be {@code null}
+     * @param count the number of elements
+     * @param params the params; must not be {@code null}
+     * @param dt the time step in seconds
      */
     public static void solveAll(RigidBody[] a, RigidBody[] b, ContactManifold[] manifolds, int count, Params params, double dt) {
         for (int k = 0; k < count; k++) {
@@ -184,8 +360,16 @@ public final class ContactSolver {
     }
 
     /**
-     * Prepares the manifold for the sweeps: computes the velocity targets of the normal constraints (restitution from the approach speed before any solving, speculative gaps, and the
-     * penetration push when split impulses are off) and applies the impulses stored from the last frame as a warm start.
+     * Prepares the manifold for the sweeps: computes the velocity targets of the normal constraints
+     * (restitution from the approach speed before any solving, speculative gaps, and the
+     * penetration push when split impulses are off) and applies the impulses stored from the last
+     * frame as a warm start.
+     *
+     * @param a the first rigid body; must not be {@code null}
+     * @param b the second rigid body; must not be {@code null}
+     * @param m the contact manifold; must not be {@code null}
+     * @param params the params; must not be {@code null}
+     * @param dt the time step in seconds
      */
     public static void prepare(RigidBody a, RigidBody b, ContactManifold m, Params params, double dt) {
         int n = m.count();
@@ -217,7 +401,15 @@ public final class ContactSolver {
         }
     }
 
-    /** One sweep over the points of a prepared manifold: friction first, then the normal constraint, point by point. */
+    /**
+     * Makes one sweep over the points of a prepared manifold: friction first, then the normal
+     * constraint, point by point.
+     *
+     * @param a the first rigid body; must not be {@code null}
+     * @param b the second rigid body; must not be {@code null}
+     * @param m the contact manifold; must not be {@code null}
+     * @param params the params; must not be {@code null}
+     */
     public static void sweep(RigidBody a, RigidBody b, ContactManifold m, Params params) {
         int n = m.count();
         if (n == 0 || (a.isStatic() && b.isStatic())) {
@@ -236,7 +428,16 @@ public final class ContactSolver {
         }
     }
 
-    /** Removes the penetration of a solved manifold with split impulses (does nothing when {@link Params#splitImpulse} is off): the bodies get bias velocities that {@link RigidBody#integrate} uses once. */
+    /**
+     * Removes the penetration of a solved manifold with split impulses (does nothing when
+     * {@link Params#splitImpulse} is off): the bodies get bias velocities that
+     * {@link RigidBody#integrate} uses once.
+     *
+     * @param a the first rigid body; must not be {@code null}
+     * @param b the second rigid body; must not be {@code null}
+     * @param m the contact manifold; must not be {@code null}
+     * @param params the params; must not be {@code null}
+     */
     public static void correct(RigidBody a, RigidBody b, ContactManifold m, Params params) {
         if (!params.splitImpulse) {
             return;

@@ -6,28 +6,50 @@ import vmath.geo.Aabbf;
 import vmath.geo.Spheref;
 
 /**
- * A uniform grid (spatial hash) over object boxes. Space is cut into cubic cells of one size; each object is registered in
- * every cell its box touches, and a query only looks at the cells it covers. Where a tree adapts to the data, the grid is
- * cheap and flat: insert, remove and move cost a handful of array writes, so it suits many similar-sized objects that move
- * every frame (crowds, particles, projectiles). Choose the cell size near the typical object size or query radius.
+ * A uniform grid (spatial hash) over object boxes.
  *
- * <p><b>Storage.</b> Everything is in plain {@code int[]}/{@code float[]}/{@code long[]} arrays: per object a box, user data
- * and its cell range; per (object, cell) pair one entry chained into a hash bucket. Nothing is allocated by an operation
- * unless a pool has to grow, and cells that hold nothing cost nothing (there is no dense array, so the world may be large
- * and sparse).
+ * <p>Space is cut into cubic cells of one size; each object is registered in every cell its box
+ * touches, and a query only looks at the cells it covers. Where a tree adapts to the data, the grid
+ * is cheap and flat: insert, remove and move cost a handful of array writes, so it suits many
+ * similar-sized objects that move every frame (crowds, particles, projectiles). Choose the cell
+ * size near the typical object size or query radius.
  *
- * <p><b>Big objects.</b> An object that would touch more than {@link #MAX_CELLS} cells is not registered in cells; it goes on
- * a short "oversize" list that every query checks. This keeps a terrain-sized box from costing millions of entries.
+ * <p><b>Storage.</b> Everything is in plain {@code int[]}/{@code float[]}/{@code long[]} arrays:
+ * per object a box, user data and its cell range; per (object, cell) pair one entry chained into a
+ * hash bucket. Nothing is allocated by an operation unless a pool has to grow, and cells that hold
+ * nothing cost nothing (there is no dense array, so the world may be large and sparse).
  *
- * <p><b>Range.</b> Cell coordinates are 21 bits each, so coordinates must satisfy {@code |v| < 2^20 * cellSize} (a million
- * cells either way); {@link #insert} and {@link #move} throw for NaN, infinite or out-of-range boxes.
+ * <p><b>Big objects.</b> An object that would touch more than {@link #MAX_CELLS} cells is not
+ * registered in cells; it goes on a short "oversize" list that every query checks. This keeps a
+ * terrain-sized box from costing millions of entries.
  *
- * <p>Each object has a stable integer handle and an {@code int} of user data, as in {@link DynamicAabbTree}. Not thread-safe
- * for updates; concurrent read-only queries are fine with one {@link Query} per thread.
+ * <p><b>Range.</b> Cell coordinates are 21 bits each, so coordinates must satisfy
+ * {@code |v| < 2^20 * cellSize} (a million cells either way); {@link #insert} and {@link #move}
+ * throw for NaN, infinite or out-of-range boxes.
+ *
+ * <p>Each object has a stable integer handle and an {@code int} of user data, as in
+ * {@link DynamicAabbTree}. Not thread-safe for updates; concurrent read-only queries are fine with
+ * one {@link Query} per thread.
+ *
+ * <p><b>Thread safety.</b> Not thread-safe for updates. Concurrent read-only queries are safe if
+ * each thread uses its own {@link Query} and nobody modifies the grid meanwhile.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * UniformGrid grid = new UniformGrid(8f);                                      // cells of 8 units
+ * int handle = grid.insert(Aabbf.of(new Vec3f(1f, 1f, 1f), new Vec3f(2f, 2f, 2f)), 3);
+ * grid.move(handle, Aabbf.of(new Vec3f(9f, 1f, 1f), new Vec3f(10f, 2f, 2f)));
+ * UniformGrid.Query query = grid.newQuery();                                   // one per thread
+ * IntList found = new IntList();
+ * query.overlapAabb(Aabbf.of(new Vec3f(8f, 0f, 0f), new Vec3f(12f, 3f, 3f)), found);   // the user data: 3
+ * }</pre>
  */
 public final class UniformGrid {
 
-    /** Objects touching more cells than this go on the oversize list. */
+    /**
+     * Objects touching more cells than this go on the oversize list.
+     */
     public static final int MAX_CELLS = 512;
 
     private static final int OFFSET = 1 << 20;
@@ -66,12 +88,22 @@ public final class UniformGrid {
     private final int[] minCell = {Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MAX_VALUE};
     private final int[] maxCell = {Integer.MIN_VALUE, Integer.MIN_VALUE, Integer.MIN_VALUE};
 
-    /** @param cellSize edge length of a cell; must be positive and finite */
+    /**
+     * Creates a grid with the given cell size and room for 64 objects.
+     *
+     * @param cellSize edge length of a cell; must be positive and finite
+     */
     public UniformGrid(float cellSize) {
         this(cellSize, 64);
     }
 
-    /** @param expectedObjects how many objects to make room for up front */
+    /**
+     * Creates a grid with the given cell size and room for {@code expectedObjects} objects.
+     *
+     * @param cellSize the cell size
+     * @param expectedObjects how many objects to make room for up front
+     * @throws IllegalArgumentException if {@code cellSize} is not positive and finite
+     */
     public UniformGrid(float cellSize, int expectedObjects) {
         if (!(cellSize > 0f) || Float.isInfinite(cellSize)) {
             throw new IllegalArgumentException("cellSize must be positive and finite: " + cellSize);
@@ -87,35 +119,72 @@ public final class UniformGrid {
         }
     }
 
-    /** The side of a grid cell. */
+    /**
+     * Exposes the cell size of the grid.
+     *
+     * @return the side of a grid cell
+     */
     public float cellSize() {
         return cellSize;
     }
 
-    /** Number of objects in the grid. */
+    /**
+     * Counts the objects in the grid.
+     *
+     * @return number of objects in the grid
+     */
     public int size() {
         return liveCount;
     }
 
-    /** Number of (object, cell) registrations: how much memory the cells hold. */
+    /**
+     * Counts the registrations of objects in cells, which is the memory the cells hold; large
+     * objects are registered in many cells.
+     *
+     * @return number of (object, cell) registrations: how much memory the cells hold
+     */
     public int entryCount() {
         return entryCount;
     }
 
-    /** Objects that live on the oversize list. */
+    /**
+     * Counts the objects that live on the oversize list instead of in cells.
+     *
+     * @return objects that live on the oversize list
+     */
     public int oversizeCount() {
         return bigCount;
     }
 
     // ---------------------------------------------------------------- updates
 
-    /** Adds an object with the given box and returns its handle; {@code userData} is what queries report for it. */
+    /**
+     * Adds an object with the given box and returns its handle; {@code userData} is what queries
+     * report for it.
+     *
+     * @param b the second box; must not be {@code null}
+     * @param userData the user data of the object
+     * @return its handle
+     */
     public int insert(Aabbf b, int userData) {
         return insert(b.minX(), b.minY(), b.minZ(), b.maxX(), b.maxY(), b.maxZ(), userData);
     }
 
     /**
-     * Adds an object with the box given by its six bounds and returns its handle; {@code userData} is what queries report for it. The box must be ordered and lie within 2^20 cells of the origin ({@link IllegalArgumentException} otherwise).
+     * Adds an object with the box given by its six bounds and returns its handle; {@code userData}
+     * is what queries report for it.
+     *
+     * <p>The box must be ordered and lie within 2^20 cells of the origin
+     * ({@link IllegalArgumentException} otherwise).
+     *
+     * @param minX the smallest x coordinate
+     * @param minY the smallest y coordinate
+     * @param minZ the smallest z coordinate
+     * @param maxX the largest x coordinate
+     * @param maxY the largest y coordinate
+     * @param maxZ the largest z coordinate
+     * @param userData the user data of the object
+     * @return its handle
      */
     public int insert(float minX, float minY, float minZ, float maxX, float maxY, float maxZ, int userData) {
         checkBox(minX, minY, minZ, maxX, maxY, maxZ);
@@ -130,7 +199,11 @@ public final class UniformGrid {
         return h;
     }
 
-    /** Removes the object; its handle becomes invalid (and may be reused by a later insert). */
+    /**
+     * Removes the object; its handle becomes invalid (and may be reused by a later insert).
+     *
+     * @param handle the handle
+     */
     public void remove(int handle) {
         requireLive(handle);
         unregister(handle);
@@ -141,8 +214,19 @@ public final class UniformGrid {
     }
 
     /**
-     * Moves the object to a new box. Returns {@code true} if the set of cells changed (and so entries were rewritten),
+     * Moves the object to a new box.
+     *
+     * <p>Returns {@code true} if the set of cells changed (and so entries were rewritten),
      * {@code false} if it still covers the same cells and only the box was updated.
+     *
+     * @param handle the handle
+     * @param minX the smallest x coordinate
+     * @param minY the smallest y coordinate
+     * @param minZ the smallest z coordinate
+     * @param maxX the largest x coordinate
+     * @param maxY the largest y coordinate
+     * @param maxZ the largest z coordinate
+     * @return {@code true} if the set of cells changed; {@code false} if it covers the same cells
      */
     public boolean move(int handle, float minX, float minY, float minZ, float maxX, float maxY, float maxZ) {
         requireLive(handle);
@@ -166,12 +250,22 @@ public final class UniformGrid {
         return true;
     }
 
-    /** As the six-bounds {@code move}, with the box given as an {@link Aabbf}. */
+    /**
+     * Returns as the six-bounds {@code move}, with the box given as an {@link Aabbf}.
+     *
+     * @param handle the handle
+     * @param b the second box; must not be {@code null}
+     * @return {@code true} if the set of cells changed; {@code false} if it covers the same cells
+     */
     public boolean move(int handle, Aabbf b) {
         return move(handle, b.minX(), b.minY(), b.minZ(), b.maxX(), b.maxY(), b.maxZ());
     }
 
-    /** Removes every object. Capacity is kept. */
+    /**
+     * Removes every object.
+     *
+     * <p>Capacity is kept.
+     */
     public void clear() {
         Arrays.fill(head, NONE);
         Arrays.fill(alive, false);
@@ -189,25 +283,47 @@ public final class UniformGrid {
 
     // ---------------------------------------------------------------- inspection
 
-    /** True when {@code handle} names an object currently in the grid. */
+    /**
+     * Tests whether a handle refers to an object that is currently in the grid.
+     *
+     * @param handle the handle
+     * @return {@code true} when {@code handle} names an object currently in the grid
+     */
     public boolean isValid(int handle) {
         return handle >= 0 && handle < objectHigh && alive[handle];
     }
 
-    /** The {@code userData} given when the object was inserted; {@link IllegalArgumentException} for a handle that is not in the grid. */
+    /**
+     * Reads the user data of an object, looked up by handle; an invalid handle is rejected.
+     *
+     * @param handle the handle
+     * @return the {@code userData} given when the object was inserted;
+     *     {@link IllegalArgumentException} for a handle that is not in the grid
+     */
     public int userData(int handle) {
         requireLive(handle);
         return item[handle];
     }
 
-    /** The object's box as last given to {@link #insert} or {@link #move}. */
+    /**
+     * Reads the box of an object.
+     *
+     * @param handle the handle
+     * @return the object's box as last given to {@link #insert} or {@link #move}
+     */
     public Aabbf bounds(int handle) {
         requireLive(handle);
         int o = handle * 6;
         return new Aabbf(box[o], box[o + 1], box[o + 2], box[o + 3], box[o + 4], box[o + 5]);
     }
 
-    /** Checks the internal invariants and throws {@link IllegalStateException} for the first violation. */
+    /**
+     * Checks the internal invariants and throws {@link IllegalStateException} for the first
+     * violation.
+     *
+     * @throws IllegalStateException if the grid is inconsistent: the message names the first
+     *     problem found
+     */
     public void validate() {
         int live = 0;
         int expectedEntries = 0;
@@ -310,7 +426,9 @@ public final class UniformGrid {
 
     // ---------------------------------------------------------------- entries
 
-    /** Registers the object in every cell of its (already computed) range, or on the oversize list. */
+    /**
+     * Registers the object in every cell of its (already computed) range, or on the oversize list.
+     */
     private void register(int h) {
         int o = h * 6;
         for (int k = 0; k < 3; k++) {
@@ -401,7 +519,9 @@ public final class UniformGrid {
         throw new IllegalStateException("missing entry for object " + h);
     }
 
-    /** Doubles the bucket table and relinks every live entry. */
+    /**
+     * Doubles the bucket table and relinks every live entry.
+     */
     private void growTable() {
         int n = head.length * 2;
         head = new int[n];
@@ -468,12 +588,23 @@ public final class UniformGrid {
 
     // ---------------------------------------------------------------- queries
 
-    /** A query object with its own duplicate-suppression state. Create one per thread; reuse it. */
+    /**
+     * Creates a query object with its own duplicate-suppression state, so that several threads can
+     * query the grid at the same time.
+     *
+     * <p>Create one per thread; reuse it.
+     *
+     * @return a query object with its own duplicate-suppression state
+     */
     public Query newQuery() {
         return new Query(this);
     }
 
-    /** Read-only queries on a {@link UniformGrid}. Results are the objects' user data. */
+    /**
+     * Read-only queries on a {@link UniformGrid}.
+     *
+     * <p>Results are the objects' user data.
+     */
     public static final class Query {
 
         private final UniformGrid grid;
@@ -494,12 +625,22 @@ public final class UniformGrid {
             }
         }
 
-        /** Appends the user data of every object whose box overlaps {@code b} (touching counts). */
+        /**
+         * Appends the user data of every object whose box overlaps {@code b} (touching counts).
+         *
+         * @param b the second box; must not be {@code null}
+         * @param out receives the result; must not be {@code null}
+         */
         public void overlapAabb(Aabbf b, IntList out) {
             overlap(b.minX(), b.minY(), b.minZ(), b.maxX(), b.maxY(), b.maxZ(), 0f, 0f, 0f, -1f, out);
         }
 
-        /** Appends the user data of every object whose box touches {@code s}. */
+        /**
+         * Appends the user data of every object whose box touches {@code s}.
+         *
+         * @param s the sphere; must not be {@code null}
+         * @param out receives the result; must not be {@code null}
+         */
         public void overlapSphere(Spheref s, IntList out) {
             float r = s.radius();
             // pad the search region by a few ulps so rounding of centre -/+ radius can never lose a boundary object
@@ -510,8 +651,8 @@ public final class UniformGrid {
         }
 
         /**
-         * Shared implementation: the query region is the box {@code [x0..z1]}; when {@code r2 >= 0} the objects are also
-         * required to be within {@code sqrt(r2)} of the centre.
+         * Shared implementation: the query region is the box {@code [x0..z1]}; when {@code r2 >= 0}
+         * the objects are also required to be within {@code sqrt(r2)} of the centre.
          */
         private void overlap(float x0, float y0, float z0, float x1, float y1, float z1,
                              float cx, float cy, float cz, float r2, IntList out) {
@@ -586,9 +727,17 @@ public final class UniformGrid {
         }
 
         /**
-         * The {@code out.k()} objects whose boxes are closest to the point, nearest first; {@code out} holds their user
-         * data (ties: smaller user data). Searches outward in shells of cells and stops once no unseen object can be closer
-         * than the worst neighbour kept; visiting more than the occupied cell extents is never necessary.
+         * Finds the {@code out.k()} objects whose boxes are closest to the point, nearest first;
+         * {@code out} holds their user data (ties: smaller user data).
+         *
+         * <p>Searches outward in shells of cells and stops once no unseen object can be closer than
+         * the worst neighbour kept; visiting more than the occupied cell extents is never
+         * necessary.
+         *
+         * @param x the x component
+         * @param y the y component
+         * @param z the z component
+         * @param out receives the result; must not be {@code null}
          */
         public void nearest(float x, float y, float z, Neighbors out) {
             UniformGrid g = grid;

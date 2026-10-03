@@ -6,28 +6,50 @@ import java.util.ServiceConfigurationError;
 import java.util.ServiceLoader;
 
 /**
- * Chooses a {@link FrustumKernel}. {@link #best()} returns the supported provider with the highest <em>positive</em> priority, falling
- * back to the scalar kernel (which counts as priority 0). The property {@code -Dvmath.kernel=<name>} forces a specific one ({@code scalar} always works).
+ * Chooses a {@link FrustumKernel}.
  *
- * <p>The providers are looked up once, when the first selection is made, and the list is kept (they come from the class path or module path, which does not change
- * while the program runs); the property is read on every call. A provider that cannot be instantiated, whose {@code isSupported()} throws, or whose module is not
- * resolved is skipped, never fatal.
+ * <p>{@link #best()} returns the supported provider with the highest <em>positive</em> priority,
+ * falling back to the scalar kernel (which counts as priority 0). The property
+ * {@code -Dvmath.kernel=<name>} forces a specific one ({@code scalar} always works).
  *
- * <p><b>Thread safety.</b> Safe to call from any number of threads; every call returns a new kernel instance, and a kernel instance is for one thread.
+ * <p>The providers are looked up once, when the first selection is made, and the list is kept (they
+ * come from the class path or module path, which does not change while the program runs); the
+ * property is read on every call. A provider that cannot be instantiated, whose
+ * {@code isSupported()} throws, or whose module is not resolved is skipped, never fatal.
+ *
+ * <p><b>Thread safety.</b> Safe to call from any number of threads; every call returns a new kernel
+ * instance, and a kernel instance is for one thread.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * FrustumKernel scalar = FrustumKernels.scalar();
+ * FrustumKernel best = FrustumKernels.best();                              // SIMD when vmath-simd is present
+ * List<String> available = FrustumKernels.available();
+ * }</pre>
  */
 public final class FrustumKernels {
 
     private FrustumKernels() {
     }
 
-    /** A new scalar kernel: portable, always available, auto-vectorizable by the JIT where it can. */
+    /**
+     * Creates the portable kernel, which works everywhere and relies on the JIT to vectorise where
+     * it can.
+     *
+     * @return a new scalar kernel: portable, always available, auto-vectorizable by the JIT where
+     *     it can
+     */
     public static FrustumKernel scalar() {
         return new FrustumCuller();
     }
 
     /**
-     * A new kernel instance of the best available implementation. Every call returns a fresh instance, because
-     * kernels hold per-thread scratch memory.
+     * Creates the preferred kernel by priority, honouring an override through the system property.
+     *
+     * <p>Every call returns a fresh instance, because kernels hold per-thread scratch memory.
+     *
+     * @return a new kernel instance of the best available implementation
      */
     public static FrustumKernel best() {
         String forced = System.getProperty("vmath.kernel");
@@ -52,7 +74,11 @@ public final class FrustumKernels {
         }
     }
 
-    /** Names of every kernel usable here, scalar first. */
+    /**
+     * Lists the kernels that can run on this machine.
+     *
+     * @return names of every kernel usable here, scalar first
+     */
     public static List<String> available() {
         List<String> names = new ArrayList<>();
         names.add("scalar");
@@ -62,7 +88,10 @@ public final class FrustumKernels {
         return names;
     }
 
-    /** The supported providers, found once on first use (initialization-on-demand holder: thread-safe without locking). */
+    /**
+     * The supported providers, found once on first use (initialization-on-demand holder:
+     * thread-safe without locking).
+     */
     private static final class Providers {
         static final List<FrustumKernelProvider> LIST = List.copyOf(load());
 

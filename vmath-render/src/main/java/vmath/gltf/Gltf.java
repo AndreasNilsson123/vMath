@@ -28,97 +28,243 @@ import static vmath.gltf.AccessorFormat.*;
 import static vmath.gltf.ClipResampling.*;
 
 /**
- * A glTF 2.0 loader: reads a {@code .gltf} (JSON plus buffers) or a {@code .glb} (binary container) and gives access to meshes, materials, the node tree,
- * skins and animations in vmath's own types. No dependencies, no pixel decoding.
+ * A glTF 2.0 loader: reads a {@code .gltf} (JSON plus buffers) or a {@code .glb} (binary container)
+ * and gives access to meshes, materials, the node tree, skins and animations in vmath's own types.
  *
- * <p><b>Geometry.</b> {@link #readFloats}, {@link #readInts} and {@link #readInto} decode any accessor: byte, short, int and float components, normalized or
- * not, a {@code byteStride} in the buffer view, matrix columns padded to 4 bytes as the specification requires, sparse accessors, and accessors without a buffer
- * view (zeros). {@link #readInto} writes the converted floats straight into a {@link MemorySegment} with a chosen stride and byte order, so one accessor can fill
- * one attribute of an interleaved vertex buffer. {@link #toMesh} builds a {@link Mesh} from a triangle, strip or fan primitive (positions, normals, tangents,
- * up to four UV sets, indices; UVs keep glTF's convention of a top-left origin).
+ * <p>No dependencies, no pixel decoding.
  *
- * <p><b>Skins.</b> {@link #skin} returns a {@link Skeleton} (glTF joints are in any order, a skeleton needs parents first, so the joints are reordered and
- * {@link SkinData#skinToSkeleton} maps a vertex's {@code JOINTS_0} value to the skeleton joint). Bind poses come from the joint nodes' local transforms.
- * <b>Animations.</b> {@link #clip} builds an {@link AnimationClip} for a skeleton: translation, rotation and scale channels of the skin's joints. The clip type
- * interpolates linearly (slerp for rotations) only, so a {@code STEP} curve is converted by doubling each key just before the next one, and a {@code CUBICSPLINE}
- * curve is resampled at a fixed rate (default 30 Hz): both are approximations and say so here. Weights (morph target) channels are ignored; morph targets are not loaded.
+ * <p><b>Geometry.</b> {@link #readFloats}, {@link #readInts} and {@link #readInto} decode any
+ * accessor: byte, short, int and float components, normalized or not, a {@code byteStride} in the
+ * buffer view, matrix columns padded to 4 bytes as the specification requires, sparse accessors,
+ * and accessors without a buffer view (zeros). {@link #readInto} writes the converted floats
+ * straight into a {@link MemorySegment} with a chosen stride and byte order, so one accessor can
+ * fill one attribute of an interleaved vertex buffer. {@link #toMesh} builds a {@link Mesh} from a
+ * triangle, strip or fan primitive (positions, normals, tangents, up to four UV sets, indices; UVs
+ * keep glTF's convention of a top-left origin).
  *
- * <p><b>Security.</b> A glTF file is untrusted input: sizes and offsets are checked with overflow-safe arithmetic before any read, JSON nesting is limited,
- * and a path-based load refuses relative buffer URIs that leave the directory of the file. Every failure is a {@link GltfException}.
+ * <p><b>Skins.</b> {@link #skin} returns a {@link Skeleton} (glTF joints are in any order, a
+ * skeleton needs parents first, so the joints are reordered and {@link SkinData#skinToSkeleton}
+ * maps a vertex's {@code JOINTS_0} value to the skeleton joint). Bind poses come from the joint
+ * nodes' local transforms. <b>Animations.</b> {@link #clip} builds an {@link AnimationClip} for a
+ * skeleton: translation, rotation and scale channels of the skin's joints. The clip type
+ * interpolates linearly (slerp for rotations) only, so a {@code STEP} curve is converted by
+ * doubling each key just before the next one, and a {@code CUBICSPLINE} curve is resampled at a
+ * fixed rate (default 30 Hz): both are approximations and say so here. Weights (morph target)
+ * channels are ignored; morph targets are not loaded.
  *
- * <p><b>Not supported:</b> compressed geometry ({@code KHR_draco_mesh_compression}, {@code EXT_meshopt_compression}; a file that requires them is rejected),
- * morph targets, cameras, lights and extensions beyond {@code KHR_mesh_quantization}. Tested with hand-built files, not with the Khronos sample assets.
+ * <p><b>Security.</b> A glTF file is untrusted input: sizes and offsets are checked with
+ * overflow-safe arithmetic before any read, JSON nesting is limited, and a path-based load refuses
+ * relative buffer URIs that leave the directory of the file. Every failure is a
+ * {@link GltfException}.
  *
- * <p><b>Thread safety.</b> Not thread-safe: the parsed data is read-only, but {@link #skin} builds and caches its result on first use, so use one instance per
- * thread, or call every accessor you need once before sharing it (and never modify the arrays it hands out).
+ * <p><b>Not supported:</b> compressed geometry ({@code KHR_draco_mesh_compression},
+ * {@code EXT_meshopt_compression}; a file that requires them is rejected), morph targets, cameras,
+ * lights and extensions beyond {@code KHR_mesh_quantization}. Tested with hand-built files, not
+ * with the Khronos sample assets.
+ *
+ * <p><b>Thread safety.</b> Not thread-safe: the parsed data is read-only, but {@link #skin} builds
+ * and caches its result on first use, so use one instance per thread, or call every accessor you
+ * need once before sharing it (and never modify the arrays it hands out).
+ *
+ * <p><b>Example:</b> loading a file and building a mesh
+ *
+ * <pre>{@code
+ * Gltf gltf = Gltf.load(Path.of("model.glb"));
+ * Mesh mesh = gltf.toMesh(0, 0);                                                         // mesh 0, primitive 0
+ * Mat4f[] world = gltf.worldMatrices();                                                  // of every node
+ * }</pre>
+ *
+ * <p><b>Example:</b> a skinned character with an animation
+ *
+ * <pre>{@code
+ * Gltf gltf = Gltf.load(Path.of("character.glb"));
+ * Gltf.SkinData skin = gltf.skin(0);
+ * AnimationClip clip = gltf.clip(0, skin);
+ * Gltf.VertexSkinning weights = gltf.readSkinning(0, 0);
+ * }</pre>
  */
 @Experimental("the data model records and the animation conversion may change")
 public final class Gltf {
 
-    /** Loads the bytes behind a buffer or image URI that is not a data URI. */
+    /**
+     * Loads the bytes behind a buffer or image URI that is not a data URI.
+     */
     public interface UriResolver {
         /**
-         * The bytes of the file {@code uri} names, a URI relative to the .gltf file as it appears in the JSON (not a data URI, which the reader decodes itself); throw {@link IOException} when it cannot be read.
+         * Loads the bytes of an external file that the glTF file refers to by relative URI;
+         * implemented by the caller so that files, archives and other sources can be used.
+         *
+         * @param uri the uri; must not be {@code null}
+         * @return the bytes of the file {@code uri} names, a URI relative to the .gltf file as it
+         *     appears in the JSON (not a data URI, which the reader decodes itself); throw
+         *     {@link IOException} when it cannot be read
+         * @throws IOException if the file cannot be read
          */
         byte[] resolve(String uri) throws IOException;
     }
 
-    /** Primitive mode of separate triangles (glTF mode 4). */
+    /**
+     * Primitive mode of separate triangles (glTF mode 4).
+     */
     public static final int MODE_TRIANGLES = 4;
-    /** Primitive mode of a triangle strip (glTF mode 5); {@code toMesh} converts it to separate triangles. */
+    /**
+     * Primitive mode of a triangle strip (glTF mode 5); {@code toMesh} converts it to separate
+     * triangles.
+     */
     public static final int MODE_TRIANGLE_STRIP = 5;
-    /** Primitive mode of a triangle fan (glTF mode 6); {@code toMesh} converts it to separate triangles. */
+    /**
+     * Primitive mode of a triangle fan (glTF mode 6); {@code toMesh} converts it to separate
+     * triangles.
+     */
     public static final int MODE_TRIANGLE_FAN = 6;
 
-    /** A primitive of a mesh: its topology mode, attribute name to accessor, index accessor ({@code -1} for none) and material ({@code -1} for none). */
+    /**
+     * A primitive of a mesh: its topology mode, attribute name to accessor, index accessor
+     * ({@code -1} for none) and material ({@code -1} for none).
+     *
+     * @param mode the mode
+     * @param attributes the attributes; must not be {@code null}
+     * @param indices the indices
+     * @param material the material
+     */
     public record Primitive(int mode, Map<String, Integer> attributes, int indices, int material) {
     }
 
-    /** A mesh: its name (may be null) and its primitives. */
+    /**
+     * A mesh: its name (may be null) and its primitives.
+     *
+     * @param name the name; must not be {@code null}
+     * @param primitives the primitives; must not be {@code null}
+     */
     public record MeshData(String name, List<Primitive> primitives) {
     }
 
-    /** The metallic-roughness material; texture fields are texture indices, {@code -1} when absent. */
+    /**
+     * The metallic-roughness material; texture fields are texture indices, {@code -1} when absent.
+     *
+     * @param name the name; must not be {@code null}
+     * @param baseColorFactor the base color factor
+     * @param baseColorTexture the base color texture
+     * @param baseColorTexCoord the base color tex coord
+     * @param metallicFactor the metallic factor
+     * @param roughnessFactor the roughness factor
+     * @param metallicRoughnessTexture the metallic roughness texture
+     * @param normalTexture the normal texture
+     * @param normalScale the normal scale
+     * @param occlusionTexture the occlusion texture
+     * @param occlusionStrength the occlusion strength
+     * @param emissiveFactor the emissive factor
+     * @param emissiveTexture the emissive texture
+     * @param alphaMode the alpha mode; must not be {@code null}
+     * @param alphaCutoff the alpha cutoff
+     * @param doubleSided whether double sided
+     */
     public record Material(String name, float[] baseColorFactor, int baseColorTexture, int baseColorTexCoord, float metallicFactor, float roughnessFactor,
                            int metallicRoughnessTexture, int normalTexture, float normalScale, int occlusionTexture, float occlusionStrength,
                            float[] emissiveFactor, int emissiveTexture, String alphaMode, float alphaCutoff, boolean doubleSided) {
     }
 
-    /** A texture: the index of its image ({@code -1} when absent) and of its sampler ({@code -1} for the default sampler). */
+    /**
+     * A texture: the index of its image ({@code -1} when absent) and of its sampler ({@code -1} for
+     * the default sampler).
+     *
+     * @param source the source
+     * @param sampler the sampler
+     */
     public record Texture(int source, int sampler) {
     }
 
-    /** An image reference: a URI (possibly a data URI) or a buffer view with a MIME type. Use {@link #imageBytes} for the encoded bytes. */
+    /**
+     * An image reference: a URI (possibly a data URI) or a buffer view with a MIME type.
+     *
+     * <p>Use {@link #imageBytes} for the encoded bytes.
+     *
+     * @param name the name; must not be {@code null}
+     * @param uri the uri; must not be {@code null}
+     * @param bufferView the buffer view
+     * @param mimeType the mime type; must not be {@code null}
+     */
     public record Image(String name, String uri, int bufferView, String mimeType) {
     }
 
-    /** A sampler: the glTF (OpenGL) enum values of the magnification and minification filters ({@code -1} when absent) and of the wrap modes (10497, repeat, when absent). */
+    /**
+     * A sampler: the glTF (OpenGL) enum values of the magnification and minification filters
+     * ({@code -1} when absent) and of the wrap modes (10497, repeat, when absent).
+     *
+     * @param magFilter the mag filter
+     * @param minFilter the min filter
+     * @param wrapS the wrap s
+     * @param wrapT the wrap t
+     */
     public record Sampler(int magFilter, int minFilter, int wrapS, int wrapT) {
     }
 
-    /** A node; {@code matrix} is null unless the file gave one, otherwise translation, rotation (x, y, z, w) and scale are the values or their defaults. */
+    /**
+     * A node; {@code matrix} is null unless the file gave one, otherwise translation, rotation (x,
+     * y, z, w) and scale are the values or their defaults.
+     *
+     * @param name the name; must not be {@code null}
+     * @param children the children
+     * @param mesh the mesh
+     * @param skin the skin
+     * @param translation the translation
+     * @param rotation the rotation
+     * @param scale the scale
+     * @param matrix the matrix
+     */
     public record Node(String name, int[] children, int mesh, int skin, float[] translation, float[] rotation, float[] scale, float[] matrix) {
     }
 
-    /** What an accessor says about its data. {@code min} and {@code max} are null when absent. */
+    /**
+     * What an accessor says about its data.
+     *
+     * <p>{@code min} and {@code max} are null when absent.
+     *
+     * @param count the number of elements
+     * @param components the number of components
+     * @param componentType the component type
+     * @param normalized whether normalized
+     * @param type the type; must not be {@code null}
+     * @param min the min
+     * @param max the max
+     */
     public record AccessorInfo(int count, int components, int componentType, boolean normalized, String type, float[] min, float[] max) {
     }
 
     /**
-     * A skin as vmath types. {@code jointNodes[j]} is the node of skeleton joint {@code j}; {@code skinToSkeleton[k]} is the skeleton joint of entry {@code k} of
-     * the glTF skin (the value a {@code JOINTS_0} attribute holds). {@code inverseBindMatrices} are the file's, 16 floats per joint in skeleton order, or null
-     * if the skin has none; the skeleton computes its own from the bind pose.
+     * A skin as vmath types.
      *
-     * <p>{@code rootTransform} is the world matrix of the nodes above the skeleton (an exporter's "Armature" node, often a rotation), the identity when the roots have
-     * no parent. The skeleton's bind pose and the animation clips are local to the joints and leave it out, while the file's inverse bind matrices and vertices include it.
-     * To skin the vertices of the file: {@code world = Skinning.worldMatrices(skeleton, pose)}, joint matrix {@code world * inverseBindMatrix} (the file's, not the
-     * skeleton's), skin the positions with those, and then transform the result by {@code rootTransform}. (The skeleton's own inverse bind matrices omit the armature too, so
-     * with those the vertices must first be taken into armature space by the inverse of {@code rootTransform}.)
+     * <p>{@code jointNodes[j]} is the node of skeleton joint {@code j}; {@code skinToSkeleton[k]}
+     * is the skeleton joint of entry {@code k} of the glTF skin (the value a {@code JOINTS_0}
+     * attribute holds). {@code inverseBindMatrices} are the file's, 16 floats per joint in skeleton
+     * order, or null if the skin has none; the skeleton computes its own from the bind pose.
+     *
+     * <p>{@code rootTransform} is the world matrix of the nodes above the skeleton (an exporter's
+     * "Armature" node, often a rotation), the identity when the roots have no parent. The
+     * skeleton's bind pose and the animation clips are local to the joints and leave it out, while
+     * the file's inverse bind matrices and vertices include it. To skin the vertices of the file:
+     * {@code world = Skinning.worldMatrices(skeleton, pose)}, joint matrix
+     * {@code world * inverseBindMatrix} (the file's, not the skeleton's), skin the positions with
+     * those, and then transform the result by {@code rootTransform}. (The skeleton's own inverse
+     * bind matrices omit the armature too, so with those the vertices must first be taken into
+     * armature space by the inverse of {@code rootTransform}.)
+     *
+     * @param name the name; must not be {@code null}
+     * @param skeleton the skeleton; must not be {@code null}
+     * @param jointNodes the joint nodes
+     * @param skinToSkeleton the skin to skeleton
+     * @param inverseBindMatrices the inverse bind matrices
+     * @param rootTransform the root transform; must not be {@code null}
      */
     public record SkinData(String name, Skeleton skeleton, int[] jointNodes, int[] skinToSkeleton, float[] inverseBindMatrices, Mat4f rootTransform) {
     }
 
-    /** Four joint indices and four weights per vertex. */
+    /**
+     * Four joint indices and four weights per vertex.
+     *
+     * @param joints the joints
+     * @param weights the weights
+     */
     public record VertexSkinning(int[] joints, float[] weights) {
     }
 
@@ -142,18 +288,42 @@ public final class Gltf {
 
     // ---------------------------------------------------------------- loading
 
-    /** The size above which {@link #load(Path)} refuses a file (the main file and each buffer file separately): 1 GiB. */
+    /**
+     * The size above which {@link #load(Path)} refuses a file (the main file and each buffer file
+     * separately): 1 GiB.
+     */
     public static final long DEFAULT_MAX_FILE_BYTES = 1L << 30;
 
     /**
-     * Loads a {@code .gltf} or {@code .glb} file; relative buffer URIs are resolved next to it and may not leave its directory. Every file is read completely into memory,
-     * so a file larger than {@link #DEFAULT_MAX_FILE_BYTES} is refused with a {@link GltfException} (use {@link #load(Path, long)} to choose the limit).
+     * Loads a {@code .gltf} or {@code .glb} file; relative buffer URIs are resolved next to it and
+     * may not leave its directory.
+     *
+     * <p>Every file is read completely into memory, so a file larger than
+     * {@link #DEFAULT_MAX_FILE_BYTES} is refused with a {@link GltfException} (use
+     * {@link #load(Path, long)} to choose the limit).
+     *
+     * @param file the file; must not be {@code null}
+     * @return the loaded document, never {@code null}
+     * @throws IOException if the file or a buffer cannot be read, exceeds the default size limit or
+     *     a buffer URI leaves the directory of the file
+     * @throws GltfException if the content is not valid glTF
      */
     public static Gltf load(Path file) throws IOException {
         return load(file, DEFAULT_MAX_FILE_BYTES);
     }
 
-    /** As {@link #load(Path)} with an explicit size limit, in bytes, for the main file and for every buffer file. */
+    /**
+     * Loads a glTF file like {@link #load(Path)}, but with an explicit limit on the size of the
+     * main file and of every buffer file, which guards against hostile or corrupt input.
+     *
+     * @param file the file; must not be {@code null}
+     * @param maxFileBytes the max file bytes
+     * @return as {@link #load(Path)} with an explicit size limit, in bytes, for the main file and
+     *     for every buffer file
+     * @throws IOException if a file cannot be read, exceeds {@code maxBytes} or a buffer URI leaves
+     *     the directory of the glTF file
+     * @throws GltfException if the content is not valid glTF
+     */
     public static Gltf load(Path file, long maxFileBytes) throws IOException {
         byte[] data = readLimited(file, maxFileBytes);
         Path base = file.toAbsolutePath().normalize().getParent();
@@ -175,7 +345,17 @@ public final class Gltf {
         return Files.readAllBytes(file);
     }
 
-    /** Parses glTF from memory: a GLB container (recognised by its magic) or UTF-8 JSON. {@code resolver} loads non-data URIs; it may be null when there are none. */
+    /**
+     * Parses glTF from memory: a GLB container (recognised by its magic) or UTF-8 JSON.
+     *
+     * <p>{@code resolver} loads non-data URIs; it may be null when there are none.
+     *
+     * @param data the data (at least 3 elements)
+     * @param resolver the resolver; must not be {@code null}
+     * @return the parsed document, never {@code null}
+     * @throws GltfException if the data is not a valid GLB container or JSON object: unsupported
+     *     version, a length that does not match, a chunk past the end or no JSON chunk
+     */
     public static Gltf parse(byte[] data, UriResolver resolver) {
         byte[] bin = null;
         String json;
@@ -413,7 +593,10 @@ public final class Gltf {
 
     // ---------------------------------------------------------------- reference checks
 
-    /** The accessor index an integer in the JSON names; {@link GltfException} when there is no such accessor. */
+    /**
+     * The accessor index an integer in the JSON names; {@link GltfException} when there is no such
+     * accessor.
+     */
     int accessorRef(Object o, String what) {
         int a = (int) num(o, what);
         if (a < 0 || a >= accessors.size()) {
@@ -422,94 +605,177 @@ public final class Gltf {
         return a;
     }
 
-    /** The parsed JSON root, for the package-private builders. */
+    /**
+     * The parsed JSON root, for the package-private builders.
+     */
     Map<String, Object> root() {
         return root;
     }
 
     // ---------------------------------------------------------------- simple access
 
-    /** The number of meshes. */
+    /**
+     * Counts the meshes in the file.
+     *
+     * @return the number of meshes
+     */
     public int meshCount() {
         return meshes.size();
     }
 
-    /** Mesh {@code i}; {@link IndexOutOfBoundsException} for a bad index (the same for every indexed accessor below). */
+    /**
+     * Looks up a mesh by index; an invalid index throws, as for every indexed accessor.
+     *
+     * @param i the index
+     * @return mesh {@code i}; {@link IndexOutOfBoundsException} for a bad index (the same for every
+     *     indexed accessor below)
+     */
     public MeshData mesh(int i) {
         return meshes.get(i);
     }
 
-    /** The number of materials. */
+    /**
+     * Counts the materials in the file.
+     *
+     * @return the number of materials
+     */
     public int materialCount() {
         return materials.size();
     }
 
-    /** Material {@code i}. */
+    /**
+     * Looks up a material by index.
+     *
+     * @param i the index
+     * @return material {@code i}
+     */
     public Material material(int i) {
         return materials.get(i);
     }
 
-    /** The number of textures. */
+    /**
+     * Counts the textures in the file.
+     *
+     * @return the number of textures
+     */
     public int textureCount() {
         return textures.size();
     }
 
-    /** Texture {@code i}. */
+    /**
+     * Looks up a texture by index.
+     *
+     * @param i the index
+     * @return texture {@code i}
+     */
     public Texture texture(int i) {
         return textures.get(i);
     }
 
-    /** The number of images. */
+    /**
+     * Counts the images in the file.
+     *
+     * @return the number of images
+     */
     public int imageCount() {
         return images.size();
     }
 
-    /** Image {@code i}. */
+    /**
+     * Looks up an image by index.
+     *
+     * @param i the index
+     * @return image {@code i}
+     */
     public Image image(int i) {
         return images.get(i);
     }
 
-    /** The number of samplers. */
+    /**
+     * Counts the samplers in the file.
+     *
+     * @return the number of samplers
+     */
     public int samplerCount() {
         return samplers.size();
     }
 
-    /** Sampler {@code i}. */
+    /**
+     * Looks up a sampler by index.
+     *
+     * @param i the index
+     * @return sampler {@code i}
+     */
     public Sampler sampler(int i) {
         return samplers.get(i);
     }
 
-    /** The number of nodes. */
+    /**
+     * Counts the nodes in the file.
+     *
+     * @return the number of nodes
+     */
     public int nodeCount() {
         return nodes.size();
     }
 
-    /** Node {@code i}. */
+    /**
+     * Looks up a node by index.
+     *
+     * @param i the index
+     * @return node {@code i}
+     */
     public Node node(int i) {
         return nodes.get(i);
     }
 
-    /** The number of scenes. */
+    /**
+     * Counts the scenes in the file.
+     *
+     * @return the number of scenes
+     */
     public int sceneCount() {
         return scenes.size();
     }
 
-    /** Root nodes of a scene. */
+    /**
+     * Lists the root nodes of a scene, as a copy.
+     *
+     * @param scene the scene
+     * @return root nodes of a scene
+     */
     public int[] sceneNodes(int scene) {
         return scenes.get(scene).clone();
     }
 
-    /** The default scene, or {@code -1} when the file has none. */
+    /**
+     * Reports which scene the file marks as the default, if any.
+     *
+     * @return the default scene, or {@code -1} when the file has none
+     */
     public int defaultScene() {
         return defaultScene;
     }
 
-    /** The number of accessors. */
+    /**
+     * Counts the accessors in the file.
+     *
+     * @return the number of accessors
+     */
     public int accessorCount() {
         return accessors.size();
     }
 
-    /** The encoded bytes of an image (PNG, JPEG, KTX2, ...): from its URI or its buffer view. Nothing is decoded. */
+    /**
+     * Reads the still-encoded bytes of an image, from the file or from a buffer view, without
+     * decoding; the caller needs an image decoder.
+     *
+     * <p>Nothing is decoded.
+     *
+     * @param image the image
+     * @return the encoded bytes of an image (PNG, JPEG, KTX2, ...): from its URI or its buffer view
+     * @throws GltfException if the image has neither a URI nor a valid buffer view
+     */
     public byte[] imageBytes(int image) {
         Image im = images.get(image);
         if (im.uri() != null) {
@@ -524,7 +790,14 @@ public final class Gltf {
 
     // ---------------------------------------------------------------- accessors
 
-    /** What accessor {@code accessor} declares about its data; nothing is read from the buffers. */
+    /**
+     * Describes an accessor from its declaration in the JSON, without reading any buffer data.
+     *
+     * @param accessor the accessor
+     * @return what accessor {@code accessor} declares about its data; nothing is read from the
+     *     buffers
+     * @throws GltfException if the accessor has no type
+     */
     public AccessorInfo accessorInfo(int accessor) {
         Map<String, Object> a = accessors.get(accessor);
         String type = str(a, "type", null);
@@ -540,12 +813,18 @@ public final class Gltf {
         void put(int index, int component, byte[] buf, int pos);
     }
 
-    /** Elements of an accessor without a buffer view are zeros that cost memory, so their size is capped: at most this many floats. */
+    /**
+     * Elements of an accessor without a buffer view are zeros that cost memory, so their size is
+     * capped: at most this many floats.
+     */
     private static final long MAX_ZERO_FLOATS = 1L << 24;
 
     /**
-     * Validates an accessor and calls the decoder for every component of every element, including the sparse overrides. With a null decoder it only
-     * validates, so that a caller can size its arrays from a count that is known to be safe.
+     * Validates an accessor and calls the decoder for every component of every element, including
+     * the sparse overrides.
+     *
+     * <p>With a null decoder it only validates, so that a caller can size its arrays from a count
+     * that is known to be safe.
      */
     private void decode(int accessor, Decoder decoder) {
         Map<String, Object> a = accessors.get(accessor);
@@ -646,7 +925,14 @@ public final class Gltf {
         return views[bv];
     }
 
-    /** All components of an accessor as floats ({@code count * components} of them), normalized integers mapped to [0, 1] or [-1, 1]. */
+    /**
+     * Reads an accessor into a float array, converting normalised integers to floats; the array is
+     * a copy, so repeated reads allocate.
+     *
+     * @param accessor the accessor
+     * @return all components of an accessor as floats ({@code count * components} of them),
+     *     normalized integers mapped to [0, 1] or [-1, 1]
+     */
     public float[] readFloats(int accessor) {
         decode(accessor, null); // validates first: the count is only trusted after this
         AccessorInfo info = accessorInfo(accessor);
@@ -655,7 +941,14 @@ public final class Gltf {
         return out;
     }
 
-    /** As {@link #readFloats(int)} into {@code dst} starting at {@code dstOffset}. */
+    /**
+     * As {@link #readFloats(int)} into {@code dst} starting at {@code dstOffset}.
+     *
+     * @param accessor the accessor
+     * @param dst receives the result
+     * @param dstOffset the index of the first element written to the destination
+     * @throws GltfException if {@code dst} is too small for the accessor
+     */
     public void readFloats(int accessor, float[] dst, int dstOffset) {
         AccessorInfo info = accessorInfo(accessor);
         int comps = info.components(), ct = info.componentType();
@@ -666,7 +959,14 @@ public final class Gltf {
         decode(accessor, (i, c, buf, pos) -> dst[dstOffset + i * comps + c] = convert(buf, pos, ct, normalized));
     }
 
-    /** All components of an integer accessor (unsigned or signed byte, short, int) as ints; a float accessor is an error. */
+    /**
+     * Reads an integer accessor into an int array; floating-point accessors are rejected.
+     *
+     * @param accessor the accessor
+     * @return all components of an integer accessor (unsigned or signed byte, short, int) as ints;
+     *     a float accessor is an error
+     * @throws GltfException if the accessor holds floats, not integers
+     */
     public int[] readInts(int accessor) {
         decode(accessor, null);
         AccessorInfo info = accessorInfo(accessor);
@@ -683,9 +983,18 @@ public final class Gltf {
     }
 
     /**
-     * Decodes an accessor to floats and writes them into {@code dst} as {@code count} elements of {@code components} floats, element {@code i} at byte
-     * {@code offset + i * strideBytes}, in the given byte order. The bytes between elements are left alone, so this fills one attribute of an interleaved buffer.
+     * Decodes an accessor to floats and writes them into {@code dst} as {@code count} elements of
+     * {@code components} floats, element {@code i} at byte {@code offset + i * strideBytes}, in the
+     * given byte order.
      *
+     * <p>The bytes between elements are left alone, so this fills one attribute of an interleaved
+     * buffer.
+     *
+     * @param accessor the accessor
+     * @param dst receives the result; must not be {@code null}
+     * @param offset the index of the first element to read or write
+     * @param strideBytes the stride bytes
+     * @param order the order; must not be {@code null}
      * @return the number of elements written
      */
     public int readInto(int accessor, MemorySegment dst, long offset, long strideBytes, ByteOrder order) {
@@ -697,7 +1006,15 @@ public final class Gltf {
 
     // ---------------------------------------------------------------- meshes
 
-    /** Builds a {@link Mesh} from a triangle, strip or fan primitive of mesh {@code meshIndex}. */
+    /**
+     * Builds a {@link Mesh} from a triangle, strip or fan primitive of mesh {@code meshIndex}.
+     *
+     * @param meshIndex the mesh index
+     * @param primitiveIndex the primitive index
+     * @return the mesh, never {@code null}
+     * @throws GltfException if the primitive is not a triangle primitive, has no {@code POSITION}
+     *     of type {@code VEC3}, has invalid indices or an index outside the vertices
+     */
     public Mesh toMesh(int meshIndex, int primitiveIndex) {
         Primitive p = meshes.get(meshIndex).primitives().get(primitiveIndex);
         if (p.mode() != MODE_TRIANGLES && p.mode() != MODE_TRIANGLE_STRIP && p.mode() != MODE_TRIANGLE_FAN) {
@@ -800,7 +1117,17 @@ public final class Gltf {
         }
     }
 
-    /** {@code JOINTS_0} and {@code WEIGHTS_0} of a primitive: four joint indices (as the file has them, into the skin's joint list) and four weights per vertex. */
+    /**
+     * Reads the joint indices and weights that bind a primitive's vertices to the skeleton; a
+     * primitive without skinning data is rejected.
+     *
+     * @param meshIndex the mesh index
+     * @param primitiveIndex the primitive index
+     * @return {@code JOINTS_0} and {@code WEIGHTS_0} of a primitive: four joint indices (as the
+     *     file has them, into the skin's joint list) and four weights per vertex
+     * @throws GltfException if the primitive has no matching {@code JOINTS_0} and {@code WEIGHTS_0}
+     *     accessors
+     */
     public VertexSkinning readSkinning(int meshIndex, int primitiveIndex) {
         Primitive p = meshes.get(meshIndex).primitives().get(primitiveIndex);
         Integer ja = p.attributes().get("JOINTS_0"), wa = p.attributes().get("WEIGHTS_0");
@@ -816,7 +1143,13 @@ public final class Gltf {
 
     // ---------------------------------------------------------------- nodes
 
-    /** The local transform of a node as a matrix. */
+    /**
+     * Builds the local transform of a node from its matrix or from its translation, rotation and
+     * scale.
+     *
+     * @param node the node index
+     * @return the local transform of a node as a matrix
+     */
     public Mat4f localMatrix(int node) {
         Node n = nodes.get(node);
         if (n.matrix() != null) {
@@ -827,7 +1160,11 @@ public final class Gltf {
                 new Vec3f(n.scale()[0], n.scale()[1], n.scale()[2]));
     }
 
-    /** World matrices of all nodes (the product of the local matrices from the root down). */
+    /**
+     * Computes the world matrix of every node by walking the node hierarchy from the roots.
+     *
+     * @return world matrices of all nodes (the product of the local matrices from the root down)
+     */
     public Mat4f[] worldMatrices() {
         int n = nodes.size();
         int[] parent = parents();
@@ -855,7 +1192,9 @@ public final class Gltf {
         }
     }
 
-    /** The parent node of every node, -1 for roots. */
+    /**
+     * The parent node of every node, -1 for roots.
+     */
     int[] parents() {
         int[] parent = new int[nodes.size()];
         Arrays.fill(parent, -1);
@@ -869,12 +1208,22 @@ public final class Gltf {
 
     // ---------------------------------------------------------------- skins
 
-    /** The number of skins. */
+    /**
+     * Counts the skins in the file.
+     *
+     * @return the number of skins
+     */
     public int skinCount() {
         return list(root.get("skins")).size();
     }
 
-    /** Builds (and caches) the skeleton of skin {@code index}; see the class comment for the joint reordering. */
+    /**
+     * Builds (and caches) the skeleton of skin {@code index}; see the class comment for the joint
+     * reordering.
+     *
+     * @param index the index
+     * @return the skeleton data of the skin, never {@code null}
+     */
     public SkinData skin(int index) {
         SkinData cached = skinCache.get(index);
         if (cached != null) {
@@ -887,24 +1236,50 @@ public final class Gltf {
 
     // ---------------------------------------------------------------- animations
 
-    /** The number of animations. */
+    /**
+     * Counts the animations in the file.
+     *
+     * @return the number of animations
+     */
     public int animationCount() {
         return list(root.get("animations")).size();
     }
 
-    /** The name of animation {@code animation}, or {@code null} when the file gives none. */
+    /**
+     * Looks up the name of an animation, which the file may omit.
+     *
+     * @param animation the animation
+     * @return the name of animation {@code animation}, or {@code null} when the file gives none
+     */
     public String animationName(int animation) {
         return str(obj(list(root.get("animations")).get(animation), "animation"), "name", null);
     }
 
-    /** {@link #clip(int, SkinData, float)} with cubic curves resampled at 30 Hz. */
+    /**
+     * Converts an animation to a clip with a default sampling rate for cubic spline channels, which
+     * the clip format cannot store as splines.
+     *
+     * @param animation the animation
+     * @param skin the skin; must not be {@code null}
+     * @return {@link #clip(int, SkinData, float)} with cubic curves resampled at 30 Hz
+     */
     public AnimationClip clip(int animation, SkinData skin) {
         return clip(animation, skin, 30f);
     }
 
     /**
-     * The animation as a clip for the skeleton of {@code skin}: translation, rotation and scale channels that target the skin's joints (other nodes and weights
-     * channels are ignored). STEP becomes a pair of keys per step, CUBICSPLINE is sampled {@code cubicRate} times a second (and at every key).
+     * Converts an animation to a clip for a skin's skeleton, resampling cubic spline channels at
+     * the given rate; channels that do not target the skin's joints are ignored.
+     *
+     * <p>STEP becomes a pair of keys per step, CUBICSPLINE is sampled {@code cubicRate} times a
+     * second (and at every key).
+     *
+     * @param animation the animation
+     * @param skin the skin; must not be {@code null}
+     * @param cubicRate the cubic rate
+     * @return the animation as a clip for the skeleton of {@code skin}: translation, rotation and
+     *     scale channels that target the skin's joints (other nodes and weights channels are
+     *     ignored)
      */
     public AnimationClip clip(int animation, SkinData skin, float cubicRate) {
         return GltfAnimations.clip(this, animation, skin, cubicRate);

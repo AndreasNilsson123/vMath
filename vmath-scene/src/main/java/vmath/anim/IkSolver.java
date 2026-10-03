@@ -3,33 +3,59 @@ package vmath.anim;
 import vmath.annotations.Experimental;
 
 /**
- * Inverse kinematics for a chain of joints of a {@link Skeleton}: given where the tip of the chain should be, rotate the joints of a {@link Pose} so that it gets there.
- * Three solvers and a look-at constraint:
+ * Inverse kinematics for a chain of joints of a {@link Skeleton}: given where the tip of the chain
+ * should be, rotate the joints of a {@link Pose} so that it gets there.
+ *
+ * <p>Three solvers and a look-at constraint:
  *
  * <ul>
- *   <li>{@link #twoBone}: the analytic solution for a three-joint limb (shoulder, elbow, wrist; hip, knee, ankle): exact and instantaneous, with a <em>pole vector</em> that says
- *       which way the middle joint bends.</li>
- *   <li>{@link #fabrik}: FABRIK (forward and backward reaching) for a chain of any length: iterates over positions, then converts them to rotations; no singularities and an
- *       even bend along the chain; it is not guaranteed to converge (it can stall in a folded configuration), so check the returned distance.</li>
- *   <li>{@link #ccd}: cyclic coordinate descent for a chain of any length: rotates one joint at a time to point the tip at the target; cheap per step, and it concentrates the
- *       rotation in the joints near the tip.</li>
- *   <li>{@link #lookAt}: turns one joint so that an axis of it points at a target (a head or an eye following a point), optionally keeping a second axis towards "up", and
- *       blended in by a weight.</li>
+ *   <li>{@link #twoBone}: the analytic solution for a three-joint limb (shoulder, elbow, wrist;
+ *       hip, knee, ankle): exact and instantaneous, with a <em>pole vector</em> that says which way
+ *       the middle joint bends.</li>
+ *   <li>{@link #fabrik}: FABRIK (forward and backward reaching) for a chain of any length: iterates
+ *       over positions, then converts them to rotations; no singularities and an even bend along
+ *       the chain; it is not guaranteed to converge (it can stall in a folded configuration), so
+ *       check the returned distance.</li>
+ *   <li>{@link #ccd}: cyclic coordinate descent for a chain of any length: rotates one joint at a
+ *       time to point the tip at the target; cheap per step, and it concentrates the rotation in
+ *       the joints near the tip.</li>
+ *   <li>{@link #lookAt}: turns one joint so that an axis of it points at a target (a head or an eye
+ *       following a point), optionally keeping a second axis towards "up", and blended in by a
+ *       weight.</li>
  * </ul>
  *
- * <p>A <b>chain</b> is a list of joint indices in which every joint is the child of the one before it ({@code skeleton.parent(chain[k + 1]) == chain[k]}); the first joint
- * stays where it is, the last is the tip, and the joints rotate about their own origins (the rotation of the tip joint itself does not change anything the solvers care about, so
- * it is left alone). Targets and pole vectors are in the space of the skeleton's world matrices ({@link Skinning#worldMatrices}), that is model space for a root joint with
- * no parent above it.
+ * <p>A <b>chain</b> is a list of joint indices in which every joint is the child of the one before
+ * it ({@code skeleton.parent(chain[k + 1]) == chain[k]}); the first joint stays where it is, the
+ * last is the tip, and the joints rotate about their own origins (the rotation of the tip joint
+ * itself does not change anything the solvers care about, so it is left alone). Targets and pole
+ * vectors are in the space of the skeleton's world matrices ({@link Skinning#worldMatrices}), that
+ * is model space for a root joint with no parent above it.
  *
- * <p>Only rotations change; the bone lengths (the translations of the joints) are never touched, so a target beyond reach leaves the chain fully stretched towards it and the
- * solver returns the distance that is left. Each method returns the distance between the tip and the target (or, for {@code lookAt}, the angle between the axis and the
- * target direction in radians) after the solve. The solvers assume the chain joints and their ancestors have a <b>uniform scale</b> (the scale of a joint is read from the length of
- * its world x axis); with non-uniform scale the positions are only approximate.
+ * <p>Only rotations change; the bone lengths (the translations of the joints) are never touched, so
+ * a target beyond reach leaves the chain fully stretched towards it and the solver returns the
+ * distance that is left. Each method returns the distance between the tip and the target (or, for
+ * {@code lookAt}, the angle between the axis and the target direction in radians) after the solve.
+ * The solvers assume the chain joints and their ancestors have a <b>uniform scale</b> (the scale of
+ * a joint is read from the length of its world x axis); with non-uniform scale the positions are
+ * only approximate.
  *
- * <p>An instance owns its scratch arrays, so the solves <b>allocate nothing</b> after construction. Not thread-safe: use one per thread (and per skeleton).
+ * <p>An instance owns its scratch arrays, so the solves <b>allocate nothing</b> after construction.
+ * Not thread-safe: use one per thread (and per skeleton).
  *
- * <p><b>Thread safety.</b> Not thread-safe (it holds scratch memory): one instance per thread. The skeleton may be shared.
+ * <p><b>Thread safety.</b> Not thread-safe (it holds scratch memory): one instance per thread. The
+ * skeleton may be shared.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * Skeleton arm = new Skeleton(new int[] {-1, 0, 1}, new float[] {
+ *     0f, 0f, 0f, 0f, 0f, 0f, 1f, 1f, 1f, 1f,
+ *     1f, 0f, 0f, 0f, 0f, 0f, 1f, 1f, 1f, 1f,
+ *     1f, 0f, 0f, 0f, 0f, 0f, 1f, 1f, 1f, 1f});
+ * Pose pose = new Pose(arm);
+ * IkSolver solver = new IkSolver(arm);                                    // owns scratch memory: reuse it
+ * float left = solver.twoBone(pose, 0, 1, 2, 1f, 1f, 0f);                // the distance still missing: 0 when the target is reachable
+ * }</pre>
  */
 @Experimental("constraints (joint limits, twist) and a full-body solver are the next steps; the signatures are expected to stay")
 public final class IkSolver {
@@ -53,7 +79,11 @@ public final class IkSolver {
     private int[] chainJoints = new int[0];
     private final int[] twoBoneChain = new int[3];
 
-    /** A solver for {@code skeleton}. */
+    /**
+     * Creates a solver for {@code skeleton}.
+     *
+     * @param skeleton the skeleton; must not be {@code null}
+     */
     public IkSolver(Skeleton skeleton) {
         this.skeleton = skeleton;
         this.joints = skeleton.jointCount();
@@ -75,16 +105,44 @@ public final class IkSolver {
     // ---------------------------------------------------------------- the solvers
 
     /**
-     * Solves a three-joint limb exactly: rotates {@code root} and {@code mid} so that the {@code end} joint reaches {@code (tx, ty, tz)}, or points straight at it when it is out
-     * of reach (or folded to the minimum when it is too close). {@code mid} must be a child of {@code root} and {@code end} a child of {@code mid}. The middle joint bends
-     * towards the pole point {@code (poleX, poleY, poleZ)} (the knee towards a point in front of the leg): the plane of the limb contains the root, the target and the pole.
+     * Solves a three-joint limb exactly: rotates {@code root} and {@code mid} so that the
+     * {@code end} joint reaches {@code (tx, ty, tz)}, or points straight at it when it is out of
+     * reach (or folded to the minimum when it is too close).
+     *
+     * <p>{@code mid} must be a child of {@code root} and {@code end} a child of {@code mid}. The
+     * middle joint bends towards the pole point {@code (poleX, poleY, poleZ)} (the knee towards a
+     * point in front of the leg): the plane of the limb contains the root, the target and the pole.
      * Returns the distance from the end joint to the target after the solve.
+     *
+     * @param pose the pose; must not be {@code null}
+     * @param root the root
+     * @param mid the mid
+     * @param end the end
+     * @param tx the x coordinate of the target
+     * @param ty the y coordinate of the target
+     * @param tz the z coordinate of the target
+     * @param poleX the pole x
+     * @param poleY the pole y
+     * @param poleZ the pole z
+     * @return the distance from the end joint to the target after the solve
      */
     public float twoBone(Pose pose, int root, int mid, int end, float tx, float ty, float tz, float poleX, float poleY, float poleZ) {
         return twoBone(pose, root, mid, end, tx, ty, tz, poleX, poleY, poleZ, true);
     }
 
-    /** {@link #twoBone} that keeps the current bend direction of the limb instead of taking a pole point. */
+    /**
+     * Solves a three-joint limb exactly while keeping its current bend direction instead of taking
+     * a pole point.
+     *
+     * @param pose the pose; must not be {@code null}
+     * @param root the root
+     * @param mid the mid
+     * @param end the end
+     * @param tx the x coordinate of the target
+     * @param ty the y coordinate of the target
+     * @param tz the z coordinate of the target
+     * @return the distance from the end joint to the target after the solve
+     */
     public float twoBone(Pose pose, int root, int mid, int end, float tx, float ty, float tz) {
         return twoBone(pose, root, mid, end, tx, ty, tz, 0f, 0f, 0f, false);
     }
@@ -152,9 +210,22 @@ public final class IkSolver {
     }
 
     /**
-     * Solves a chain of any length with FABRIK: alternately drag the tip to the target and the root back to its place, each joint keeping its distance to the next, until the
-     * tip is within {@code tolerance} of the target or {@code maxIterations} rounds have passed. A target out of reach leaves the chain straight towards it. Returns the
-     * remaining distance from the tip to the target.
+     * Solves a chain of any length with FABRIK: alternately drag the tip to the target and the root
+     * back to its place, each joint keeping its distance to the next, until the tip is within
+     * {@code tolerance} of the target or {@code maxIterations} rounds have passed.
+     *
+     * <p>A target out of reach leaves the chain straight towards it. Returns the remaining distance
+     * from the tip to the target.
+     *
+     * @param pose the pose; must not be {@code null}
+     * @param chain the chain
+     * @param chainLength the chain length
+     * @param tx the x coordinate of the target
+     * @param ty the y coordinate of the target
+     * @param tz the z coordinate of the target
+     * @param maxIterations the max iterations
+     * @param tolerance the tolerance
+     * @return the remaining distance from the tip to the target
      */
     public float fabrik(Pose pose, int[] chain, int chainLength, float tx, float ty, float tz, int maxIterations, float tolerance) {
         load(pose, chain, chainLength);
@@ -231,8 +302,22 @@ public final class IkSolver {
     }
 
     /**
-     * Solves a chain of any length by cyclic coordinate descent: from the joint before the tip back to the root, rotate each joint about its origin to point the tip at the
-     * target, and repeat until the tip is within {@code tolerance} of the target or {@code maxIterations} sweeps have passed. Returns the remaining distance.
+     * Solves a chain of any length by cyclic coordinate descent: from the joint before the tip back
+     * to the root, rotate each joint about its origin to point the tip at the target, and repeat
+     * until the tip is within {@code tolerance} of the target or {@code maxIterations} sweeps have
+     * passed.
+     *
+     * <p>Returns the remaining distance.
+     *
+     * @param pose the pose; must not be {@code null}
+     * @param chain the chain
+     * @param chainLength the chain length
+     * @param tx the x coordinate of the target
+     * @param ty the y coordinate of the target
+     * @param tz the z coordinate of the target
+     * @param maxIterations the max iterations
+     * @param tolerance the tolerance
+     * @return the remaining distance
      */
     public float ccd(Pose pose, int[] chain, int chainLength, float tx, float ty, float tz, int maxIterations, float tolerance) {
         load(pose, chain, chainLength);
@@ -255,18 +340,54 @@ public final class IkSolver {
     }
 
     /**
-     * Turns {@code joint} so that its local axis {@code (fx, fy, fz)} points at {@code (tx, ty, tz)} by the shortest rotation, blended in by {@code weight} (0 leaves the pose
-     * alone, 1 aims fully). The rotation of the joint's parent is respected; the rotation about the aimed axis (the roll) is whatever the shortest rotation gives, see the overload
-     * with an up axis to control it. Returns the angle in radians between the axis and the direction to the target after the solve (0 at weight 1).
+     * Turns {@code joint} so that its local axis {@code (fx, fy, fz)} points at
+     * {@code (tx, ty, tz)} by the shortest rotation, blended in by {@code weight} (0 leaves the
+     * pose alone, 1 aims fully).
+     *
+     * <p>The rotation of the joint's parent is respected; the rotation about the aimed axis (the
+     * roll) is whatever the shortest rotation gives, see the overload with an up axis to control
+     * it. Returns the angle in radians between the axis and the direction to the target after the
+     * solve (0 at weight 1).
+     *
+     * @param pose the pose; must not be {@code null}
+     * @param joint the joint index
+     * @param fx the x component of the local axis that is turned towards the target
+     * @param fy the y component of the local axis that is turned towards the target
+     * @param fz the z component of the local axis that is turned towards the target
+     * @param tx the x coordinate of the target
+     * @param ty the y coordinate of the target
+     * @param tz the z coordinate of the target
+     * @param weight the weight
+     * @return the angle in radians between the axis and the direction to the target after the solve
+     *     (0 at weight 1)
      */
     public float lookAt(Pose pose, int joint, float fx, float fy, float fz, float tx, float ty, float tz, float weight) {
         return lookAtImpl(pose, joint, fx, fy, fz, tx, ty, tz, weight, false, 0, 0, 0, 0, 0, 0);
     }
 
     /**
-     * {@link #lookAt} that also keeps the joint's local axis {@code (ux, uy, uz)} as close as possible to the world direction {@code (wx, wy, wz)} while the forward axis points at
-     * the target: the roll is chosen so that the up axis leans towards "up". The up axis should be perpendicular to the forward axis. When the forward direction is parallel to
-     * the world up the roll is left as the shortest rotation gives it.
+     * Aims a joint at a target and in addition chooses the roll about the aim direction so that a
+     * local axis leans towards a world direction, which keeps heads and eyes upright.
+     *
+     * <p>The up axis should be perpendicular to the forward axis. When the forward direction is
+     * parallel to the world up the roll is left as the shortest rotation gives it.
+     *
+     * @param pose the pose; must not be {@code null}
+     * @param joint the joint index
+     * @param fx the x component of the local axis that is turned towards the target
+     * @param fy the y component of the local axis that is turned towards the target
+     * @param fz the z component of the local axis that is turned towards the target
+     * @param ux the x component of the local axis that is kept towards the up direction
+     * @param uy the y component of the local axis that is kept towards the up direction
+     * @param uz the z component of the local axis that is kept towards the up direction
+     * @param tx the x coordinate of the target
+     * @param ty the y coordinate of the target
+     * @param tz the z coordinate of the target
+     * @param wx the x component of the world up direction
+     * @param wy the y component of the world up direction
+     * @param wz the z component of the world up direction
+     * @param weight the weight
+     * @return the angle in radians between the axis and the direction to the target after the solve
      */
     public float lookAt(Pose pose, int joint, float fx, float fy, float fz, float ux, float uy, float uz, float tx, float ty, float tz, float wx, float wy, float wz, float weight) {
         return lookAtImpl(pose, joint, fx, fy, fz, tx, ty, tz, weight, true, ux, uy, uz, wx, wy, wz);
@@ -357,7 +478,9 @@ public final class IkSolver {
 
     // ---------------------------------------------------------------- the chain state
 
-    /** Reads the chain from the pose: positions, rotations, local transforms and bone lengths. */
+    /**
+     * Reads the chain from the pose: positions, rotations, local transforms and bone lengths.
+     */
     private void load(Pose pose, int[] chain, int n) {
         if (pose.jointCount() != joints) {
             throw new IllegalArgumentException("the pose has " + pose.jointCount() + " joints, the skeleton " + joints);
@@ -420,7 +543,10 @@ public final class IkSolver {
         }
     }
 
-    /** Recomputes the world rotations of the chain joints from {@code from} on (and the positions of the joints after {@code from}) from the local rotations. */
+    /**
+     * Recomputes the world rotations of the chain joints from {@code from} on (and the positions of
+     * the joints after {@code from}) from the local rotations.
+     */
     private void fk(int from) {
         for (int k = from; k < count; k++) {
             double qx, qy, qz, qw;
@@ -448,7 +574,9 @@ public final class IkSolver {
         }
     }
 
-    /** Writes the local rotations of the chain joints back into the pose. */
+    /**
+     * Writes the local rotations of the chain joints back into the pose.
+     */
     private void store(Pose pose) {
         float[] data = pose.data();
         for (int k = 0; k < rotated; k++) {
@@ -469,13 +597,19 @@ public final class IkSolver {
 
     // ---------------------------------------------------------------- turning joints
 
-    /** Turns joint {@code k} so that the direction to the next chain joint becomes {@code (dx, dy, dz)}. */
+    /**
+     * Turns joint {@code k} so that the direction to the next chain joint becomes
+     * {@code (dx, dy, dz)}.
+     */
     private void aim(int k, double dx, double dy, double dz) {
         double cx = px[k + 1] - px[k], cy = py[k + 1] - py[k], cz = pz[k + 1] - pz[k];
         rotateBy(k, cx, cy, cz, dx, dy, dz);
     }
 
-    /** Rotates joint {@code k} about its origin by the shortest rotation that takes direction c to direction d, and updates the chain below it. */
+    /**
+     * Rotates joint {@code k} about its origin by the shortest rotation that takes direction c to
+     * direction d, and updates the chain below it.
+     */
     private void rotateBy(int k, double cx, double cy, double cz, double dx, double dy, double dz) {
         double[] q = arcQ;
         arc(cx, cy, cz, dx, dy, dz, q);
@@ -507,7 +641,9 @@ public final class IkSolver {
 
     // ---------------------------------------------------------------- quaternion helpers on doubles (x, y, z, w)
 
-    /** {@code out = a * b}. */
+    /**
+     * {@code out = a * b}.
+     */
     private static void multiply(double ax, double ay, double az, double aw, double bx, double by, double bz, double bw, double[] out) {
         out[0] = aw * bx + ax * bw + ay * bz - az * by;
         out[1] = aw * by - ax * bz + ay * bw + az * bx;
@@ -515,7 +651,9 @@ public final class IkSolver {
         out[3] = aw * bw - ax * bx - ay * by - az * bz;
     }
 
-    /** Rotates the vector by the unit quaternion into {@code out[0..2]}. */
+    /**
+     * Rotates the vector by the unit quaternion into {@code out[0..2]}.
+     */
     private static void rotateVector(double qx, double qy, double qz, double qw, double vx, double vy, double vz, double[] out) {
         double tx = 2 * (qy * vz - qz * vy), ty = 2 * (qz * vx - qx * vz), tz = 2 * (qx * vy - qy * vx);
         out[0] = vx + qw * tx + (qy * tz - qz * ty);
@@ -523,7 +661,10 @@ public final class IkSolver {
         out[2] = vz + qw * tz + (qx * ty - qy * tx);
     }
 
-    /** The shortest-arc rotation (a unit quaternion) that takes direction a to direction b; the identity when either is zero, a half turn about a perpendicular axis when they oppose. */
+    /**
+     * The shortest-arc rotation (a unit quaternion) that takes direction a to direction b; the
+     * identity when either is zero, a half turn about a perpendicular axis when they oppose.
+     */
     private static void arc(double ax, double ay, double az, double bx, double by, double bz, double[] out) {
         double al = Math.sqrt(ax * ax + ay * ay + az * az), bl = Math.sqrt(bx * bx + by * by + bz * bz);
         if (!(al > 0) || !(bl > 0)) {

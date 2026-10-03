@@ -1,5 +1,6 @@
 /**
- * vmath-geo: shapes, intersection tests, convex geometry, SDFs, vertex packing and the physics math.
+ * vmath-geo: shapes, intersection tests, convex geometry, SDFs, vertex packing and the physics
+ * math.
  */
 module vmath.geo {
     requires static vmath.annotations;

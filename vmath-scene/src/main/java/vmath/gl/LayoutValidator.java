@@ -12,24 +12,46 @@ import vmath.gl.GlslType.Mat;
 import vmath.gl.GlslType.Struct;
 
 /**
- * Compares a Java-side {@link StructLayout} with what the shader compiler says the layout is. The compiler's side comes from program introspection
- * ({@code glGetProgramResourceiv} with {@code GL_OFFSET}, {@code GL_ARRAY_STRIDE}, {@code GL_MATRIX_STRIDE}, {@code GL_BUFFER_DATA_SIZE}) or from SPIR-V reflection
- * (the {@code Offset}, {@code ArrayStride} and {@code MatrixStride} decorations), reduced to a list of {@link Reflected} members. The library calls no graphics API, so
- * the caller supplies that list; run this in an opt-in test that has a GPU or a SPIR-V toolchain.
+ * Compares a Java-side {@link StructLayout} with what the shader compiler says the layout is.
  *
- * <p>Member names are paths relative to the struct: {@code planes[0]}, {@code lights[0].color}. Reflection often reports an array as its first element
- * ({@code name[0]}), and the check accepts that and the bare name. {@link #expected} produces the list the Java side implies, which is also a convenient thing to
- * print when a validation fails.
+ * <p>The compiler's side comes from program introspection ({@code glGetProgramResourceiv} with
+ * {@code GL_OFFSET}, {@code GL_ARRAY_STRIDE}, {@code GL_MATRIX_STRIDE},
+ * {@code GL_BUFFER_DATA_SIZE}) or from SPIR-V reflection (the {@code Offset}, {@code ArrayStride}
+ * and {@code MatrixStride} decorations), reduced to a list of {@link Reflected} members. The
+ * library calls no graphics API, so the caller supplies that list; run this in an opt-in test that
+ * has a GPU or a SPIR-V toolchain.
  *
- * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time. The arrays and buffers you pass in are
- * not synchronised, so two threads must not write the same one.
+ * <p>Member names are paths relative to the struct: {@code planes[0]}, {@code lights[0].color}.
+ * Reflection often reports an array as its first element ({@code name[0]}), and the check accepts
+ * that and the bare name. {@link #expected} produces the list the Java side implies, which is also
+ * a convenient thing to print when a validation fails.
+ *
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the
+ * same time. The arrays and buffers you pass in are not synchronised, so two threads must not write
+ * the same one.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * GlslType.Struct block = new GlslType.Struct("Block", List.of(new GlslType.Member("a", GlslType.FLOAT), new GlslType.Member("b", GlslType.VEC4)));
+ * StructLayout layout = block.layout(GpuLayout.STD140);
+ * List<LayoutValidator.Reflected> expected = LayoutValidator.expected(layout);   // what a shader reflection must report
+ * List<String> problems = LayoutValidator.validate(layout, expected, "", true, layout.size());   // empty: consistent
+ * }</pre>
  */
 @Experimental("the reflection input record may gain fields")
 public final class LayoutValidator {
 
     /**
-     * One member as reflection reports it. {@code arrayStride} and {@code matrixStride} are 0 (or negative, as GL reports "none") when the member is neither an array
-     * nor a matrix.
+     * One member as reflection reports it.
+     *
+     * <p>{@code arrayStride} and {@code matrixStride} are 0 (or negative, as GL reports "none")
+     * when the member is neither an array nor a matrix.
+     *
+     * @param name the name; must not be {@code null}
+     * @param offset the index of the first element to read or write
+     * @param arrayStride the array stride
+     * @param matrixStride the matrix stride
      */
     public record Reflected(String name, long offset, long arrayStride, long matrixStride) {
     }
@@ -37,7 +59,14 @@ public final class LayoutValidator {
     private LayoutValidator() {
     }
 
-    /** The members the Java layout implies, flattened to leaves (scalars, vectors, matrices) with array elements as {@code [0]}. */
+    /**
+     * Flattens a Java struct layout into the list of leaf members that GLSL reflection would
+     * report, so that the two can be compared.
+     *
+     * @param layout the GPU layout; must not be {@code null}
+     * @return the members the Java layout implies, flattened to leaves (scalars, vectors, matrices)
+     *     with array elements as {@code [0]}
+     */
     public static List<Reflected> expected(StructLayout layout) {
         List<Reflected> out = new ArrayList<>();
         flatten(layout.struct(), layout.layout(), 0, "", out);
@@ -75,10 +104,11 @@ public final class LayoutValidator {
      *
      * @param layout        the Java layout
      * @param reflected     the members from the compiler
-     * @param prefix        a prefix to strip from every reflected name, such as {@code "view."} for a block instance named {@code view}; names that do not start with it are
-     *                      reported as unexpected
+     * @param prefix        a prefix to strip from every reflected name, such as {@code "view."} for a block instance named {@code view}; names that do not start with it are reported as unexpected
      * @param requireAll    report members that reflection does not list (compilers drop unused members, so this is usually {@code false})
-     * @param reflectedSize the block size the compiler reports ({@code GL_BUFFER_DATA_SIZE}), or a negative number to skip the check
+     *
+     * @param reflectedSize the block size the compiler reports ({@code GL_BUFFER_DATA_SIZE}), or a
+     *     negative number to skip the check
      * @return the differences, in plain words; empty when the layouts agree
      */
     public static List<String> validate(StructLayout layout, List<Reflected> reflected, String prefix, boolean requireAll, long reflectedSize) {

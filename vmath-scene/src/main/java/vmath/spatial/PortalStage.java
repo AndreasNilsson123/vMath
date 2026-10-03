@@ -6,13 +6,30 @@ import vmath.core.Mat4f;
 import vmath.geo.DepthRange;
 
 /**
- * Portal culling as a {@link CullStage}: locates the camera in the {@link PortalGraph} (starting from the sector of the previous frame), traverses the portals ({@link PortalCuller}) and
- * clears the bits of the objects that are not seen through them. Put it in a {@link CullPipeline} next to the frustum stage; the order does not matter, each only clears bits.
+ * Portal culling as a {@link CullStage}: locates the camera in the {@link PortalGraph} (starting
+ * from the sector of the previous frame), traverses the portals ({@link PortalCuller}) and clears
+ * the bits of the objects that are not seen through them.
  *
- * <p>A stage needs the projection of the frame, which {@link CullContext} does not carry: call {@link #setView} each frame with the same view-projection matrix that the frustum of the
- * context was made from, before running the pipeline. When the camera is in no sector the stage culls nothing, unless a fallback sector is set ({@link #setFallbackSector}).
+ * <p>Put it in a {@link CullPipeline} next to the frustum stage; the order does not matter, each
+ * only clears bits.
+ *
+ * <p>A stage needs the projection of the frame, which {@link CullContext} does not carry: call
+ * {@link #setView} each frame with the same view-projection matrix that the frustum of the context
+ * was made from, before running the pipeline. When the camera is in no sector the stage culls
+ * nothing, unless a fallback sector is set ({@link #setFallbackSector}).
  *
  * <p>One stage per thread (it owns a {@link PortalCuller}). <b>Thread safety.</b> Not thread-safe.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * PortalGraph.Builder builder = PortalGraph.builder();
+ * builder.addBox(Aabbf.of(Vec3f.ZERO, new Vec3f(10f, 3f, 10f)));
+ * PortalStage stage = new PortalStage(builder.build())
+ *         .setView(Mat4f.perspective(1f, 1.5f, 0.1f, 100f, ClipSpace.OPENGL), DepthRange.of(ClipSpace.OPENGL))
+ *         .setCullUnassigned(false);                                          // objects in no sector are left alone
+ * CullPipeline pipeline = CullPipeline.of(new CullStage[] {stage});
+ * }</pre>
  */
 public final class PortalStage implements CullStage {
 
@@ -23,43 +40,82 @@ public final class PortalStage implements CullStage {
     private int fallback = -1;
     private int lastSector = -1;
 
-    /** A stage for {@code graph}. */
+    /**
+     * Creates a stage for {@code graph}.
+     *
+     * @param graph the graph; must not be {@code null}
+     */
     public PortalStage(PortalGraph graph) {
         this.graph = graph;
         this.culler = new PortalCuller(graph);
     }
 
-    /** Sets the view-projection matrix and its depth convention for the next {@link #cull} calls: the ones the frustum of the {@link CullContext} comes from. */
+    /**
+     * Sets the view-projection matrix and its depth convention for the next {@link #cull} calls:
+     * the ones the frustum of the {@link CullContext} comes from.
+     *
+     * @param viewProjection the view projection; must not be {@code null}
+     * @param depth the depth; must not be {@code null}
+     * @return this stage, for chaining
+     */
     public PortalStage setView(Mat4f viewProjection, DepthRange depth) {
         culler.setView(viewProjection, depth);
         viewSet = true;
         return this;
     }
 
-    /** Whether objects that belong to no sector are culled (default false: they are left alone). */
+    /**
+     * Returns whether objects that belong to no sector are culled (default false: they are left
+     * alone).
+     *
+     * @param cullUnassigned whether cull unassigned
+     * @return this stage, for chaining
+     */
     public PortalStage setCullUnassigned(boolean cullUnassigned) {
         this.cullUnassigned = cullUnassigned;
         return this;
     }
 
-    /** The sector to start from when the camera is in none (for instance the one it was last known to be in), or -1 to cull nothing in that case (the default). */
+    /**
+     * Sets the sector that culling starts from when the camera is in none, such as the last known
+     * one; the default culls nothing in that case.
+     *
+     * @param sector the sector
+     * @return the sector to start from when the camera is in none (for instance the one it was last
+     *     known to be in), or -1 to cull nothing in that case (the default)
+     */
     public PortalStage setFallbackSector(int sector) {
         this.fallback = sector;
         return this;
     }
 
-    /** Narrows the traversal with a precomputed visibility set (see {@link SectorVisibility}), or removes it when {@code null}. */
+    /**
+     * Narrows the traversal with a precomputed visibility set (see {@link SectorVisibility}), or
+     * removes it when {@code null}.
+     *
+     * @param visibility the visibility; must not be {@code null}
+     * @return this stage, for chaining
+     */
     public PortalStage setVisibility(SectorVisibility visibility) {
         culler.setVisibility(visibility);
         return this;
     }
 
-    /** The sector the camera was in at the last {@link #cull}, or -1 when it was in none. */
+    /**
+     * Reads the sector that the camera was in during the last culling pass.
+     *
+     * @return the sector the camera was in at the last {@link #cull}, or -1 when it was in none
+     */
     public int lastSector() {
         return lastSector;
     }
 
-    /** The culler, for the results of the last frame (the visible sectors and their rectangles). */
+    /**
+     * Exposes the underlying culler, whose state describes the last frame.
+     *
+     * @return the culler, for the results of the last frame (the visible sectors and their
+     *     rectangles)
+     */
     public PortalCuller culler() {
         return culler;
     }

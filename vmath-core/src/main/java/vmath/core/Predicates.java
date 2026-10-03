@@ -3,31 +3,54 @@ package vmath.core;
 import vmath.annotations.Experimental;
 
 /**
- * Geometric predicates whose <b>sign is always exact</b>: the orientation of three points in the plane or four in space, and whether a point lies inside the circle
- * or the sphere through the others. They are the questions a convex hull, a triangulation or a mesh-boolean asks, and with ordinary floating-point arithmetic they
- * are answered wrongly for nearly degenerate input (three points almost on a line, four almost on a plane, five almost on a sphere), which makes those algorithms
- * loop, crash or produce inconsistent meshes.
+ * Geometric predicates whose <b>sign is always exact</b>: the orientation of three points in the
+ * plane or four in space, and whether a point lies inside the circle or the sphere through the
+ * others.
  *
- * <p>Each predicate evaluates its determinant in double precision together with a bound on the rounding error of that evaluation (Shewchuk's bounds, doubled for
- * safety). When the result is larger than the bound its sign cannot be wrong and it is returned: that is almost every call. Otherwise the determinant is computed
- * <em>exactly</em> with expansion arithmetic (an unevaluated sum of doubles, see {@code Expansions}) and the exact sign is returned. The cost of the second stage is
- * measured in {@code docs/ROBUSTNESS.md}; inputs that are exactly degenerate (a very common case in real meshes) always take it.
+ * <p>They are the questions a convex hull, a triangulation or a mesh-boolean asks, and with
+ * ordinary floating-point arithmetic they are answered wrongly for nearly degenerate input (three
+ * points almost on a line, four almost on a plane, five almost on a sphere), which makes those
+ * algorithms loop, crash or produce inconsistent meshes.
  *
- * <p>The value returned is a double whose <em>sign</em> is exact: positive, negative, or exactly zero. Its magnitude is the filtered determinant, or, when the exact
- * stage ran, the exact determinant rounded to double. Every method has an {@code ...Sign} variant that returns just -1, 0 or 1.
+ * <p>Each predicate evaluates its determinant in double precision together with a bound on the
+ * rounding error of that evaluation (Shewchuk's bounds, doubled for safety). When the result is
+ * larger than the bound its sign cannot be wrong and it is returned: that is almost every call.
+ * Otherwise the determinant is computed <em>exactly</em> with expansion arithmetic (an unevaluated
+ * sum of doubles, see {@code Expansions}) and the exact sign is returned. The cost of the second
+ * stage is measured in {@code docs/ROBUSTNESS.md}; inputs that are exactly degenerate (a very
+ * common case in real meshes) always take it.
  *
- * <p><b>Range.</b> The inputs must be finite. The exactness argument also needs that no intermediate product overflows or underflows: it holds when every coordinate is
- * zero or has a magnitude between {@code 1e-20} and {@code 1e20} (for the sphere test, which multiplies five coordinates, between {@code 1e-30} and {@code 1e30} would
- * still do; the tests use the narrower range for all). Coordinates of {@code float} type convert to double exactly, so for them the range is never a concern.
- * Non-finite input gives NaN.
+ * <p>The value returned is a double whose <em>sign</em> is exact: positive, negative, or exactly
+ * zero. Its magnitude is the filtered determinant, or, when the exact stage ran, the exact
+ * determinant rounded to double. Every method has an {@code ...Sign} variant that returns just -1,
+ * 0 or 1.
  *
- * <p><b>Conventions</b> (those of Shewchuk's predicates): {@code orient2d(a, b, c)} is positive when {@code a, b, c} turn counter-clockwise (the plane seen with x to
- * the right and y up); {@code orient3d(a, b, c, d)} is positive when {@code d} lies below the plane through {@code a, b, c}, "below" being the side from which
- * {@code a, b, c} appear counter-clockwise reversed, that is, when {@code (b - a) x (c - a) . (d - a)} is negative; {@code incircle(a, b, c, d)} is positive when {@code d} is
+ * <p><b>Range.</b> The inputs must be finite. The exactness argument also needs that no
+ * intermediate product overflows or underflows: it holds when every coordinate is zero or has a
+ * magnitude between {@code 1e-20} and {@code 1e20} (for the sphere test, which multiplies five
+ * coordinates, between {@code 1e-30} and {@code 1e30} would still do; the tests use the narrower
+ * range for all). Coordinates of {@code float} type convert to double exactly, so for them the
+ * range is never a concern. Non-finite input gives NaN.
+ *
+ * <p><b>Conventions</b> (those of Shewchuk's predicates): {@code orient2d(a, b, c)} is positive
+ * when {@code a, b, c} turn counter-clockwise (the plane seen with x to the right and y up);
+ * {@code orient3d(a, b, c, d)} is positive when {@code d} lies below the plane through
+ * {@code a, b, c}, "below" being the side from which {@code a, b, c} appear counter-clockwise
+ * reversed, that is, when {@code (b - a) x (c - a) . (d - a)} is negative;
+ * {@code incircle(a, b, c, d)} is positive when {@code d} is
  * inside the circle through {@code a, b, c} given counter-clockwise; {@code insphere(a, b, c, d, e)} is positive when {@code e} is inside the sphere through {@code a, b, c,
  * d} given with positive {@code orient3d} (the sign flips if the four points are given the other way round).
  *
- * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time.
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the
+ * same time.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * // is c to the left of the line from a to b? exact, whatever the rounding of the coordinates
+ * int side = Predicates.orient2dSign(0.0, 0.0, 1.0, 0.0, 0.5, 1e-300);   // 1: counter-clockwise
+ * double volume = Predicates.orient3d(new Vec3d(0, 0, 0), new Vec3d(1, 0, 0), new Vec3d(0, 1, 0), new Vec3d(0, 0, 1));
+ * }</pre>
  */
 @Experimental("the set of predicates and the overloads for the vector types may grow")
 public final class Predicates {
@@ -45,8 +68,20 @@ public final class Predicates {
     // ---------------------------------------------------------------- orient2d
 
     /**
-     * The orientation of {@code a, b, c} in the plane: positive for a counter-clockwise turn, negative for clockwise, exactly zero when the three points are collinear.
-     * The sign is exact; see the class comment for the range of the coordinates.
+     * Evaluates the orientation predicate with Shewchuk's adaptive-precision arithmetic, so the
+     * sign is exact: a floating-point filter handles the common case and exact expansions the
+     * near-degenerate one.
+     *
+     * <p>The sign is exact; see the class comment for the range of the coordinates.
+     *
+     * @param ax the x coordinate of the first point
+     * @param ay the y coordinate of the first point
+     * @param bx the x coordinate of the second point
+     * @param by the y coordinate of the second point
+     * @param cx the x coordinate of the third point
+     * @param cy the y coordinate of the third point
+     * @return the orientation of {@code a, b, c} in the plane: positive for a counter-clockwise
+     *     turn, negative for clockwise, exactly zero when the three points are collinear
      */
     public static double orient2d(double ax, double ay, double bx, double by, double cx, double cy) {
         double detLeft = (ax - cx) * (by - cy);
@@ -76,13 +111,32 @@ public final class Predicates {
         return orient2dExact(ax, ay, bx, by, cx, cy);
     }
 
-    /** {@link #orient2d} as -1, 0 or 1. */
+    /**
+     * Evaluates the orientation predicate exactly and reduces it to its sign, for callers that only
+     * branch on it.
+     *
+     * @param ax the x coordinate of the first point
+     * @param ay the y coordinate of the first point
+     * @param bx the x coordinate of the second point
+     * @param by the y coordinate of the second point
+     * @param cx the x coordinate of the third point
+     * @param cy the y coordinate of the third point
+     * @return {@link #orient2d} as -1, 0 or 1
+     */
     public static int orient2dSign(double ax, double ay, double bx, double by, double cx, double cy) {
         double v = orient2d(ax, ay, bx, by, cx, cy);
         return v > 0.0 ? 1 : v < 0.0 ? -1 : 0;
     }
 
-    /** {@link #orient2d(double, double, double, double, double, double)} for vectors. */
+    /**
+     * Evaluates the exact two-dimensional orientation predicate for vector arguments; same
+     * arithmetic and same exactness as the scalar form.
+     *
+     * @param a the first vector; must not be {@code null}
+     * @param b the second vector; must not be {@code null}
+     * @param c the vector; must not be {@code null}
+     * @return {@link #orient2d(double, double, double, double, double, double)} for vectors
+     */
     public static double orient2d(Vec2d a, Vec2d b, Vec2d c) {
         return orient2d(a.x(), a.y(), b.x(), b.y(), c.x(), c.y());
     }
@@ -94,7 +148,10 @@ public final class Predicates {
         return signed(det);
     }
 
-    /** The estimate of an exact expansion, with the sign of its largest component guaranteed (the estimate of a non-overlapping expansion has that sign). */
+    /**
+     * The estimate of an exact expansion, with the sign of its largest component guaranteed (the
+     * estimate of a non-overlapping expansion has that sign).
+     */
     private static double signed(double[] e) {
         double v = Expansions.estimate(e);
         int s = Expansions.sign(e);
@@ -104,8 +161,27 @@ public final class Predicates {
     // ---------------------------------------------------------------- orient3d
 
     /**
-     * The orientation of four points in space: positive when {@code d} lies below the plane through {@code a, b, c} (the side opposite the normal
-     * {@code (b - a) x (c - a)}), negative above, exactly zero when the four are coplanar. The sign is exact.
+     * Evaluates the orientation of four points with Shewchuk's adaptive-precision arithmetic, so
+     * that the sign is exact even for nearly coplanar input; the magnitude is not meaningful beyond
+     * its sign.
+     *
+     * <p>The sign is exact.
+     *
+     * @param ax the x coordinate of the first point
+     * @param ay the y coordinate of the first point
+     * @param az the z coordinate of the first point
+     * @param bx the x coordinate of the second point
+     * @param by the y coordinate of the second point
+     * @param bz the z coordinate of the second point
+     * @param cx the x coordinate of the third point
+     * @param cy the y coordinate of the third point
+     * @param cz the z coordinate of the third point
+     * @param dx the x coordinate of the fourth point
+     * @param dy the y coordinate of the fourth point
+     * @param dz the z coordinate of the fourth point
+     * @return the orientation of four points in space: positive when {@code d} lies below the plane
+     *     through {@code a, b, c} (the side opposite the normal {@code (b - a) x (c - a)}),
+     *     negative above, exactly zero when the four are coplanar
      */
     public static double orient3d(double ax, double ay, double az, double bx, double by, double bz, double cx, double cy, double cz, double dx, double dy, double dz) {
         double adx = ax - dx, bdx = bx - dx, cdx = cx - dx;
@@ -124,13 +200,41 @@ public final class Predicates {
         return orient3dExact(ax, ay, az, bx, by, bz, cx, cy, cz, dx, dy, dz);
     }
 
-    /** {@link #orient3d} as -1, 0 or 1. */
+    /**
+     * Evaluates the three-dimensional orientation predicate exactly and reduces it to its sign, for
+     * callers that only branch on it.
+     *
+     * @param ax the x coordinate of the first point
+     * @param ay the y coordinate of the first point
+     * @param az the z coordinate of the first point
+     * @param bx the x coordinate of the second point
+     * @param by the y coordinate of the second point
+     * @param bz the z coordinate of the second point
+     * @param cx the x coordinate of the third point
+     * @param cy the y coordinate of the third point
+     * @param cz the z coordinate of the third point
+     * @param dx the x coordinate of the fourth point
+     * @param dy the y coordinate of the fourth point
+     * @param dz the z coordinate of the fourth point
+     * @return {@link #orient3d} as -1, 0 or 1
+     */
     public static int orient3dSign(double ax, double ay, double az, double bx, double by, double bz, double cx, double cy, double cz, double dx, double dy, double dz) {
         double v = orient3d(ax, ay, az, bx, by, bz, cx, cy, cz, dx, dy, dz);
         return v > 0.0 ? 1 : v < 0.0 ? -1 : 0;
     }
 
-    /** {@link #orient3d(double, double, double, double, double, double, double, double, double, double, double, double)} for vectors. */
+    /**
+     * Evaluates the exact three-dimensional orientation predicate for vector arguments; same
+     * arithmetic and same exactness as the scalar form.
+     *
+     * @param a the first vector; must not be {@code null}
+     * @param b the second vector; must not be {@code null}
+     * @param c the vector; must not be {@code null}
+     * @param d the vector; must not be {@code null}
+     * @return
+     *     {@link #orient3d(double, double, double, double, double, double, double, double, double, double, double, double)}
+     *     for vectors
+     */
     public static double orient3d(Vec3d a, Vec3d b, Vec3d c, Vec3d d) {
         return orient3d(a.x(), a.y(), a.z(), b.x(), b.y(), b.z(), c.x(), c.y(), c.z(), d.x(), d.y(), d.z());
     }
@@ -149,8 +253,22 @@ public final class Predicates {
     // ---------------------------------------------------------------- incircle
 
     /**
-     * Whether {@code d} is inside the circle through {@code a, b, c}, which must be in counter-clockwise order ({@link #orient2d} positive): positive inside, negative
-     * outside, exactly zero when the four points are concyclic. If {@code a, b, c} are clockwise the sign is reversed. The sign is exact.
+     * Returns whether {@code d} is inside the circle through {@code a, b, c}, which must be in
+     * counter-clockwise order ({@link #orient2d} positive): positive inside, negative outside,
+     * exactly zero when the four points are concyclic.
+     *
+     * <p>If {@code a, b, c} are clockwise the sign is reversed. The sign is exact.
+     *
+     * @param ax the x coordinate of the first point
+     * @param ay the y coordinate of the first point
+     * @param bx the x coordinate of the second point
+     * @param by the y coordinate of the second point
+     * @param cx the x coordinate of the third point
+     * @param cy the y coordinate of the third point
+     * @param dx the x coordinate of the fourth point
+     * @param dy the y coordinate of the fourth point
+     * @return a positive value if {@code d} is inside the circle, a negative value if it is outside
+     *     and zero if it is on the circle; the sign is exact
      */
     public static double incircle(double ax, double ay, double bx, double by, double cx, double cy, double dx, double dy) {
         double adx = ax - dx, bdx = bx - dx, cdx = cx - dx;
@@ -170,13 +288,36 @@ public final class Predicates {
         return incircleExact(ax, ay, bx, by, cx, cy, dx, dy);
     }
 
-    /** {@link #incircle} as -1, 0 or 1. */
+    /**
+     * Evaluates the in-circle predicate exactly and reduces it to its sign, for callers that only
+     * branch on it.
+     *
+     * @param ax the x coordinate of the first point
+     * @param ay the y coordinate of the first point
+     * @param bx the x coordinate of the second point
+     * @param by the y coordinate of the second point
+     * @param cx the x coordinate of the third point
+     * @param cy the y coordinate of the third point
+     * @param dx the x coordinate of the fourth point
+     * @param dy the y coordinate of the fourth point
+     * @return {@link #incircle} as -1, 0 or 1
+     */
     public static int incircleSign(double ax, double ay, double bx, double by, double cx, double cy, double dx, double dy) {
         double v = incircle(ax, ay, bx, by, cx, cy, dx, dy);
         return v > 0.0 ? 1 : v < 0.0 ? -1 : 0;
     }
 
-    /** {@link #incircle(double, double, double, double, double, double, double, double)} for vectors. */
+    /**
+     * Evaluates the exact in-circle predicate for vector arguments; same arithmetic and same
+     * exactness as the scalar form.
+     *
+     * @param a the first vector; must not be {@code null}
+     * @param b the second vector; must not be {@code null}
+     * @param c the vector; must not be {@code null}
+     * @param d the vector; must not be {@code null}
+     * @return {@link #incircle(double, double, double, double, double, double, double, double)} for
+     *     vectors
+     */
     public static double incircle(Vec2d a, Vec2d b, Vec2d c, Vec2d d) {
         return incircle(a.x(), a.y(), b.x(), b.y(), c.x(), c.y(), d.x(), d.y());
     }
@@ -197,8 +338,29 @@ public final class Predicates {
     // ---------------------------------------------------------------- insphere
 
     /**
-     * Whether {@code e} is inside the sphere through {@code a, b, c, d}, which must be ordered so that {@link #orient3d} of them is positive: positive inside, negative
-     * outside, exactly zero when the five points are cospherical. With the other order the sign is reversed. The sign is exact.
+     * Returns whether {@code e} is inside the sphere through {@code a, b, c, d}, which must be
+     * ordered so that {@link #orient3d} of them is positive: positive inside, negative outside,
+     * exactly zero when the five points are cospherical.
+     *
+     * <p>With the other order the sign is reversed. The sign is exact.
+     *
+     * @param ax the x coordinate of the first point
+     * @param ay the y coordinate of the first point
+     * @param az the z coordinate of the first point
+     * @param bx the x coordinate of the second point
+     * @param by the y coordinate of the second point
+     * @param bz the z coordinate of the second point
+     * @param cx the x coordinate of the third point
+     * @param cy the y coordinate of the third point
+     * @param cz the z coordinate of the third point
+     * @param dx the x coordinate of the fourth point
+     * @param dy the y coordinate of the fourth point
+     * @param dz the z coordinate of the fourth point
+     * @param ex the x coordinate of the point {@code e}
+     * @param ey the y coordinate of the point {@code e}
+     * @param ez the z coordinate of the point {@code e}
+     * @return a positive value if {@code e} is inside the sphere, a negative value if it is outside
+     *     and zero if it is on the sphere; the sign is exact
      */
     public static double insphere(double ax, double ay, double az, double bx, double by, double bz, double cx, double cy, double cz,
                                   double dx, double dy, double dz, double ex, double ey, double ez) {
@@ -238,14 +400,46 @@ public final class Predicates {
         return insphereExact(ax, ay, az, bx, by, bz, cx, cy, cz, dx, dy, dz, ex, ey, ez);
     }
 
-    /** {@link #insphere} as -1, 0 or 1. */
+    /**
+     * Evaluates the in-sphere predicate exactly and reduces it to its sign, for callers that only
+     * branch on it.
+     *
+     * @param ax the x coordinate of the first point
+     * @param ay the y coordinate of the first point
+     * @param az the z coordinate of the first point
+     * @param bx the x coordinate of the second point
+     * @param by the y coordinate of the second point
+     * @param bz the z coordinate of the second point
+     * @param cx the x coordinate of the third point
+     * @param cy the y coordinate of the third point
+     * @param cz the z coordinate of the third point
+     * @param dx the x coordinate of the fourth point
+     * @param dy the y coordinate of the fourth point
+     * @param dz the z coordinate of the fourth point
+     * @param ex the x coordinate of the point {@code e}
+     * @param ey the y coordinate of the point {@code e}
+     * @param ez the z coordinate of the point {@code e}
+     * @return {@link #insphere} as -1, 0 or 1
+     */
     public static int insphereSign(double ax, double ay, double az, double bx, double by, double bz, double cx, double cy, double cz,
                                    double dx, double dy, double dz, double ex, double ey, double ez) {
         double v = insphere(ax, ay, az, bx, by, bz, cx, cy, cz, dx, dy, dz, ex, ey, ez);
         return v > 0.0 ? 1 : v < 0.0 ? -1 : 0;
     }
 
-    /** {@link #insphere(double, double, double, double, double, double, double, double, double, double, double, double, double, double, double)} for vectors. */
+    /**
+     * Evaluates the exact in-sphere predicate for vector arguments; same arithmetic and same
+     * exactness as the scalar form.
+     *
+     * @param a the first vector; must not be {@code null}
+     * @param b the second vector; must not be {@code null}
+     * @param c the vector; must not be {@code null}
+     * @param d the vector; must not be {@code null}
+     * @param e the vector; must not be {@code null}
+     * @return
+     *     {@link #insphere(double, double, double, double, double, double, double, double, double, double, double, double, double, double, double)}
+     *     for vectors
+     */
     public static double insphere(Vec3d a, Vec3d b, Vec3d c, Vec3d d, Vec3d e) {
         return insphere(a.x(), a.y(), a.z(), b.x(), b.y(), b.z(), c.x(), c.y(), c.z(), d.x(), d.y(), d.z(), e.x(), e.y(), e.z());
     }

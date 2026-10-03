@@ -8,20 +8,35 @@ import java.util.List;
 import vmath.annotations.Experimental;
 
 /**
- * A chart-based planar unwrap that gives a mesh a second UV set with no overlap, for lightmaps, baked AO and decals: triangles are grouped into charts of
- * similar orientation, each chart is projected flat onto its own plane, and the charts are packed into one {@code [0, 1]} square at a single texel density.
+ * A chart-based planar unwrap that gives a mesh a second UV set with no overlap, for lightmaps,
+ * baked AO and decals: triangles are grouped into charts of similar orientation, each chart is
+ * projected flat onto its own plane, and the charts are packed into one {@code [0, 1]} square at a
+ * single texel density.
  *
- * <p><b>What it is and is not.</b> It is a planar projection per chart, not a conformal or distortion-minimising parameterisation (LSCM, ABF++). A chart
- * whose normals stay within the angle limit of its average normal is nearly flat, so the stretch is bounded: a triangle's UV area is between {@code cos(angle)}
- * and 1 times its true area (times the density squared). A sphere or a torus unwrapped with a small angle limit gives many small charts; a box gives six.
- * Charts are built from the triangle adjacency of the <em>welded</em> positions, so a UV or normal seam does not split a chart by itself.
- * The same vertex used by two charts is duplicated (all streams copied); the result lists, for every new vertex, the vertex it came from.
+ * <p><b>What it is and is not.</b> It is a planar projection per chart, not a conformal or
+ * distortion-minimising parameterisation (LSCM, ABF++). A chart whose normals stay within the angle
+ * limit of its average normal is nearly flat, so the stretch is bounded: a triangle's UV area is
+ * between {@code cos(angle)} and 1 times its true area (times the density squared). A sphere or a
+ * torus unwrapped with a small angle limit gives many small charts; a box gives six. Charts are
+ * built from the triangle adjacency of the <em>welded</em> positions, so a UV or normal seam does
+ * not split a chart by itself. The same vertex used by two charts is duplicated (all streams
+ * copied); the result lists, for every new vertex, the vertex it came from.
  *
- * <p>Triangles with no area are attached to a neighbouring chart when they have one. A chart that folds over itself when projected (a helical ramp whose
- * normals all stay within the limit) is not detected.
+ * <p>Triangles with no area are attached to a neighbouring chart when they have one. A chart that
+ * folds over itself when projected (a helical ramp whose normals all stay within the limit) is not
+ * detected.
  *
- * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time. The arrays and buffers you pass in are
- * not synchronised, so two threads must not write the same one.
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the
+ * same time. The arrays and buffers you pass in are not synchronised, so two threads must not write
+ * the same one.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * Mesh mesh = Primitives.box(1f, 1f, 1f);
+ * UvAtlas.Result atlas = UvAtlas.generate(mesh, 1, 45f, 1024, 2);                           // a second UV set without overlaps in [0, 1]
+ * float efficiency = atlas.efficiency();
+ * }</pre>
  */
 @Experimental("a planar chart unwrap only; the chart-growing rule and the result record may change")
 public final class UvAtlas {
@@ -49,11 +64,18 @@ public final class UvAtlas {
     }
 
     /**
-     * Writes UV set {@code uvSet} (enabled if needed) so that no two charts overlap and everything lies in {@code [0, 1]}.
+     * Writes UV set {@code uvSet} (enabled if needed) so that no two charts overlap and everything
+     * lies in {@code [0, 1]}.
      *
-     * @param maxAngleDegrees the largest angle between a triangle's normal and its chart's average normal, for example 45; smaller means more, flatter charts
-     * @param resolution atlas size in texels (a square), for example 1024; it only sets the density and the padding, not memory
-     * @param paddingTexels empty texels around every chart (keeps bilinear filtering and bleeding off the neighbours), at least 0
+     * @param mesh the mesh; must not be {@code null}
+     * @param uvSet the uv set
+     * @param maxAngleDegrees the largest angle between a triangle's normal and its chart's average
+     *     normal, for example 45; smaller means more, flatter charts
+     * @param resolution atlas size in texels (a square), for example 1024; it only sets the density
+     *     and the padding, not memory
+     * @param paddingTexels empty texels around every chart (keeps bilinear filtering and bleeding
+     *     off the neighbours), at least 0
+     * @return the outcome of the unwrapping, never {@code null}
      * @throws IllegalArgumentException when the charts cannot fit even at the smallest scale
      */
     public static Result generate(Mesh mesh, int uvSet, float maxAngleDegrees, int resolution, int paddingTexels) {

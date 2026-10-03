@@ -3,19 +3,41 @@ package vmath.anim;
 import java.util.Arrays;
 
 /**
- * Curve fitting for animation clips: removes the keys of every track that the track can do without, within a tolerance. Motion captured or baked at 30 or 60 keys per second is mostly
- * smooth, and most keys lie (almost) on the straight line between their neighbours; keeping only the keys that bend the curve makes the clip several times smaller with no visible change.
+ * Curve fitting for animation clips: removes the keys of every track that the track can do without,
+ * within a tolerance.
  *
- * <p>The algorithm is the recursive subdivision of Ramer, Douglas and Peucker in the space of time and value: the first and last key are kept; the key farthest from the curve that
- * interpolates between the kept neighbours (linear for translation and scale, slerp for rotation, exactly as {@link ClipSampler} interpolates) is kept if it is farther than the tolerance, and
- * both sides are examined again. The distance is the Euclidean one for translations and scales, and the angle in radians between the two orientations for rotations.
+ * <p>Motion captured or baked at 30 or 60 keys per second is mostly smooth, and most keys lie
+ * (almost) on the straight line between their neighbours; keeping only the keys that bend the curve
+ * makes the clip several times smaller with no visible change.
  *
- * <p><b>The guarantee.</b> For translation and scale tracks the reduced curve differs from the original by at most the tolerance <b>everywhere</b>, not only at the removed keys: both are
- * piecewise linear, their difference is piecewise linear with its corners at the original keys, and the largest value of such a function is at a corner. For rotation tracks the guarantee
- * holds at the original keys and the deviation between them is of the same size in practice ({@link #measure} reports it by sampling both clips). A track whose every key is within the
+ * <p>The algorithm is the recursive subdivision of Ramer, Douglas and Peucker in the space of time
+ * and value: the first and last key are kept; the key farthest from the curve that interpolates
+ * between the kept neighbours (linear for translation and scale, slerp for rotation, exactly as
+ * {@link ClipSampler} interpolates) is kept if it is farther than the tolerance, and both sides are
+ * examined again. The distance is the Euclidean one for translations and scales, and the angle in
+ * radians between the two orientations for rotations.
+ *
+ * <p><b>The guarantee.</b> For translation and scale tracks the reduced curve differs from the
+ * original by at most the tolerance <b>everywhere</b>, not only at the removed keys: both are
+ * piecewise linear, their difference is piecewise linear with its corners at the original keys, and
+ * the largest value of such a function is at a corner. For rotation tracks the guarantee holds at
+ * the original keys and the deviation between them is of the same size in practice
+ * ({@link #measure} reports it by sampling both clips). A track whose every key is within the
  * tolerance of its first key becomes a single constant key.
  *
- * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time.
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the
+ * same time.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * float[] times = {0f, 1f, 2f, 3f};
+ * float[] line = {0f, 0f, 0f, 1f, 0f, 0f, 2f, 0f, 0f, 3f, 0f, 0f};         // keys on a straight line
+ * AnimationClip clip = AnimationClip.builder(1).translation(0, times, line).build();
+ * AnimationClip reduced = ClipCompression.reduce(clip, 0.001f, 0.001f, 0.001f);
+ * double[] error = new double[3];
+ * ClipCompression.measure(clip, reduced, 100, error);                     // the largest translation, rotation and scale difference
+ * }</pre>
  */
 public final class ClipCompression {
 
@@ -23,9 +45,20 @@ public final class ClipCompression {
     }
 
     /**
-     * A copy of {@code clip} with keys removed from each track within the given tolerances: {@code translationTolerance} in the units of the positions, {@code rotationTolerance} in
-     * radians, {@code scaleTolerance} in the units of the scale values. A tolerance of zero removes only keys that are exactly on the interpolation of their neighbours. The duration of
-     * the clip is kept.
+     * Reduces the key count of a clip by removing keys that interpolation can reconstruct within a
+     * tolerance per channel kind, which saves memory at the price of a bounded error.
+     *
+     * <p>A tolerance of zero removes only keys that are exactly on the interpolation of their
+     * neighbours. The duration of the clip is kept.
+     *
+     * @param clip the clip; must not be {@code null}
+     * @param translationTolerance the translation tolerance
+     * @param rotationTolerance the rotation tolerance
+     * @param scaleTolerance the scale tolerance
+     * @return a copy of {@code clip} with keys removed from each track within the given tolerances:
+     *     {@code translationTolerance} in the units of the positions, {@code rotationTolerance} in
+     *     radians, {@code scaleTolerance} in the units of the scale values
+     * @throws IllegalArgumentException if a tolerance is negative
      */
     public static AnimationClip reduce(AnimationClip clip, float translationTolerance, float rotationTolerance, float scaleTolerance) {
         if (!(translationTolerance >= 0f) || !(rotationTolerance >= 0f) || !(scaleTolerance >= 0f)) {
@@ -60,7 +93,9 @@ public final class ClipCompression {
         return b.build();
     }
 
-    /** The keys of one track to keep: the flags, by the subdivision described in the class comment. */
+    /**
+     * The keys of one track to keep: the flags, by the subdivision described in the class comment.
+     */
     private static boolean[] select(float[] times, int ts, float[] values, int vs, int n, int comps, boolean rotation, float tol) {
         boolean[] keep = new boolean[n];
         keep[0] = true;
@@ -122,7 +157,10 @@ public final class ClipCompression {
         }
     }
 
-    /** The Euclidean distance of two values, or the angle in radians between two unit quaternions (the shortest arc: {@code q} and {@code -q} are the same orientation). */
+    /**
+     * The Euclidean distance of two values, or the angle in radians between two unit quaternions
+     * (the shortest arc: {@code q} and {@code -q} are the same orientation).
+     */
     private static float distance(float[] a, int ao, float[] b, int bo, int comps, boolean rotation) {
         if (rotation) {
             // the angle by atan2 of the lengths of the difference and the sum (after choosing the sign that makes the dot product positive): accurate for tiny angles, where acos of
@@ -145,9 +183,20 @@ public final class ClipCompression {
     }
 
     /**
-     * Measures how far {@code reduced} is from {@code original} by sampling both at {@code samples} evenly spaced times over the original's duration (and at the end): the largest
-     * translation distance, the largest rotation angle in radians and the largest scale distance over all joints are written to {@code out[0]}, {@code out[1]} and {@code out[2]}. The
-     * clips must have the same number of joints. A channel that only one of the clips animates is compared with the identity (zero translation, no rotation, unit scale).
+     * Measures how far {@code reduced} is from {@code original} by sampling both at {@code samples}
+     * evenly spaced times over the original's duration (and at the end): the largest translation
+     * distance, the largest rotation angle in radians and the largest scale distance over all
+     * joints are written to {@code out[0]}, {@code out[1]} and {@code out[2]}.
+     *
+     * <p>The clips must have the same number of joints. A channel that only one of the clips
+     * animates is compared with the identity (zero translation, no rotation, unit scale).
+     *
+     * @param original the original; must not be {@code null}
+     * @param reduced the reduced; must not be {@code null}
+     * @param samples the samples
+     * @param out receives the result in {@code [0, 3)}
+     * @throws IllegalArgumentException if the clips have different numbers of joints,
+     *     {@code samples} is below 2 or {@code out} is too short
      */
     public static void measure(AnimationClip original, AnimationClip reduced, int samples, double[] out) {
         if (original.jointCount() != reduced.jointCount()) {

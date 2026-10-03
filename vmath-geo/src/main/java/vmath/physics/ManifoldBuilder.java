@@ -7,23 +7,45 @@ import vmath.geo.Gjk;
 /**
  * Builds the {@link ContactManifold} of two convex bodies.
  *
- * <p>{@link #polytopes} is the complete method for two {@link ConvexPolytope}s (boxes are polytopes: {@code ConvexPolytope.of(Aabbf)}): the <b>separating axis test</b> over the facet normals
- * of both and the cross products of their edges finds the axis of least penetration; when it is a facet normal, the facet of one body and the most opposed facet of the other are the
- * <em>reference</em> and the <em>incident</em> facet, the incident polygon is <b>clipped</b> against the side planes of the reference facet (the method of Sutherland and Hodgman, as in
- * the "robust contact creation" of Gregorius, GDC 2015), and the points that lie below the reference plane are the contacts, up to four after a reduction that keeps the deepest point and the
- * ones that spread the contact most; when it is a pair of edges, the contact is the closest pair of points of the two edges. A facet normal is preferred to an edge pair of almost equal
- * separation, so that a contact does not flip between the two from frame to frame.
+ * <p>{@link #polytopes} is the complete method for two {@link ConvexPolytope}s (boxes are
+ * polytopes: {@code ConvexPolytope.of(Aabbf)}): the <b>separating axis test</b> over the facet
+ * normals of both and the cross products of their edges finds the axis of least penetration; when
+ * it is a facet normal, the facet of one body and the most opposed facet of the other are the
+ * <em>reference</em> and the <em>incident</em> facet, the incident polygon is <b>clipped</b>
+ * against the side planes of the reference facet (the method of Sutherland and Hodgman, as in the
+ * "robust contact creation" of Gregorius, GDC 2015), and the points that lie below the reference
+ * plane are the contacts, up to four after a reduction that keeps the deepest point and the ones
+ * that spread the contact most; when it is a pair of edges, the contact is the closest pair of
+ * points of the two edges. A facet normal is preferred to an edge pair of almost equal separation,
+ * so that a contact does not flip between the two from frame to frame.
  *
- * <p>The optional {@code margin} makes the builder <b>speculative</b>: shapes that are apart by less than the margin along the best axis still get contacts, with a negative depth, so that a
- * solver can stop a fast body before it penetrates (the solver lets the body approach by that distance and no more).
+ * <p>The optional {@code margin} makes the builder <b>speculative</b>: shapes that are apart by
+ * less than the margin along the best axis still get contacts, with a negative depth, so that a
+ * solver can stop a fast body before it penetrates (the solver lets the body approach by that
+ * distance and no more).
  *
- * <p>{@link #shapes} is the general fallback for any two {@link ConvexShape}s (spheres, capsules, rounded boxes, any support function): one contact point from the penetration query of
+ * <p>{@link #shapes} is the general fallback for any two {@link ConvexShape}s (spheres, capsules,
+ * rounded boxes, any support function): one contact point from the penetration query of
  * {@link Gjk}.
  *
- * <p>The cost of {@code polytopes} is O(F (V_a + V_b) + E_a E_b (V_a + V_b)) in the facets, edges and vertices: made for the boxes and small polytopes of the usual collision shapes, not
- * for hulls of hundreds of vertices. A builder owns its scratch memory, so after construction a call allocates nothing; use one per thread.
+ * <p>The cost of {@code polytopes} is O(F (V_a + V_b) + E_a E_b (V_a + V_b)) in the facets, edges
+ * and vertices: made for the boxes and small polytopes of the usual collision shapes, not for hulls
+ * of hundreds of vertices. A builder owns its scratch memory, so after construction a call
+ * allocates nothing; use one per thread.
  *
  * <p><b>Thread safety.</b> Not thread-safe.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * ManifoldBuilder builder = new ManifoldBuilder();                         // owns scratch space: reuse it
+ * ConvexPolytope a = ConvexPolytope.of(Aabbf.of(new Vec3f(-1f, -1f, -1f), new Vec3f(1f, 1f, 1f)));
+ * ConvexPolytope b = a.transformed(Quatf.rotationY(0.3f), new Vec3f(0f, 1.9f, 0f));
+ * ContactManifold manifold = new ContactManifold();
+ * if (builder.polytopes(a, b, 0.02, manifold)) {
+ *     int points = manifold.count();                                       // at most four contact points
+ * }
+ * }</pre>
  */
 public final class ManifoldBuilder {
 
@@ -40,13 +62,26 @@ public final class ManifoldBuilder {
     private final double[] axis = new double[3];
     private final double[] closest = new double[6];
 
-    /** A builder with its scratch memory. */
+    /**
+     * Creates a builder with its scratch memory.
+     */
     public ManifoldBuilder() {
     }
 
     /**
-     * Fills {@code out} with the contacts of the two polytopes in the poses they are in (their vertices are in world space: use {@link ConvexPolytope#transformed} for a moved body). Returns
-     * false, with {@code out} empty, when they are apart by more than {@code margin} along some separating axis (a margin of 0 asks for contacts only when they overlap or touch).
+     * Fills {@code out} with the contacts of the two polytopes in the poses they are in (their
+     * vertices are in world space: use {@link ConvexPolytope#transformed} for a moved body).
+     *
+     * <p>Returns false, with {@code out} empty, when they are apart by more than {@code margin}
+     * along some separating axis (a margin of 0 asks for contacts only when they overlap or touch).
+     *
+     * @param a the first convex polytope; must not be {@code null}
+     * @param b the second convex polytope; must not be {@code null}
+     * @param margin the margin
+     * @param out receives the result; must not be {@code null}
+     * @return {@code true} if the polytopes touch or overlap within the margin, in which case
+     *     {@code out} holds the contacts; {@code false} if they are further apart
+     * @throws IllegalArgumentException if {@code margin} is negative
      */
     public boolean polytopes(ConvexPolytope a, ConvexPolytope b, double margin, ContactManifold out) {
         out.clear();
@@ -160,7 +195,8 @@ public final class ManifoldBuilder {
     }
 
     /**
-     * Of the edges of {@code p} parallel to edge {@code e}, the one that reaches furthest along {@code (nx, ny, nz)} (when {@code max}) or least far (when not): the larger of the smaller
+     * Of the edges of {@code p} parallel to edge {@code e}, the one that reaches furthest along
+     * {@code (nx, ny, nz)} (when {@code max}) or least far (when not): the larger of the smaller
      * end values, or the smaller of the larger ones.
      */
     private static int supportEdge(ConvexPolytope p, int e, double nx, double ny, double nz, boolean max) {
@@ -291,7 +327,10 @@ public final class ManifoldBuilder {
         reduce(count, out);
     }
 
-    /** Stores the contact for the clipped point {@code (x, y, z)}, which is on the incident body at the signed distance {@code sep} above the reference plane. */
+    /**
+     * Stores the contact for the clipped point {@code (x, y, z)}, which is on the incident body at
+     * the signed distance {@code sep} above the reference plane.
+     */
     private void addCandidate(int i, int owner, double x, double y, double z, double sep, double rnx, double rny, double rnz, int id) {
         double ox = x - sep * rnx, oy = y - sep * rny, oz = z - sep * rnz; // the point projected onto the reference plane
         if (owner == 0) { // the reference is body A: its point is the projection, B's is the incident point
@@ -313,7 +352,10 @@ public final class ManifoldBuilder {
         candId[i] = id;
     }
 
-    /** Keeps at most four of the {@code count} candidates: the deepest, the one farthest from it, and the two that make the largest triangles on either side of that line. */
+    /**
+     * Keeps at most four of the {@code count} candidates: the deepest, the one farthest from it,
+     * and the two that make the largest triangles on either side of that line.
+     */
     private void reduce(int count, ContactManifold out) {
         if (count <= ContactManifold.MAX_POINTS) {
             for (int i = 0; i < count; i++) {
@@ -365,7 +407,11 @@ public final class ManifoldBuilder {
         }
     }
 
-    /** The closest points of the segments {@code p1 q1} and {@code p2 q2}: on the first into {@code out[0 .. 3)}, on the second into {@code out[3 .. 6)} (Ericson, "Real-Time Collision Detection", 5.1.9). */
+    /**
+     * The closest points of the segments {@code p1 q1} and {@code p2 q2}: on the first into
+     * {@code out[0 .. 3)}, on the second into {@code out[3 .. 6)} (Ericson, "Real-Time Collision
+     * Detection", 5.1.9).
+     */
     static void segmentSegment(double p1x, double p1y, double p1z, double q1x, double q1y, double q1z, double p2x, double p2y, double p2z, double q2x, double q2y, double q2z, double[] out) {
         double d1x = q1x - p1x, d1y = q1y - p1y, d1z = q1z - p1z, d2x = q2x - p2x, d2y = q2y - p2y, d2z = q2z - p2z;
         double rx = p1x - p2x, ry = p1y - p2y, rz = p1z - p2z;
@@ -407,8 +453,17 @@ public final class ManifoldBuilder {
     }
 
     /**
-     * The contact of any two convex shapes from the penetration query of {@link Gjk}: one point, with the normal from {@code a} to {@code b} and the depth. Returns false, with {@code out} empty,
-     * when the shapes do not overlap. For two shapes with flat faces use {@link #polytopes}, which gives the whole contact patch.
+     * Returns the contact of any two convex shapes from the penetration query of {@link Gjk}: one
+     * point, with the normal from {@code a} to {@code b} and the depth.
+     *
+     * <p>Returns false, with {@code out} empty, when the shapes do not overlap. For two shapes with
+     * flat faces use {@link #polytopes}, which gives the whole contact patch.
+     *
+     * @param a the first convex shape; must not be {@code null}
+     * @param b the second convex shape; must not be {@code null}
+     * @param out receives the result; must not be {@code null}
+     * @return {@code true} if the shapes overlap, in which case {@code out} holds one contact;
+     *     {@code false} otherwise
      */
     public boolean shapes(ConvexShape a, ConvexShape b, ContactManifold out) {
         out.clear();

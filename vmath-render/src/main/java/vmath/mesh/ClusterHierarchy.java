@@ -7,26 +7,45 @@ import vmath.annotations.Experimental;
 import vmath.geo.NormalCone;
 
 /**
- * A cluster hierarchy for continuous level of detail, in the manner of Nanite's cluster DAG: the mesh is cut into clusters (meshlets), neighbouring clusters
- * are grouped, each group is merged and simplified to about half its triangles with its outer border held fixed, and the result is cut into new clusters;
- * the process repeats on the new clusters until one group is left or no progress is made.
+ * A cluster hierarchy for continuous level of detail, in the manner of Nanite's cluster DAG: the
+ * mesh is cut into clusters (meshlets), neighbouring clusters are grouped, each group is merged and
+ * simplified to about half its triangles with its outer border held fixed, and the result is cut
+ * into new clusters; the process repeats on the new clusters until one group is left or no progress
+ * is made.
  *
- * <p><b>Choosing a level per cluster.</b> Every cluster carries the error of its own simplification ({@link #lodError}) and a bounding sphere for it
- * ({@link #lodCenterX} ...), and the same two values of the group that replaces it one level up ({@link #parentError}, {@link #parentRadius}). All clusters
- * of a group share the same values, and the error never decreases going up. {@link #select} draws a cluster when its projected error is within a pixel budget
- * but its parent's is not. Because the test only depends on the group, a group is always drawn whole or not at all, and because the border of a group is locked
- * while it is simplified, two neighbouring groups drawn at different levels share the same border vertices: <b>the selection has no cracks</b> (the tests check
- * that a closed input mesh gives a closed selected mesh at every budget). Every leaf has exactly one selected ancestor-or-self.
+ * <p><b>Choosing a level per cluster.</b> Every cluster carries the error of its own simplification
+ * ({@link #lodError}) and a bounding sphere for it ({@link #lodCenterX} ...), and the same two
+ * values of the group that replaces it one level up ({@link #parentError}, {@link #parentRadius}).
+ * All clusters of a group share the same values, and the error never decreases going up.
+ * {@link #select} draws a cluster when its projected error is within a pixel budget but its
+ * parent's is not. Because the test only depends on the group, a group is always drawn whole or not
+ * at all, and because the border of a group is locked while it is simplified, two neighbouring
+ * groups drawn at different levels share the same border vertices: <b>the selection has no
+ * cracks</b> (the tests check that a closed input mesh gives a closed selected mesh at every
+ * budget). Every leaf has exactly one selected ancestor-or-self.
  *
- * <p><b>Vertices.</b> {@link #vertices()} is the pool the cluster indices refer to: the welded input vertices plus, for each group, new vertices for the survivors
- * of its simplification (with interpolated attributes, see {@link MeshSimplifier}). Border vertices of a group are the same pool entries before and after.
+ * <p><b>Vertices.</b> {@link #vertices()} is the pool the cluster indices refer to: the welded
+ * input vertices plus, for each group, new vertices for the survivors of its simplification (with
+ * interpolated attributes, see {@link MeshSimplifier}). Border vertices of a group are the same
+ * pool entries before and after.
  *
- * <p><b>Limits.</b> The error is the running sum of {@link MeshSimplifier}'s estimate up the hierarchy (conservative, not a Hausdorff distance). Borders between
- * groups are locked, so a level cannot simplify past what its borders allow; when a level removes fewer than 10% of the triangles the hierarchy stops there
- * and those clusters become roots. Attribute seams of the input are locked by the simplifier and so never simplify. Built at load time, not for runtime use.
+ * <p><b>Limits.</b> The error is the running sum of {@link MeshSimplifier}'s estimate up the
+ * hierarchy (conservative, not a Hausdorff distance). Borders between groups are locked, so a level
+ * cannot simplify past what its borders allow; when a level removes fewer than 10% of the triangles
+ * the hierarchy stops there and those clusters become roots. Attribute seams of the input are
+ * locked by the simplifier and so never simplify. Built at load time, not for runtime use.
  *
- * <p><b>Thread safety.</b> Immutable after construction, so it can be shared between threads freely. The arrays it hands out are its own storage: do
- * not modify them.
+ * <p><b>Thread safety.</b> Immutable after construction, so it can be shared between threads
+ * freely. The arrays it hands out are its own storage: do not modify them.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * Mesh mesh = Primitives.icoSphere(1f, 4);
+ * ClusterHierarchy hierarchy = ClusterHierarchy.build(mesh, 64, 124, 4);               // clusters of at most 64 vertices and 124 triangles
+ * int[] selected = new int[hierarchy.clusterCount()];
+ * int count = hierarchy.select(0f, 0f, 5f, 1000f, 1f, selected);                          // the clusters to draw from this eye
+ * }</pre>
  */
 @Experimental("the build heuristics, the error model and the accessor set may change")
 public final class ClusterHierarchy {
@@ -54,8 +73,18 @@ public final class ClusterHierarchy {
     }
 
     /**
-     * Builds the hierarchy of {@code source} (not modified). {@code maxVertices} and {@code maxTriangles} are the cluster limits (as for {@link Meshlets},
-     * for example 64 and 128) and {@code groupSize} the number of clusters merged per group (4 is the usual choice).
+     * Builds the hierarchy of {@code source} (not modified).
+     *
+     * <p>{@code maxVertices} and {@code maxTriangles} are the cluster limits (as for
+     * {@link Meshlets}, for example 64 and 128) and {@code groupSize} the number of clusters merged
+     * per group (4 is the usual choice).
+     *
+     * @param source the source; must not be {@code null}
+     * @param maxVertices the max vertices
+     * @param maxTriangles the max triangles
+     * @param groupSize the group size
+     * @return the hierarchy, never {@code null}
+     * @throws IllegalArgumentException if {@code groupSize} is below 2
      */
     public static ClusterHierarchy build(Mesh source, int maxVertices, int maxTriangles, int groupSize) {
         if (groupSize < 2) {
@@ -272,7 +301,10 @@ public final class ClusterHierarchy {
         }
     }
 
-    /** Appends vertex {@code v} of {@code from} (every stream) to {@code to}, which must have the same streams enabled. */
+    /**
+     * Appends vertex {@code v} of {@code from} (every stream) to {@code to}, which must have the
+     * same streams enabled.
+     */
     private static int appendVertex(Mesh from, int v, Mesh to) {
         float[] p = from.positions();
         int i = to.addVertex(p[v * 3], p[v * 3 + 1], p[v * 3 + 2]);
@@ -293,7 +325,10 @@ public final class ClusterHierarchy {
         return i;
     }
 
-    /** Groups of cluster indices: each grown from a cluster with few free neighbours by taking the neighbour it shares most edges with. */
+    /**
+     * Groups of cluster indices: each grown from a cluster with few free neighbours by taking the
+     * neighbour it shares most edges with.
+     */
     private static int[][] group(List<Cluster> clusters, int[] posIds, int groupSize) {
         int n = clusters.size();
         // neighbours: two clusters that own the same edge, weighted by how many edges they share
@@ -423,7 +458,9 @@ public final class ClusterHierarchy {
         c.cutoff = cone[3];
     }
 
-    /** The smallest sphere containing two spheres {@code (x, y, z, r)}. */
+    /**
+     * The smallest sphere containing two spheres {@code (x, y, z, r)}.
+     */
     private static float[] union(float[] a, float[] b) {
         double dx = b[0] - a[0], dy = b[1] - a[1], dz = b[2] - a[2];
         double d = Math.sqrt(dx * dx + dy * dy + dz * dz);
@@ -440,136 +477,292 @@ public final class ClusterHierarchy {
 
     // ---------------------------------------------------------------- access
 
-    /** The vertices the cluster indices refer to (its own triangles are the welded input, that is the leaf level). A live mesh; do not modify it. */
+    /**
+     * Exposes the shared vertex array that the cluster indices refer to.
+     *
+     * <p>A live mesh; do not modify it.
+     *
+     * @return the vertices the cluster indices refer to (its own triangles are the welded input,
+     *     that is the leaf level)
+     */
     public Mesh vertices() {
         return pool;
     }
 
-    /** The number of clusters over all levels. */
+    /**
+     * Counts the clusters over all levels of the hierarchy.
+     *
+     * @return the number of clusters over all levels
+     */
     public int clusterCount() {
         return clusters.size();
     }
 
-    /** Number of levels (0 is the original detail). */
+    /**
+     * Counts the levels of the hierarchy, where level zero is the original geometry.
+     *
+     * @return number of levels (0 is the original detail)
+     */
     public int levelCount() {
         return levels;
     }
 
-    /** The level of {@code cluster}: 0 is the original detail, higher levels are coarser. */
+    /**
+     * Reads the level of a cluster, where higher levels are coarser.
+     *
+     * @param cluster the cluster index
+     * @return the level of {@code cluster}: 0 is the original detail, higher levels are coarser
+     */
     public int level(int cluster) {
         return clusters.get(cluster).level;
     }
 
-    /** The number of triangles of {@code cluster}. */
+    /**
+     * Counts the triangles of a cluster.
+     *
+     * @param cluster the cluster index
+     * @return the number of triangles of {@code cluster}
+     */
     public int triangleCount(int cluster) {
         return clusters.get(cluster).indices.length / 3;
     }
 
-    /** The triangles of a cluster as pool vertex indices, three per triangle. A copy. */
+    /**
+     * Reads the triangles of one cluster as indices into the shared vertex array.
+     *
+     * <p>A copy.
+     *
+     * @param cluster the cluster index
+     * @return the triangles of a cluster as pool vertex indices, three per triangle
+     */
     public int[] indices(int cluster) {
         return clusters.get(cluster).indices.clone();
     }
 
-    /** Bounding sphere of the cluster's own geometry (for culling): centre x, y, z and radius. */
+    /**
+     * Reads the x of the bounding sphere centre of a cluster's own geometry, which is what frustum
+     * culling tests.
+     *
+     * @param c the cluster index
+     * @return bounding sphere of the cluster's own geometry (for culling): centre x, y, z and
+     *     radius
+     */
     public float sphereX(int c) {
         return clusters.get(c).sx;
     }
 
-    /** The y of the cluster's bounding sphere centre. */
+    /**
+     * Reads the y of the bounding sphere centre of a cluster's own geometry.
+     *
+     * @param c the cluster index
+     * @return the y of the cluster's bounding sphere centre
+     */
     public float sphereY(int c) {
         return clusters.get(c).sy;
     }
 
-    /** The z of the cluster's bounding sphere centre. */
+    /**
+     * Reads the z of the bounding sphere centre of a cluster's own geometry.
+     *
+     * @param c the cluster index
+     * @return the z of the cluster's bounding sphere centre
+     */
     public float sphereZ(int c) {
         return clusters.get(c).sz;
     }
 
-    /** The radius of the cluster's bounding sphere. */
+    /**
+     * Reads the radius of the bounding sphere of a cluster's own geometry.
+     *
+     * @param c the cluster index
+     * @return the radius of the cluster's bounding sphere
+     */
     public float sphereRadius(int c) {
         return clusters.get(c).sr;
     }
 
-    /** Normal cone of the cluster, as in {@link Meshlets}. */
+    /**
+     * Reads the x of the normal cone axis of a cluster, which back-face culling of whole clusters
+     * uses.
+     *
+     * @param c the cluster index
+     * @return normal cone of the cluster, as in {@link Meshlets}
+     */
     public float coneAxisX(int c) {
         return clusters.get(c).ax;
     }
 
-    /** The y of the cluster's normal cone axis. */
+    /**
+     * Reads the y of the normal cone axis of a cluster.
+     *
+     * @param c the cluster index
+     * @return the y of the cluster's normal cone axis
+     */
     public float coneAxisY(int c) {
         return clusters.get(c).ay;
     }
 
-    /** The z of the cluster's normal cone axis. */
+    /**
+     * Reads the z of the normal cone axis of a cluster.
+     *
+     * @param c the cluster index
+     * @return the z of the cluster's normal cone axis
+     */
     public float coneAxisZ(int c) {
         return clusters.get(c).az;
     }
 
-    /** The sine of the cone's half-angle; 1 means no useful cone (the cluster is never back-face culled). */
+    /**
+     * Reads the cutoff of the normal cone of a cluster, which is the sine of the cone's half-angle;
+     * the value 1 disables cone culling for that cluster.
+     *
+     * @param c the cluster index
+     * @return the sine of the cone's half-angle; 1 means no useful cone (the cluster is never
+     *     back-face culled)
+     */
     public float coneCutoff(int c) {
         return clusters.get(c).cutoff;
     }
 
-    /** Error of this cluster's simplification: 0 for the original detail. */
+    /**
+     * Reads the geometric error that simplification introduced in a cluster, which is the input to
+     * the level-of-detail decision.
+     *
+     * @param c the cluster index
+     * @return error of this cluster's simplification: 0 for the original detail
+     */
     public float lodError(int c) {
         return clusters.get(c).lodError;
     }
 
-    /** The x of the centre of the sphere that bounds this cluster's simplification error (the same for every cluster of a group). */
+    /**
+     * Reads the x of the centre of the sphere that bounds the cluster's simplification error;
+     * shared by all clusters of a group so that they switch level together.
+     *
+     * @param c the cluster index
+     * @return the x of the centre of the sphere that bounds this cluster's simplification error
+     *     (the same for every cluster of a group)
+     */
     public float lodCenterX(int c) {
         return clusters.get(c).lx;
     }
 
-    /** The y of the centre of the sphere that bounds this cluster's simplification error. */
+    /**
+     * Reads the y of the centre of the sphere that bounds the cluster's simplification error.
+     *
+     * @param c the cluster index
+     * @return the y of the centre of the sphere that bounds this cluster's simplification error
+     */
     public float lodCenterY(int c) {
         return clusters.get(c).ly;
     }
 
-    /** The z of the centre of the sphere that bounds this cluster's simplification error. */
+    /**
+     * Reads the z of the centre of the sphere that bounds the cluster's simplification error.
+     *
+     * @param c the cluster index
+     * @return the z of the centre of the sphere that bounds this cluster's simplification error
+     */
     public float lodCenterZ(int c) {
         return clusters.get(c).lz;
     }
 
-    /** The radius of the sphere that bounds this cluster's simplification error. */
+    /**
+     * Reads the radius of the sphere that bounds the cluster's simplification error.
+     *
+     * @param c the cluster index
+     * @return the radius of the sphere that bounds this cluster's simplification error
+     */
     public float lodRadius(int c) {
         return clusters.get(c).lr;
     }
 
-    /** Identifier of the group whose simplification replaces this cluster one level up, {@code -1} for a root. Clusters of one group share their parent values. */
+    /**
+     * Reads which group replaces a cluster at the next coarser level, which lets the runtime walk
+     * the hierarchy.
+     *
+     * <p>Clusters of one group share their parent values.
+     *
+     * @param c the cluster index
+     * @return identifier of the group whose simplification replaces this cluster one level up,
+     *     {@code -1} for a root
+     */
     public int parentGroup(int c) {
         return clusters.get(c).parentGroup;
     }
 
-    /** Error of the group that replaces this cluster one level up, {@code +Infinity} for a root. */
+    /**
+     * Reads the error of the coarser group that replaces a cluster; a cluster is drawn when its own
+     * error is acceptable and its parent's is not.
+     *
+     * @param c the cluster index
+     * @return error of the group that replaces this cluster one level up, {@code +Infinity} for a
+     *     root
+     */
     public float parentError(int c) {
         return clusters.get(c).parentError;
     }
 
-    /** The x of the centre of the error sphere of the group that replaces this cluster one level up. */
+    /**
+     * Reads the x of the error sphere centre of the group that replaces a cluster.
+     *
+     * @param c the cluster index
+     * @return the x of the centre of the error sphere of the group that replaces this cluster one
+     *     level up
+     */
     public float parentCenterX(int c) {
         return clusters.get(c).px;
     }
 
-    /** The y of the centre of the error sphere of the group that replaces this cluster one level up. */
+    /**
+     * Reads the y of the error sphere centre of the group that replaces a cluster.
+     *
+     * @param c the cluster index
+     * @return the y of the centre of the error sphere of the group that replaces this cluster one
+     *     level up
+     */
     public float parentCenterY(int c) {
         return clusters.get(c).py;
     }
 
-    /** The z of the centre of the error sphere of the group that replaces this cluster one level up. */
+    /**
+     * Reads the z of the error sphere centre of the group that replaces a cluster.
+     *
+     * @param c the cluster index
+     * @return the z of the centre of the error sphere of the group that replaces this cluster one
+     *     level up
+     */
     public float parentCenterZ(int c) {
         return clusters.get(c).pz;
     }
 
-    /** The radius of the error sphere of the group that replaces this cluster one level up. */
+    /**
+     * Reads the radius of the error sphere of the group that replaces a cluster.
+     *
+     * @param c the cluster index
+     * @return the radius of the error sphere of the group that replaces this cluster one level up
+     */
     public float parentRadius(int c) {
         return clusters.get(c).pr;
     }
 
     /**
-     * Writes the indices of the clusters to draw from the eye at {@code (ex, ey, ez)} into {@code out} and returns how many. A cluster is chosen when the
-     * projected error of its own level is at most {@code pixelBudget} and that of its parent is more: {@code error * pixelScale / distance}, where
-     * {@code distance} runs to the near side of the error sphere (never below 1e-4) and {@code pixelScale} is {@code viewportHeight / (2 tan(fovY / 2))}
-     * (see {@code CullContext#pixelScale}). {@code out} must have room for every cluster.
+     * Writes the indices of the clusters to draw from the eye at {@code (ex, ey, ez)} into
+     * {@code out} and returns how many.
+     *
+     * <p>A cluster is chosen when the projected error of its own level is at most
+     * {@code pixelBudget} and that of its parent is more: {@code error * pixelScale / distance},
+     * where {@code distance} runs to the near side of the error sphere (never below 1e-4) and
+     * {@code pixelScale} is {@code viewportHeight / (2 tan(fovY / 2))} (see
+     * {@code CullContext#pixelScale}). {@code out} must have room for every cluster.
+     *
+     * @param ex the x coordinate of the eye
+     * @param ey the y coordinate of the eye
+     * @param ez the z coordinate of the eye
+     * @param pixelScale the pixel scale
+     * @param pixelBudget the pixel budget
+     * @param out receives the result
+     * @return how many
      */
     public int select(float ex, float ey, float ez, float pixelScale, float pixelBudget, int[] out) {
         int n = 0;
@@ -592,7 +785,14 @@ public final class ClusterHierarchy {
         return (float) (error * pixelScale / d);
     }
 
-    /** The triangles of the given clusters concatenated, as pool vertex indices. */
+    /**
+     * Gathers the triangles of several clusters into one index list, for drawing a selection with a
+     * single call.
+     *
+     * @param clusterIndices the cluster indices
+     * @param count the number of elements
+     * @return the triangles of the given clusters concatenated, as pool vertex indices
+     */
     public int[] triangles(int[] clusterIndices, int count) {
         int total = 0;
         for (int i = 0; i < count; i++) {

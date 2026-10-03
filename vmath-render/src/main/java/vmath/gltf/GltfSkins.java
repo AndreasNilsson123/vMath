@@ -11,7 +11,10 @@ import vmath.gltf.Gltf.Node;
 import vmath.gltf.Gltf.SkinData;
 import static vmath.gltf.JsonAccess.*;
 
-/** Builds the {@link Gltf.SkinData} of a skin: joint ordering, bind pose, inverse bind matrices and the transform above the skeleton. */
+/**
+ * Builds the {@link Gltf.SkinData} of a skin: joint ordering, bind pose, inverse bind matrices and
+ * the transform above the skeleton.
+ */
 final class GltfSkins {
 
     private GltfSkins() {

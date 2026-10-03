@@ -18,18 +18,24 @@ import java.util.Set;
 import javax.lang.model.element.Modifier;
 
 /**
- * Generates a {@code <Name>Gpu} class for every record annotated {@code @GpuStruct}. Only component <em>names and types</em>
- * are read (from the source, by simple name), so the generator needs no compiled classes and no dependency on vmath itself.
- * The generated class builds its layout at class-initialization time from vmath's own layout engine
- * ({@code GlslType}, {@code StructLayout}), so the layout rules exist in exactly one place.
+ * Generates a {@code <Name>Gpu} class for every record annotated {@code @GpuStruct}.
+ *
+ * <p>Only component <em>names and types</em> are read (from the source, by simple name), so the
+ * generator needs no compiled classes and no dependency on vmath itself. The generated class builds
+ * its layout at class-initialization time from vmath's own layout engine ({@code GlslType},
+ * {@code StructLayout}), so the layout rules exist in exactly one place.
  */
 final class GpuStructGenerator {
 
-    /** One generated file. */
+    /**
+     * One generated file.
+     */
     record Output(String className, String source) {
     }
 
-    /** How one element type maps to GLSL and how it is written. */
+    /**
+     * How one element type maps to GLSL and how it is written.
+     */
     private record Elem(String typeExpr, String writeMethod, boolean needsColumnStride, String columnStrideType) {
     }
 
@@ -41,7 +47,9 @@ final class GpuStructGenerator {
         return source.contains("GpuStruct");
     }
 
-    /** Records the @GpuStruct records of a file so that other structs can refer to them as members. */
+    /**
+     * Records the @GpuStruct records of a file so that other structs can refer to them as members.
+     */
     void register(String source, String fileName) {
         if (!mentionsGpu(source)) {
             return;
@@ -286,7 +294,9 @@ final class GpuStructGenerator {
         throw error(fileName, where + ": @GpuArray needs an integer literal length");
     }
 
-    /** {@code viewProj} becomes {@code VIEW_PROJ}. */
+    /**
+     * {@code viewProj} becomes {@code VIEW_PROJ}.
+     */
     static String snake(String camel) {
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < camel.length(); i++) {

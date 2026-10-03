@@ -1,32 +1,63 @@
 package vmath.anim;
 
 /**
- * Root motion: the movement of the root joint of a clip (a character walking, turning, jumping), extracted from the animation so that the game can move the character by it instead of
- * letting the animated pose slide on the spot or drift away. Two operations:
+ * Root motion: the movement of the root joint of a clip (a character walking, turning, jumping),
+ * extracted from the animation so that the game can move the character by it instead of letting the
+ * animated pose slide on the spot or drift away.
+ *
+ * <p>Two operations:
  *
  * <ul>
- *   <li>{@link #delta} measures how far the root moved between two times of the clip, as a translation and a rotation, in the frame the root had at the first time (so "forward" is where the
- *       character was facing). It handles looping: when the second time is before the first, the clip is taken to have wrapped around.</li>
- *   <li>{@link #strip} removes the part of the root's motion that the game applies itself from a sampled pose: the translation in the horizontal plane (or in all axes) and the turn about
+ *   <li>{@link #delta} measures how far the root moved between two times of the clip, as a
+ *       translation and a rotation, in the frame the root had at the first time (so "forward" is
+ *       where the character was facing). It handles looping: when the second time is before the
+ *       first, the clip is taken to have wrapped around.</li>
+ *   <li>{@link #strip} removes the part of the root's motion that the game applies itself from a
+ *       sampled pose: the translation in the horizontal plane (or in all axes) and the turn about
  *       the vertical axis, leaving the rest of the animation (the bobbing, the lean) in place.</li>
  * </ul>
  *
- * <p>The vertical axis is the y axis of the root joint's parent space; the horizontal plane is x-z. An object samples the clip itself, so it owns a {@link ClipSampler} and two poses and
- * allocates nothing per call. <b>Thread safety.</b> Not thread-safe: one instance per thread and clip.
+ * <p>The vertical axis is the y axis of the root joint's parent space; the horizontal plane is x-z.
+ * An object samples the clip itself, so it owns a {@link ClipSampler} and two poses and allocates
+ * nothing per call. <b>Thread safety.</b> Not thread-safe: one instance per thread and clip.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * AnimationClip clip = AnimationClip.builder(1).translation(0, new float[] {0f, 1f}, new float[] {0f, 0f, 0f, 2f, 0f, 0f}).build();
+ * RootMotion root = new RootMotion(clip, 0);
+ * float[] delta = new float[7];                                           // translation xyz and rotation xyzw
+ * root.delta(0.25f, 0.5f, true, delta);                                   // the movement of the root over that time step
+ * Pose pose = new Pose(1);
+ * new ClipSampler(clip).sample(0.5f, true, pose);
+ * root.strip(pose, new Pose(1), RootMotion.Mode.TRANSLATION_XZ);          // leaves the movement to the game
+ * }</pre>
  */
 public final class RootMotion {
 
-    /** What {@link #strip} removes from the root. */
+    /**
+     * What {@link #strip} removes from the root.
+     */
     public enum Mode {
-        /** Nothing: the pose is left as it is. */
+        /**
+         * Nothing: the pose is left as it is.
+         */
         NONE,
-        /** The translation in the horizontal plane, x and z; the height stays. */
+        /**
+         * The translation in the horizontal plane, x and z; the height stays.
+         */
         TRANSLATION_XZ,
-        /** The translation along all three axes. */
+        /**
+         * The translation along all three axes.
+         */
         TRANSLATION_XYZ,
-        /** The rotation about the vertical axis (the yaw); the lean and roll stay. */
+        /**
+         * The rotation about the vertical axis (the yaw); the lean and roll stay.
+         */
         YAW,
-        /** The horizontal translation and the yaw: the usual locomotion root motion. */
+        /**
+         * The horizontal translation and the yaw: the usual locomotion root motion.
+         */
         TRANSLATION_XZ_AND_YAW
     }
 
@@ -35,7 +66,13 @@ public final class RootMotion {
     private final Pose a, b;
     private final float[] q = new float[4], p = new float[4];
 
-    /** Root motion of {@code rootJoint} in {@code clip}. */
+    /**
+     * Creates the root motion of {@code rootJoint} in {@code clip}.
+     *
+     * @param clip the clip; must not be {@code null}
+     * @param rootJoint the root joint
+     * @throws IllegalArgumentException if {@code rootJoint} is not a joint of the clip
+     */
     public RootMotion(AnimationClip clip, int rootJoint) {
         if (rootJoint < 0 || rootJoint >= clip.jointCount()) {
             throw new IllegalArgumentException("the root joint " + rootJoint + " is outside [0, " + clip.jointCount() + ")");
@@ -46,17 +83,32 @@ public final class RootMotion {
         this.b = new Pose(clip.jointCount());
     }
 
-    /** The clip. */
+    /**
+     * Exposes the clip that the root motion is extracted from.
+     *
+     * @return the clip
+     */
     public AnimationClip clip() {
         return sampler.clip();
     }
 
     /**
-     * The movement of the root from time {@code t0} to time {@code t1} (seconds in the clip), written to {@code out[0 .. 7)}: the translation {@code x, y, z} and the rotation quaternion
-     * {@code x, y, z, w}, both in the frame of the root at {@code t0}: the translation is {@code R0^-1 (T1 - T0)} and the rotation {@code R0^-1 R1}. Without {@code loop} the times are clamped
-     * to the clip. With {@code loop}, a {@code t1} before {@code t0} (after wrapping both into the clip) means that the clip started again: the motion is that from {@code t0} to the end
-     * followed by that from the start to {@code t1}, the second part carried into the frame the first ended in. If the clip is seamless (the root ends where it starts, apart from the motion
-     * itself) this is the true movement across the loop point.
+     * Computes the movement of the root from time {@code t0} to time {@code t1} (seconds in the
+     * clip) and writes it to {@code out[0 .. 7)}: the translation {@code x, y, z} and the rotation
+     * quaternion {@code x, y, z, w}, both in the frame of the root at {@code t0}: the translation
+     * is {@code R0^-1 (T1 - T0)} and the rotation {@code R0^-1 R1}.
+     *
+     * <p>Without {@code loop} the times are clamped to the clip. With {@code loop}, a {@code t1}
+     * before {@code t0} (after wrapping both into the clip) means that the clip started again: the
+     * motion is that from {@code t0} to the end followed by that from the start to {@code t1}, the
+     * second part carried into the frame the first ended in. If the clip is seamless (the root ends
+     * where it starts, apart from the motion itself) this is the true movement across the loop
+     * point.
+     *
+     * @param t0 the start time in seconds
+     * @param t1 the end time in seconds
+     * @param loop whether loop
+     * @param out receives the result in {@code [0, 7)}
      */
     public void delta(float t0, float t1, boolean loop, float[] out) {
         float w0 = sampler.wrap(t0, loop), w1 = sampler.wrap(t1, loop);
@@ -82,7 +134,12 @@ public final class RootMotion {
         }
     }
 
-    /** The movement of the root over the whole clip, from its start to its end: {@code delta(0, duration, false, out)}. */
+    /**
+     * Computes the movement of the root over the whole clip, from its start to its end:
+     * {@code delta(0, duration, false, out)}.
+     *
+     * @param out receives the result
+     */
     public void total(float[] out) {
         delta(0f, sampler.clip().duration(), false, out);
     }
@@ -107,9 +164,17 @@ public final class RootMotion {
     }
 
     /**
-     * Removes the motion that the game applies from the root of {@code pose}, in place: the horizontal (or full) translation is set to that of {@code reference} (the bind pose, or the first
-     * frame of the clip), and the yaw (the twist about the vertical axis) is taken out of the rotation, so that what remains is the swing, the lean away from upright.
-     * {@code reference} supplies the translation values to restore; its rotation is not used. The pose and the reference must have the root joint.
+     * Removes the motion that the game applies from the root of {@code pose}, in place: the
+     * horizontal (or full) translation is set to that of {@code reference} (the bind pose, or the
+     * first frame of the clip), and the yaw (the twist about the vertical axis) is taken out of the
+     * rotation, so that what remains is the swing, the lean away from upright.
+     *
+     * <p>{@code reference} supplies the translation values to restore; its rotation is not used.
+     * The pose and the reference must have the root joint.
+     *
+     * @param pose the pose; must not be {@code null}
+     * @param reference the reference; must not be {@code null}
+     * @param mode the mode; must not be {@code null}
      */
     public void strip(Pose pose, Pose reference, Mode mode) {
         if (mode == Mode.NONE) {
@@ -130,15 +195,30 @@ public final class RootMotion {
         }
     }
 
-    /** The yaw of the rotation {@code (x, y, z, w)} at {@code q[o]}: the angle in radians of its twist about the y axis, in {@code (-pi, pi]}. */
+    /**
+     * Extracts the yaw from a quaternion by isolating its twist about the vertical axis, which is
+     * how root motion turns are measured.
+     *
+     * @param q the array holding the quaternion
+     * @param o the index of the first float of the quaternion in the array
+     * @return the yaw of the rotation {@code (x, y, z, w)} at {@code q[o]}: the angle in radians of
+     *     its twist about the y axis, in {@code (-pi, pi]}
+     */
     public static float yaw(float[] q, int o) {
         // twist about y: the rotation (0, y, 0, w) normalised
         return 2f * (float) Math.atan2(q[o + 1], q[o + 3]);
     }
 
     /**
-     * Replaces the quaternion at {@code q[o]} by the rotation with its yaw taken out: {@code q = twist * swing} with the twist about the y axis ({@code (0, y, 0, w)} normalised), and the
-     * result is the swing, {@code conjugate(twist) * q}. A character turned by a yaw about the world's vertical and then leaned in its own frame keeps its lean and loses the heading.
+     * Replaces the quaternion at {@code q[o]} by the rotation with its yaw taken out:
+     * {@code q = twist * swing} with the twist about the y axis ({@code (0, y, 0, w)} normalised),
+     * and the result is the swing, {@code conjugate(twist) * q}.
+     *
+     * <p>A character turned by a yaw about the world's vertical and then leaned in its own frame
+     * keeps its lean and loses the heading.
+     *
+     * @param q the array holding the quaternion, changed in place
+     * @param o the index of the first float of the quaternion in the array
      */
     public static void removeYaw(float[] q, int o) {
         float x = q[o], y = q[o + 1], z = q[o + 2], w = q[o + 3];

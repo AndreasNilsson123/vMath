@@ -3,18 +3,34 @@ package vmath.spatial;
 import java.util.Arrays;
 
 /**
- * Result buffer of the k-nearest-neighbour queries: the {@code k} closest objects to a point, by the squared distance from
- * the point to the object's box (0 when the point is inside it). Reuse one instance per caller; queries allocate nothing.
+ * Result buffer of the k-nearest-neighbour queries: the {@code k} closest objects to a point, by
+ * the squared distance from the point to the object's box (0 when the point is inside it).
  *
- * <p>While a query runs the buffer is a bounded max-heap on plain arrays, so the worst kept candidate is known at once and
- * is used to prune the search ({@link #bound()}). When the query returns the entries are sorted <b>ascending</b> by
- * {@code (distance, index)}: ties are broken by the smaller index, so results are deterministic and comparable with a brute
- * force scan. Read them with {@link #index} and {@link #distanceSquared}.
+ * <p>Reuse one instance per caller; queries allocate nothing.
+ *
+ * <p>While a query runs the buffer is a bounded max-heap on plain arrays, so the worst kept
+ * candidate is known at once and is used to prune the search ({@link #bound()}). When the query
+ * returns the entries are sorted <b>ascending</b> by {@code (distance, index)}: ties are broken by
+ * the smaller index, so results are deterministic and comparable with a brute force scan. Read them
+ * with {@link #index} and {@link #distanceSquared}.
  *
  * <p>An object whose distance is NaN (a NaN box or a NaN query point) is never kept.
  *
- * <p><b>Thread safety.</b> Not thread-safe: it is mutable, so use one instance per thread or synchronise externally. Concurrent reads are safe only
- * while no thread is writing.
+ * <p><b>Thread safety.</b> Not thread-safe: it is mutable, so use one instance per thread or
+ * synchronise externally. Concurrent reads are safe only while no thread is writing.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * Neighbors nearest = new Neighbors(8);                                      // room for up to 8
+ * nearest.reset(3);                                                          // keep the 3 nearest
+ * // after a query:
+ * int count = nearest.size();
+ * for (int i = 0; i < count; i++) {
+ *     int id = nearest.index(i);
+ *     float distanceSquared = nearest.distanceSquared(i);                    // nearest first
+ * }
+ * }</pre>
  */
 public final class Neighbors {
 
@@ -23,7 +39,12 @@ public final class Neighbors {
     private final int[] ids;
     private final float[] d2;
 
-    /** A buffer that can hold up to {@code capacity} neighbours. */
+    /**
+     * Creates a buffer that can hold up to {@code capacity} neighbours.
+     *
+     * @param capacity the capacity in elements
+     * @throws IllegalArgumentException if {@code capacity} is below 1
+     */
     public Neighbors(int capacity) {
         if (capacity < 1) {
             throw new IllegalArgumentException("capacity must be >= 1: " + capacity);
@@ -33,7 +54,13 @@ public final class Neighbors {
         k = capacity;
     }
 
-    /** Empties the buffer and sets how many neighbours the next query keeps ({@code 0 < k <= capacity}). */
+    /**
+     * Empties the buffer and sets how many neighbours the next query keeps
+     * ({@code 0 < k <= capacity}).
+     *
+     * @param k the number of neighbours to keep
+     * @throws IllegalArgumentException if {@code k} is not in {@code [1, capacity]}
+     */
     public void reset(int k) {
         if (k < 1 || k > ids.length) {
             throw new IllegalArgumentException("k must be in [1, " + ids.length + "]: " + k);
@@ -42,33 +69,58 @@ public final class Neighbors {
         this.size = 0;
     }
 
-    /** Empties the buffer, keeping the current {@code k}. */
+    /**
+     * Empties the buffer, keeping the current {@code k}.
+     */
     public void reset() {
         size = 0;
     }
 
-    /** The number of neighbours the buffer can hold, which is the {@code k} it was made with. */
+    /**
+     * Exposes the capacity of the buffer, which is the number of neighbours it was created for.
+     *
+     * @return the number of neighbours the buffer can hold, which is the {@code k} it was made with
+     */
     public int capacity() {
         return ids.length;
     }
 
-    /** How many neighbours a query keeps at most. */
+    /**
+     * Exposes the maximum number of neighbours that a query keeps.
+     *
+     * @return how many neighbours a query keeps at most
+     */
     public int k() {
         return k;
     }
 
-    /** Neighbours found; less than {@link #k()} when the structure holds fewer objects. */
+    /**
+     * Counts the neighbours that the last query found.
+     *
+     * @return neighbours found; less than {@link #k()} when the structure holds fewer objects
+     */
     public int size() {
         return size;
     }
 
-    /** The {@code i}th nearest object's index (primitive index or user data, depending on the structure), 0 = nearest. */
+    /**
+     * Reads the index of the i-th nearest object, nearest first.
+     *
+     * @param i the index
+     * @return the {@code i}th nearest object's index (primitive index or user data, depending on
+     *     the structure), 0 = nearest
+     */
     public int index(int i) {
         checkRange(i);
         return ids[i];
     }
 
-    /** Squared distance from the query point to the {@code i}th nearest object's box. */
+    /**
+     * Reads the squared distance from the query point to the i-th nearest object.
+     *
+     * @param i the index
+     * @return squared distance from the query point to the {@code i}th nearest object's box
+     */
     public float distanceSquared(int i) {
         checkRange(i);
         return d2[i];
@@ -82,12 +134,17 @@ public final class Neighbors {
 
     // ---------------------------------------------------------------- for the queries
 
-    /** Squared distance beyond which a candidate cannot enter the buffer: +Infinity until it is full. */
+    /**
+     * Squared distance beyond which a candidate cannot enter the buffer: +Infinity until it is
+     * full.
+     */
     float bound() {
         return size < k ? Float.POSITIVE_INFINITY : d2[0];
     }
 
-    /** Offers a candidate; keeps it if it is among the {@code k} best so far. */
+    /**
+     * Offers a candidate; keeps it if it is among the {@code k} best so far.
+     */
     void offer(int id, float dist2) {
         if (dist2 != dist2) {
             return;
@@ -104,7 +161,9 @@ public final class Neighbors {
         }
     }
 
-    /** Sorts ascending; called by the query when it is done. */
+    /**
+     * Sorts ascending; called by the query when it is done.
+     */
     void finish() {
         for (int end = size - 1; end > 0; end--) {
             swap(0, end);
@@ -112,7 +171,10 @@ public final class Neighbors {
         }
     }
 
-    /** True when entry {@code a} is worse (farther, or the same distance and a larger index) than entry {@code b}. */
+    /**
+     * True when entry {@code a} is worse (farther, or the same distance and a larger index) than
+     * entry {@code b}.
+     */
     private boolean worse(int a, int b) {
         return d2[a] > d2[b] || (d2[a] == d2[b] && ids[a] > ids[b]);
     }

@@ -9,17 +9,23 @@ import vmath.geo.Frustumf;
 import vmath.spatial.FrustumKernel;
 
 /**
- * Frustum culling with the Vector API. Where the scalar kernel makes six passes over its inputs (one per plane), this
- * one is <b>fused</b>: each group of {@code L} objects is loaded once (18 vector loads: three p-vertex coordinates for each
- * of six planes), all six signed distances and their minimum stay in registers, and the visibility mask goes straight into
- * the bitset word with {@link VectorMask#toLong()}. The scalar kernel is limited by memory traffic, so reading every array
- * once is what makes this faster, and the JIT will not fuse that loop on its own.
+ * Frustum culling with the Vector API.
  *
- * <p><b>Bit-identical to the scalar kernel.</b> The arithmetic is done in the same order ({@code (d + nx*px) + ny*py + nz*pz}),
- * with separate multiplies and adds and no fused multiply-add, and NaN handling matches (a NaN distance stays visible), so
- * both kernels clear exactly the same bits. Tests assert that.
+ * <p>Where the scalar kernel makes six passes over its inputs (one per plane), this one is
+ * <b>fused</b>: each group of {@code L} objects is loaded once (18 vector loads: three p-vertex
+ * coordinates for each of six planes), all six signed distances and their minimum stay in
+ * registers, and the visibility mask goes straight into the bitset word with
+ * {@link VectorMask#toLong()}. The scalar kernel is limited by memory traffic, so reading every
+ * array once is what makes this faster, and the JIT will not fuse that loop on its own.
+ *
+ * <p><b>Bit-identical to the scalar kernel.</b> The arithmetic is done in the same order
+ * ({@code (d + nx*px) + ny*py + nz*pz}), with separate multiplies and adds and no fused
+ * multiply-add, and NaN handling matches (a NaN distance stays visible), so both kernels clear
+ * exactly the same bits. Tests assert that.
  *
  * <p>Not thread-safe; use one per thread.
+ *
+ * <p><b>Thread safety.</b> Not thread-safe: use one instance per thread.
  */
 public final class SimdFrustumCuller implements FrustumKernel {
 
@@ -27,7 +33,9 @@ public final class SimdFrustumCuller implements FrustumKernel {
 
     private final float[] planes = new float[24];
 
-    /** A kernel with its own scratch memory. */
+    /**
+     * Creates a kernel with its own scratch memory.
+     */
     public SimdFrustumCuller() {
     }
 

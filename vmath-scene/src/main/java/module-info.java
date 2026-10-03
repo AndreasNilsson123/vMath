@@ -1,5 +1,6 @@
 /**
- * vmath-scene: bulk containers and kernels, spatial structures and culling, occlusion, animation, GPU data layouts and utilities.
+ * vmath-scene: bulk containers and kernels, spatial structures and culling, occlusion, animation,
+ * GPU data layouts and utilities.
  */
 module vmath.scene {
     requires static vmath.annotations;

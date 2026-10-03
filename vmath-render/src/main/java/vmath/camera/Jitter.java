@@ -3,14 +3,23 @@ package vmath.camera;
 import vmath.core.Vec2f;
 
 /**
- * Sub-pixel jitter sequences for temporal anti-aliasing and other accumulation techniques. Feed the offset of the current
- * frame to {@code Cameraf.jitteredProjection}.
+ * Sub-pixel jitter sequences for temporal anti-aliasing and other accumulation techniques.
  *
- * <p>The sequence is Halton (2, 3): low-discrepancy, so any prefix and any full cycle cover the pixel evenly, unlike random
- * offsets that clump.
+ * <p>Feed the offset of the current frame to {@code Cameraf.jitteredProjection}.
  *
- * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time. The arrays and buffers you pass in are
- * not synchronised, so two threads must not write the same one.
+ * <p>The sequence is Halton (2, 3): low-discrepancy, so any prefix and any full cycle cover the
+ * pixel evenly, unlike random offsets that clump.
+ *
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the
+ * same time. The arrays and buffers you pass in are not synchronised, so two threads must not write
+ * the same one.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * Vec2f offset = Jitter.offset(5, 16);                                            // sub-pixel offset of frame 5 in a 16-frame cycle
+ * float h = Jitter.halton(5, 2);                                                  // the underlying low-discrepancy sequence
+ * }</pre>
  */
 public final class Jitter {
 
@@ -18,8 +27,17 @@ public final class Jitter {
     }
 
     /**
-     * The radical inverse of {@code index} in {@code base}: the {@code index}-th element of the Halton sequence, in [0, 1).
-     * {@code index} counts from 1 ({@code halton(1, 2) = 0.5}, then 0.25, 0.75, 0.125, ...); index 0 gives 0.
+     * Computes an element of the Halton low-discrepancy sequence by reversing the digits of the
+     * index in the given base.
+     *
+     * <p>{@code index} counts from 1 ({@code halton(1, 2) = 0.5}, then 0.25, 0.75, 0.125, ...);
+     * index 0 gives 0.
+     *
+     * @param index the index
+     * @param base the base
+     * @return the radical inverse of {@code index} in {@code base}: the {@code index}-th element of
+     *     the Halton sequence, in [0, 1)
+     * @throws IllegalArgumentException if {@code index} is negative or {@code base} is below 2
      */
     public static float halton(int index, int base) {
         if (index < 0 || base < 2) {
@@ -37,8 +55,16 @@ public final class Jitter {
     }
 
     /**
-     * Jitter offset in pixels for frame {@code frame}, each component in [-0.5, 0.5): Halton (2, 3) with the given cycle
-     * length (8 or 16 are common; the pattern repeats every {@code length} frames).
+     * Computes the sub-pixel jitter of a frame from the Halton sequence in bases 2 and 3, which
+     * gives a well-spread pattern for temporal anti-aliasing; the pattern repeats after the cycle
+     * length.
+     *
+     * @param frame the frame
+     * @param length the length
+     * @return jitter offset in pixels for frame {@code frame}, each component in [-0.5, 0.5):
+     *     Halton (2, 3) with the given cycle length (8 or 16 are common; the pattern repeats every
+     *     {@code length} frames)
+     * @throws IllegalArgumentException if {@code length} is below 1
      */
     public static Vec2f offset(int frame, int length) {
         if (length < 1) {

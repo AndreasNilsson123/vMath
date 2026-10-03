@@ -4,7 +4,10 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-/** Conversion of glTF animation samplers to the linear keys of an {@code AnimationClip}: STEP becomes a hold followed by a quick step, CUBICSPLINE is sampled at a fixed rate. */
+/**
+ * Conversion of glTF animation samplers to the linear keys of an {@code AnimationClip}: STEP
+ * becomes a hold followed by a quick step, CUBICSPLINE is sampled at a fixed rate.
+ */
 final class ClipResampling {
 
     private ClipResampling() {

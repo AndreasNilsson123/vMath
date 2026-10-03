@@ -8,19 +8,35 @@ import vmath.spatial.CullStage;
 /**
  * A {@link CullStage} that removes objects hidden behind the occluders in a {@link DepthBuffer}.
  *
- * <p>Fill the buffer once per frame (begin, add occluders) before the pipeline runs; the stage only reads it. Put it after the
- * cheap stages (distance, frustum): it works on the objects that survive them, and each test costs a few texel reads. The
- * decision per object is the buffer's {@link DepthBuffer#isHidden}: conservative, so an object that could be seen is kept.
+ * <p>Fill the buffer once per frame (begin, add occluders) before the pipeline runs; the stage only
+ * reads it. Put it after the cheap stages (distance, frustum): it works on the objects that survive
+ * them, and each test costs a few texel reads. The decision per object is the buffer's
+ * {@link DepthBuffer#isHidden}: conservative, so an object that could be seen is kept.
  *
- * <p>The buffer's camera must be the one the rest of the pipeline uses; the {@link CullContext} is not consulted.
+ * <p>The buffer's camera must be the one the rest of the pipeline uses; the {@link CullContext} is
+ * not consulted.
  *
- * <p><b>Thread safety.</b> Not thread-safe: the stage owns scratch memory (its depth buffer), so use one instance per thread.
+ * <p><b>Thread safety.</b> Not thread-safe: the stage owns scratch memory (its depth buffer), so
+ * use one instance per thread.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * DepthBuffer depth = new DepthBuffer(256, 128);
+ * OcclusionStage stage = new OcclusionStage(depth);                     // build the depth buffer before the pipeline runs
+ * CullPipeline pipeline = CullPipeline.of(new CullStage[] {new CullStages.Frustum(), stage});
+ * }</pre>
  */
 public final class OcclusionStage implements CullStage {
 
     private final DepthBuffer buffer;
 
-    /** A stage that tests against {@code buffer}, which the caller keeps filled with the occluders of the current frame. */
+    /**
+     * Creates a stage that tests against {@code buffer}, which the caller keeps filled with the
+     * occluders of the current frame.
+     *
+     * @param buffer the buffer; must not be {@code null}
+     */
     public OcclusionStage(DepthBuffer buffer) {
         this.buffer = buffer;
     }

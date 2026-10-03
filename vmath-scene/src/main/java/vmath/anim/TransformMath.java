@@ -1,22 +1,27 @@
 package vmath.anim;
 
 /**
- * The array-level maths shared by {@link TransformHierarchy} and the skeleton code, so both use exactly the same formulas.
+ * The array-level maths shared by {@link TransformHierarchy} and the skeleton code, so both use
+ * exactly the same formulas.
  *
- * <p>A transform is 10 floats: translation {@code (x, y, z)}, unit quaternion {@code (x, y, z, w)}, scale {@code (x, y, z)}. A matrix is
- * 16 floats in column-major order (index {@code column * 4 + row}), affine with bottom row {@code (0, 0, 0, 1)}.
+ * <p>A transform is 10 floats: translation {@code (x, y, z)}, unit quaternion {@code (x, y, z, w)},
+ * scale {@code (x, y, z)}. A matrix is 16 floats in column-major order (index
+ * {@code column * 4 + row}), affine with bottom row {@code (0, 0, 0, 1)}.
  */
 final class TransformMath {
 
-    /** Floats per transform. */
+    /**
+     * Floats per transform.
+     */
     static final int TRS = 10;
 
     private TransformMath() {
     }
 
     /**
-     * Writes {@code world[i] = world[parent] * T * R * S} into {@code w} at {@code i * 16}, for the transform at {@code trs[o..o+9]}; a
-     * negative {@code parent} means the node is a root (no parent matrix).
+     * Writes {@code world[i] = world[parent] * T * R * S} into {@code w} at {@code i * 16}, for the
+     * transform at {@code trs[o..o+9]}; a negative {@code parent} means the node is a root (no
+     * parent matrix).
      */
     static void compose(float[] w, int i, int parent, float[] trs, int o) {
         float tx = trs[o], ty = trs[o + 1], tz = trs[o + 2];
@@ -69,7 +74,9 @@ final class TransformMath {
         w[d + 15] = 1f;
     }
 
-    /** {@code out[oo..oo+15] = a * b} for affine matrices (out may alias neither input). */
+    /**
+     * {@code out[oo..oo+15] = a * b} for affine matrices (out may alias neither input).
+     */
     static void multiplyAffine(float[] a, int ao, float[] b, int bo, float[] out, int oo) {
         for (int c = 0; c < 3; c++) {
             float b0 = b[bo + c * 4], b1 = b[bo + c * 4 + 1], b2 = b[bo + c * 4 + 2];
@@ -85,14 +92,21 @@ final class TransformMath {
         out[oo + 15] = 1f;
     }
 
-    /** Spherical interpolation along the shortest arc, see {@link vmath.bulk.QuatArray#slerp(float[], int, float[], int, float, float[], int)}: one implementation for bulk and animation code. */
+    /**
+     * Spherical interpolation along the shortest arc, see
+     * {@link vmath.bulk.QuatArray#slerp(float[], int, float[], int, float, float[], int)}: one
+     * implementation for bulk and animation code.
+     */
     static void slerp(float[] a, int ao, float[] b, int bo, float t, float[] out, int oo) {
         vmath.bulk.QuatArray.slerp(a, ao, b, bo, t, out, oo);
     }
 
     /**
-     * Inverse of the affine matrix at {@code m[mo..mo+15]} into {@code out[oo..oo+15]} (computed in double). Returns false, leaving
-     * {@code out} untouched, if the matrix is singular (a zero scale, for example).
+     * Inverse of the affine matrix at {@code m[mo..mo+15]} into {@code out[oo..oo+15]} (computed in
+     * double).
+     *
+     * <p>Returns false, leaving {@code out} untouched, if the matrix is singular (a zero scale, for
+     * example).
      */
     static boolean invertAffine(float[] m, int mo, float[] out, int oo) {
         double a = m[mo], b = m[mo + 4], c = m[mo + 8];
@@ -128,10 +142,14 @@ final class TransformMath {
         return true;
     }
 
-    /** The identity quaternion; read-only, shared. */
+    /**
+     * The identity quaternion; read-only, shared.
+     */
     static final float[] IDENTITY_Q = {0f, 0f, 0f, 1f};
 
-    /** {@code out = a * conjugate(b)}: for unit quaternions, {@code a} relative to {@code b}. */
+    /**
+     * {@code out = a * conjugate(b)}: for unit quaternions, {@code a} relative to {@code b}.
+     */
     static void multiplyQuatByConjugate(float[] a, int ao, float[] b, int bo, float[] out, int oo) {
         float ax = a[ao], ay = a[ao + 1], az = a[ao + 2], aw = a[ao + 3];
         float bx = -b[bo], by = -b[bo + 1], bz = -b[bo + 2], bw = b[bo + 3];

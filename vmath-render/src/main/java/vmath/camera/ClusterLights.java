@@ -6,25 +6,43 @@ import vmath.annotations.Experimental;
 import vmath.gl.GpuWriter;
 
 /**
- * CPU reference of clustered light assignment: which lights can reach which cluster of a {@link ClusterGrid}, as compact per-cluster lists
- * (a count-then-fill index buffer, the layout a fragment shader reads: {@code offset(cluster)}, {@code count(cluster)}, {@code lightAt}). It is both a usable
- * implementation and the oracle that a compute shader doing the same job is checked against.
+ * CPU reference of clustered light assignment: which lights can reach which cluster of a
+ * {@link ClusterGrid}, as compact per-cluster lists (a count-then-fill index buffer, the layout a
+ * fragment shader reads: {@code offset(cluster)}, {@code count(cluster)}, {@code lightAt}).
  *
- * <p><b>Lights</b> are in view space (x right, y up, z negative forward), added with {@link #addPoint} and {@link #addSpot}. A point light reaches a sphere; a spot light
- * reaches a cone of {@code range} along its axis and a given half angle.
+ * <p>It is both a usable implementation and the oracle that a compute shader doing the same job is
+ * checked against.
  *
- * <p><b>The tests are conservative.</b> A cluster is a frustum slice and is represented by the box around it, which is a little larger, so a light that only touches the
- * corner of the box may be listed for a cluster it does not reach; a light is never missing from a cluster it reaches. A point light is tested exactly against the box
- * (sphere against box). A spot light is tested against the bounding sphere of its cone and then against the cone with the sphere that circumscribes the box, which is looser.
- * {@code docs/CAMERA.md} gives the measured false-positive rates. A light whose position is NaN is listed for every cluster (NaN is not a separation, as in the culling
- * predicates), never silently dropped.
+ * <p><b>Lights</b> are in view space (x right, y up, z negative forward), added with
+ * {@link #addPoint} and {@link #addSpot}. A point light reaches a sphere; a spot light reaches a
+ * cone of {@code range} along its axis and a given half angle.
  *
- * <p><b>Cost.</b> For every light the columns, rows and slices it can touch are found first (the screen extent of its bounding sphere by the tangent-angle method, the
- * depth extent directly), and only those clusters are tested, so the cost follows the area the lights cover, not clusters times lights. Nothing is allocated once the
- * buffers have grown to fit.
+ * <p><b>The tests are conservative.</b> A cluster is a frustum slice and is represented by the box
+ * around it, which is a little larger, so a light that only touches the corner of the box may be
+ * listed for a cluster it does not reach; a light is never missing from a cluster it reaches. A
+ * point light is tested exactly against the box (sphere against box). A spot light is tested
+ * against the bounding sphere of its cone and then against the cone with the sphere that
+ * circumscribes the box, which is looser. {@code docs/CAMERA.md} gives the measured false-positive
+ * rates. A light whose position is NaN is listed for every cluster (NaN is not a separation, as in
+ * the culling predicates), never silently dropped.
  *
- * <p><b>Thread safety.</b> Not thread-safe: it is mutable, so use one instance per thread or synchronise externally. Concurrent reads are safe only
- * while no thread is writing.
+ * <p><b>Cost.</b> For every light the columns, rows and slices it can touch are found first (the
+ * screen extent of its bounding sphere by the tangent-angle method, the depth extent directly), and
+ * only those clusters are tested, so the cost follows the area the lights cover, not clusters times
+ * lights. Nothing is allocated once the buffers have grown to fit.
+ *
+ * <p><b>Thread safety.</b> Not thread-safe: it is mutable, so use one instance per thread or
+ * synchronise externally. Concurrent reads are safe only while no thread is writing.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * ClusterGrid grid = ClusterGrid.of(1f, 16f / 9f, 0.1f, 100f, 1920, 1080, 64, 24, false);
+ * ClusterLights lights = new ClusterLights();                                   // positions are in view space
+ * int point = lights.addPoint(0f, 0f, -10f, 5f);
+ * lights.assign(grid);
+ * int inCluster = lights.count(grid.clusterOf(960f, 540f, 10f));                 // the number of lights that reach that cluster
+ * }</pre>
  */
 @Experimental("the light kinds and the buffer layout may change")
 public final class ClusterLights {
@@ -42,16 +60,24 @@ public final class ClusterLights {
     private int[] indices = new int[0];
     private final float[] scratch = new float[8];
 
-    /** An assigner with no lights. */
+    /**
+     * Creates an assigner with no lights.
+     */
     public ClusterLights() {
     }
 
-    /** Removes all lights. */
+    /**
+     * Removes all lights.
+     */
     public void clearLights() {
         lightCount = 0;
     }
 
-    /** The number of lights added since the last {@link #clearLights()}. */
+    /**
+     * Counts the lights added since the last clear.
+     *
+     * @return the number of lights added since the last {@link #clearLights()}
+     */
     public int lightCount() {
         return lightCount;
     }
@@ -76,7 +102,18 @@ public final class ClusterLights {
         }
     }
 
-    /** Adds a point light at a view-space position reaching {@code range}. Returns its index. */
+    /**
+     * Adds a point light at a view-space position reaching {@code range}.
+     *
+     * <p>Returns its index.
+     *
+     * @param px the x coordinate of the point
+     * @param py the y coordinate of the point
+     * @param pz the z coordinate of the point
+     * @param lightRange the light range
+     * @return its index
+     * @throws IllegalArgumentException if {@code lightRange} is negative
+     */
     public int addPoint(float px, float py, float pz, float lightRange) {
         if (!(lightRange >= 0f)) {
             throw new IllegalArgumentException("range must be >= 0: " + lightRange);
@@ -96,8 +133,22 @@ public final class ClusterLights {
     }
 
     /**
-     * Adds a spot light: apex at a view-space position, shining along {@code (dirX, dirY, dirZ)} (any length), half angle in radians below pi/2, reaching {@code lightRange}
-     * along the axis. Returns its index.
+     * Adds a spot light: apex at a view-space position, shining along {@code (dirX, dirY, dirZ)}
+     * (any length), half angle in radians below pi/2, reaching {@code lightRange} along the axis.
+     *
+     * <p>Returns its index.
+     *
+     * @param px the x coordinate of the point
+     * @param py the y coordinate of the point
+     * @param pz the z coordinate of the point
+     * @param dirX the dir x
+     * @param dirY the dir y
+     * @param dirZ the dir z
+     * @param halfAngle the half angle
+     * @param lightRange the light range
+     * @return its index
+     * @throws IllegalArgumentException if the half angle is not in {@code (0, pi/2)}, the range is
+     *     negative or the direction is zero
      */
     public int addSpot(float px, float py, float pz, float dirX, float dirY, float dirZ, float halfAngle, float lightRange) {
         if (!(halfAngle > 0f && halfAngle < (float) (Math.PI / 2.0)) || !(lightRange >= 0f)) {
@@ -138,15 +189,29 @@ public final class ClusterLights {
 
     // ---------------------------------------------------------------- assignment
 
-    /** Assigns every light to the clusters of {@code grid}. */
+    /**
+     * Assigns every light to the clusters of {@code grid}.
+     *
+     * @param grid the grid; must not be {@code null}
+     */
     public void assign(ClusterGrid grid) {
         assignInternal(grid, null, null);
     }
 
     /**
-     * Tiled assignment: the grid must have a single slice, and the depth range of each tile (from a depth pre-pass: the nearest and farthest depth of the pixels of the
-     * tile, as distances along the view direction) replaces the depth range of the slice, which removes lights that are in front of or behind everything in the tile.
-     * Arrays have one entry per tile, row by row ({@code row * tilesX + column}); a tile with {@code near > far} (nothing drawn) gets no lights.
+     * Assigns the lights tile by tile: the grid must have a single slice, and the depth range of
+     * each tile (from a depth pre-pass: the nearest and farthest depth of the pixels of the tile,
+     * as distances along the view direction) replaces the depth range of the slice, which removes
+     * lights that are in front of or behind everything in the tile.
+     *
+     * <p>Arrays have one entry per tile, row by row ({@code row * tilesX + column}); a tile with
+     * {@code near > far} (nothing drawn) gets no lights.
+     *
+     * @param grid the grid; must not be {@code null}
+     * @param tileNear the tile near
+     * @param tileFar the tile far
+     * @throws IllegalArgumentException if the grid has more than one slice or the arrays do not
+     *     hold one depth range per tile
      */
     public void assignTiled(ClusterGrid grid, float[] tileNear, float[] tileFar) {
         if (grid.slices() != 1) {
@@ -197,7 +262,9 @@ public final class ClusterLights {
         pairs[pairCount++] = ((long) cluster << 32) | light;
     }
 
-    /** Records a pair for every cluster that light {@code l} may reach. */
+    /**
+     * Records a pair for every cluster that light {@code l} may reach.
+     */
     private void visit(ClusterGrid grid, int l, float[] tileNear, float[] tileFar) {
         float near = grid.near(), far = grid.far();
         float depth = -sz[l], r = sr[l];
@@ -261,9 +328,12 @@ public final class ClusterLights {
     }
 
     /**
-     * The ndc range of a sphere along one screen axis, by the tangent-angle method: the sphere, centre at lateral offset {@code c} and depth {@code d}, radius {@code r}, seen
-     * from the camera, covers the angles {@code atan2(c, d) +- asin(r / dist)}. The full range is returned when the sphere reaches the camera plane or contains the camera.
-     * Writes {@code lo, hi} to {@code out[at..at + 1]}, slightly widened.
+     * The ndc range of a sphere along one screen axis, by the tangent-angle method: the sphere,
+     * centre at lateral offset {@code c} and depth {@code d}, radius {@code r}, seen from the
+     * camera, covers the angles {@code atan2(c, d) +- asin(r / dist)}.
+     *
+     * <p>The full range is returned when the sphere reaches the camera plane or contains the
+     * camera. Writes {@code lo, hi} to {@code out[at..at + 1]}, slightly widened.
      */
     private static void ndcExtent(float c, float d, float r, float tanHalf, float[] out, int at) {
         float dist2 = c * c + d * d;
@@ -280,7 +350,9 @@ public final class ClusterLights {
         out[at + 1] = hi >= limit ? 1f : (float) Math.min(1.0, Math.tan(hi) / tanHalf + 1e-5);
     }
 
-    /** True when light {@code l} may reach the box {@code b} (minX, minY, minZ, maxX, maxY, maxZ). */
+    /**
+     * True when light {@code l} may reach the box {@code b} (minX, minY, minZ, maxX, maxY, maxZ).
+     */
     private boolean reaches(int l, float[] b) {
         // the bounding sphere against the box: exact for a point light
         float ex = Math.max(Math.max(b[0] - sx[l], sx[l] - b[3]), 0f);
@@ -304,27 +376,60 @@ public final class ClusterLights {
 
     // ---------------------------------------------------------------- results
 
-    /** The number of lights assigned to {@code cluster}. */
+    /**
+     * Reads how many lights were assigned to a cluster by the last assignment.
+     *
+     * @param cluster the cluster index
+     * @return the number of lights assigned to {@code cluster}
+     */
     public int count(int cluster) {
         return offsets[cluster + 1] - offsets[cluster];
     }
 
-    /** The position in the flat light list of the first light of {@code cluster}; its lights are the {@link #count(int)} entries from there. */
+    /**
+     * Reads where the lights of a cluster start in the flat list, which together with the count
+     * addresses them.
+     *
+     * @param cluster the cluster index
+     * @return the position in the flat light list of the first light of {@code cluster}; its lights
+     *     are the {@link #count(int)} entries from there
+     */
     public int offset(int cluster) {
         return offsets[cluster];
     }
 
-    /** Index (as returned by {@code addPoint} / {@code addSpot}) of the {@code i}-th light of a cluster, in ascending order. */
+    /**
+     * Reads one light of a cluster by position; the lights of a cluster come in ascending index
+     * order.
+     *
+     * @param cluster the cluster index
+     * @param i the index
+     * @return index (as returned by {@code addPoint} / {@code addSpot}) of the {@code i}-th light
+     *     of a cluster, in ascending order
+     */
     public int lightAt(int cluster, int i) {
         return indices[offsets[cluster] + i];
     }
 
-    /** Number of (cluster, light) pairs. */
+    /**
+     * Sums the assignments over all clusters, which is the size the flat light list needs.
+     *
+     * @param grid the grid; must not be {@code null}
+     * @return number of (cluster, light) pairs
+     */
     public int totalAssignments(ClusterGrid grid) {
         return offsets[grid.clusterCount()];
     }
 
-    /** Whether {@code light} (an index as returned by {@code addPoint} / {@code addSpot}) is assigned to {@code cluster}. */
+    /**
+     * Returns whether {@code light} (an index as returned by {@code addPoint} / {@code addSpot}) is
+     * assigned to {@code cluster}.
+     *
+     * @param cluster the cluster index
+     * @param light the light
+     * @return {@code true} if {@code light} (an index as returned by {@code addPoint} /
+     *     {@code addSpot}) is assigned to {@code cluster}
+     */
     public boolean contains(int cluster, int light) {
         for (int e = offsets[cluster]; e < offsets[cluster + 1]; e++) {
             if (indices[e] == light) {
@@ -334,10 +439,19 @@ public final class ClusterLights {
         return false;
     }
 
-    /** Bytes of one range record written by {@link #writeRanges}: {@code uvec2(offset, count)}. */
+    /**
+     * Bytes of one range record written by {@link #writeRanges}: {@code uvec2(offset, count)}.
+     */
     public static final int RANGE_BYTES = 8;
 
-    /** Writes {@code uvec2(offset, count)} for every cluster at {@code byteOffset}: the {@code clusterRanges[]} storage buffer of a fragment shader. */
+    /**
+     * Writes {@code uvec2(offset, count)} for every cluster at {@code byteOffset}: the
+     * {@code clusterRanges[]} storage buffer of a fragment shader.
+     *
+     * @param grid the grid; must not be {@code null}
+     * @param dst receives the result; must not be {@code null}
+     * @param byteOffset the byte offset
+     */
     public void writeRanges(ClusterGrid grid, MemorySegment dst, long byteOffset) {
         int n = grid.clusterCount();
         for (int c = 0; c < n; c++) {
@@ -346,7 +460,14 @@ public final class ClusterLights {
         }
     }
 
-    /** Writes the light indices ({@code uint} each) at {@code byteOffset}: the {@code clusterLightIndices[]} storage buffer. */
+    /**
+     * Writes the light indices ({@code uint} each) at {@code byteOffset}: the
+     * {@code clusterLightIndices[]} storage buffer.
+     *
+     * @param grid the grid; must not be {@code null}
+     * @param dst receives the result; must not be {@code null}
+     * @param byteOffset the byte offset
+     */
     public void writeIndices(ClusterGrid grid, MemorySegment dst, long byteOffset) {
         int total = offsets[grid.clusterCount()];
         for (int e = 0; e < total; e++) {

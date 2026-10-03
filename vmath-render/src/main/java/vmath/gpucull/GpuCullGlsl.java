@@ -4,18 +4,34 @@ import vmath.annotations.Experimental;
 import vmath.gl.DrawElementsIndirectGpu;
 
 /**
- * GLSL for the compute shaders that do what {@link GpuCullReference} and {@link ClusterCullReference} do: one invocation per object (or cluster), the frustum test, the Hi-Z test
- * and an append to an indirect draw list. The struct declarations come from the generated {@code GLSL} constants of the layouts, so offsets cannot drift from the Java side.
+ * GLSL for the compute shaders that do what {@link GpuCullReference} and
+ * {@link ClusterCullReference} do: one invocation per object (or cluster), the frustum test, the
+ * Hi-Z test and an append to an indirect draw list.
  *
- * <p><b>Never run on a GPU.</b> {@code ShaderCompileTest} compiles the text with glslang when a compiler is installed (it passed with glslang 16.6.0 on 2026-10-02), and the other tests check that it is complete and consistent with the layouts; the Java
- * references were written first and the shaders from them, step by step. Treat the first run on a GPU as a test of the shader against the reference (compare the instance lists as sets
- * per draw, the cluster commands as sets).
+ * <p>The struct declarations come from the generated {@code GLSL} constants of the layouts, so
+ * offsets cannot drift from the Java side.
  *
- * <p>The Hi-Z pyramid is an {@code R32F} {@code sampler2D} with all its mip levels at texture unit 0, each texel the farthest depth of the four below it ({@code max} for conventional
- * depth, {@code min} for reversed-Z); the shader converts every texel to "farness" (larger is farther) before comparing, which is the same test in every convention.
+ * <p><b>Never run on a GPU.</b> {@code ShaderCompileTest} compiles the text with glslang when a
+ * compiler is installed (it passed with glslang 16.6.0 on 2026-10-02), and the other tests check
+ * that it is complete and consistent with the layouts; the Java references were written first and
+ * the shaders from them, step by step. Treat the first run on a GPU as a test of the shader against
+ * the reference (compare the instance lists as sets per draw, the cluster commands as sets).
  *
- * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time. The arrays and buffers you pass in are
- * not synchronised, so two threads must not write the same one.
+ * <p>The Hi-Z pyramid is an {@code R32F} {@code sampler2D} with all its mip levels at texture unit
+ * 0, each texel the farthest depth of the four below it ({@code max} for conventional depth,
+ * {@code min} for reversed-Z); the shader converts every texel to "farness" (larger is farther)
+ * before comparing, which is the same test in every convention.
+ *
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the
+ * same time. The arrays and buffers you pass in are not synchronised, so two threads must not write
+ * the same one.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * String shader = GpuCullGlsl.computeShader(64);                                            // compute shader text for 64 threads per group
+ * String clusters = GpuCullGlsl.clusterShader(64);
+ * }</pre>
  */
 @Experimental("the shader text may change with the layouts")
 public final class GpuCullGlsl {
@@ -29,7 +45,10 @@ public final class GpuCullGlsl {
         }
     }
 
-    /** The Hi-Z test shared by both shaders; it reads the fields that {@code CullView} and {@code ClusterCullView} have in common through the block named {@code view}. */
+    /**
+     * The Hi-Z test shared by both shaders; it reads the fields that {@code CullView} and
+     * {@code ClusterCullView} have in common through the block named {@code view}.
+     */
     private static final String HIZ = """
             layout(binding = 0) uniform sampler2D hzb;
 
@@ -81,7 +100,14 @@ public final class GpuCullGlsl {
             }
             """;
 
-    /** The object culling compute shader source, for a work group of {@code workGroupSize} invocations (a power of two, typically 64). */
+    /**
+     * Generates the GLSL source of the object culling compute shader for a work group size, which
+     * the caller compiles with its graphics API.
+     *
+     * @param workGroupSize the work group size
+     * @return the object culling compute shader source, for a work group of {@code workGroupSize}
+     *     invocations (a power of two, typically 64)
+     */
     public static String computeShader(int workGroupSize) {
         checkGroup(workGroupSize);
         return """
@@ -137,7 +163,15 @@ public final class GpuCullGlsl {
                 """.formatted(workGroupSize, CullObjectGpu.GLSL, CullViewGpu.GLSL, DrawElementsIndirectGpu.GLSL, HIZ);
     }
 
-    /** The cluster culling compute shader source (level of detail, frustum, cone, Hi-Z; one indirect command per surviving cluster). */
+    /**
+     * Generates the GLSL source of the cluster culling compute shader, which tests level of detail,
+     * frustum, normal cone and the depth pyramid and emits one indirect draw command per surviving
+     * cluster.
+     *
+     * @param workGroupSize the work group size
+     * @return the cluster culling compute shader source (level of detail, frustum, cone, Hi-Z; one
+     *     indirect command per surviving cluster)
+     */
     public static String clusterShader(int workGroupSize) {
         checkGroup(workGroupSize);
         return """

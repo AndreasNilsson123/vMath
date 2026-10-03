@@ -8,10 +8,23 @@ import vmath.core.Mat4f;
 import vmath.core.Vec4f;
 
 /**
- * Per-view parameters of a GPU-driven culling pass, a std140 uniform block: the six frustum planes (inward normals, {@code vec4(normal, d)}, in the order of
- * {@link vmath.geo.Frustumf#plane}), the view-projection matrix, the number of objects, the size of the Hi-Z pyramid and the conventions.
+ * Per-view parameters of a GPU-driven culling pass, a std140 uniform block: the six frustum planes
+ * (inward normals, {@code vec4(normal, d)}, in the order of {@link vmath.geo.Frustumf#plane}), the
+ * view-projection matrix, the number of objects, the size of the Hi-Z pyramid and the conventions.
+ *
+ * <p><b>Thread safety.</b> Immutable: instances can be shared between threads without
+ * synchronization.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * Vec4f[] planes = new Vec4f[6];
+ * Arrays.fill(planes, new Vec4f(0f, 0f, 1f, 100f));
+ * CullView view = new CullView(planes, Mat4f.IDENTITY, 1000, 256, 128, 8, 0.1f, 0, 0);
+ * }</pre>
  *
  * @param planes         the six planes; a plane with a zero normal and {@code d >= 0} (an infinite far plane) never rejects
+ *
  * @param viewProjection the matrix that produced the depth image of the pyramid
  * @param objectCount    number of valid entries in the object buffer
  * @param hzbWidth       width of level 0 of the pyramid, texels

@@ -3,23 +3,55 @@ package vmath.bulk;
 import vmath.core.Quatf;
 
 /**
- * Many quaternions in one {@code float[]}, four floats each ({@code x, y, z, w}), with batch normalise, multiply and slerp kernels that work on
- * the array directly and allocate nothing. The kernels accept the same array as input and output.
+ * Many quaternions in one {@code float[]}, four floats each ({@code x, y, z, w}), with batch
+ * normalise, multiply and slerp kernels that work on the array directly and allocate nothing.
  *
- * <p><b>Thread safety.</b> Not thread-safe: it is mutable, so use one instance per thread or synchronise externally. Concurrent reads are safe only
- * while no thread is writing.
+ * <p>The kernels accept the same array as input and output.
+ *
+ * <p><b>Thread safety.</b> Not thread-safe: it is mutable, so use one instance per thread or
+ * synchronise externally. Concurrent reads are safe only while no thread is writing.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * QuatArray a = new QuatArray(2);
+ * a.add(Quatf.IDENTITY);
+ * a.add(Quatf.rotationY(1f));
+ * QuatArray b = new QuatArray(2);
+ * b.add(Quatf.rotationX(1f));
+ * b.add(Quatf.IDENTITY);
+ * QuatArray out = new QuatArray(2);
+ * out.add(Quatf.IDENTITY);
+ * out.add(Quatf.IDENTITY);
+ * QuatArray.slerp(a, b, 0.5f, out);                                          // element-wise, along the shortest arc
+ * }</pre>
  */
 public final class QuatArray extends FloatElements {
 
-    /** Floats per quaternion. */
+    /**
+     * Floats per quaternion.
+     */
     public static final int STRIDE = 4;
 
-    /** An empty array with room for {@code capacity} quaternions (at least 1). */
+    /**
+     * Creates an empty array with room for {@code capacity} quaternions (at least 1).
+     *
+     * @param capacity the capacity in elements
+     */
     public QuatArray(int capacity) {
         super(capacity, STRIDE);
     }
 
-    /** Appends the quaternion {@code (x, y, z, w)} as given (it is not normalized) and returns its index. */
+    /**
+     * Appends the quaternion {@code (x, y, z, w)} as given (it is not normalized) and returns its
+     * index.
+     *
+     * @param x the x component
+     * @param y the y component
+     * @param z the z component
+     * @param w the w component
+     * @return its index
+     */
     public int add(float x, float y, float z, float w) {
         ensureCapacity(size + 1);
         int o = size * STRIDE;
@@ -30,12 +62,23 @@ public final class QuatArray extends FloatElements {
         return size++;
     }
 
-    /** Appends a quaternion and returns its index. */
+    /**
+     * Appends a quaternion and returns its index.
+     *
+     * @param q the quaternion; must not be {@code null}
+     * @return its index
+     */
     public int add(Quatf q) {
         return add(q.x(), q.y(), q.z(), q.w());
     }
 
-    /** Replaces quaternion {@code i}; {@link IndexOutOfBoundsException} for an index that is not below {@link #size()}. */
+    /**
+     * Replaces quaternion {@code i}; {@link IndexOutOfBoundsException} for an index that is not
+     * below {@link #size()}.
+     *
+     * @param i the index
+     * @param q the quaternion; must not be {@code null}
+     */
     public void set(int i, Quatf q) {
         checkIndex(i);
         int o = i * STRIDE;
@@ -45,7 +88,13 @@ public final class QuatArray extends FloatElements {
         data[o + 3] = q.w();
     }
 
-    /** Quaternion {@code i} as a value (allocates); {@link IndexOutOfBoundsException} for an index that is not below {@link #size()}. */
+    /**
+     * Reads a quaternion as an object; allocates, so use the array form in loops.
+     *
+     * @param i the index
+     * @return quaternion {@code i} as a value (allocates); {@link IndexOutOfBoundsException} for an
+     *     index that is not below {@link #size()}
+     */
     public Quatf get(int i) {
         checkIndex(i);
         int o = i * STRIDE;
@@ -54,7 +103,10 @@ public final class QuatArray extends FloatElements {
 
     // ---------------------------------------------------------------- batch kernels
 
-    /** Scales every quaternion to unit length in place; a zero (or non-finite) quaternion becomes the identity. */
+    /**
+     * Scales every quaternion to unit length in place; a zero (or non-finite) quaternion becomes
+     * the identity.
+     */
     public void normalizeAll() {
         for (int i = 0, o = 0; i < size; i++, o += STRIDE) {
             float x = data[o], y = data[o + 1], z = data[o + 2], w = data[o + 3];
@@ -75,8 +127,15 @@ public final class QuatArray extends FloatElements {
     }
 
     /**
-     * {@code out[i] = a[i] * b[i]} (Hamilton product, the composition order of {@link Quatf#mul}: {@code b} is applied first). The three arrays must
-     * have the same size (checked for {@code a} and {@code b}); {@code out} is resized and may be {@code a} or {@code b}.
+     * Multiplies the quaternions: {@code out[i] = a[i] * b[i]} (Hamilton product, the composition
+     * order of {@link Quatf#mul}: {@code b} is applied first).
+     *
+     * <p>The three arrays must have the same size (checked for {@code a} and {@code b});
+     * {@code out} is resized and may be {@code a} or {@code b}.
+     *
+     * @param a the first quat array; must not be {@code null}
+     * @param b the second quat array; must not be {@code null}
+     * @param out receives the result; must not be {@code null}
      */
     public static void multiply(QuatArray a, QuatArray b, QuatArray out) {
         requireSameSize(a, b);
@@ -94,8 +153,15 @@ public final class QuatArray extends FloatElements {
     }
 
     /**
-     * {@code out[i] = slerp(a[i], b[i], t)} along the shortest arc, renormalised. Same sizes as for {@link #multiply}; {@code out} may be {@code a} or
-     * {@code b}. {@code t = 0} gives {@code a}, {@code t = 1} gives {@code b}.
+     * Interpolates {@code out[i] = slerp(a[i], b[i], t)} along the shortest arc, renormalised.
+     *
+     * <p>Same sizes as for {@link #multiply}; {@code out} may be {@code a} or {@code b}.
+     * {@code t = 0} gives {@code a}, {@code t = 1} gives {@code b}.
+     *
+     * @param a the first quaternions, {@code x, y, z, w} each; must not be {@code null}
+     * @param b the second quaternions, {@code x, y, z, w} each; must not be {@code null}
+     * @param t the interpolation parameter, 0 for {@code a} and 1 for {@code b}
+     * @param out receives the result; must not be {@code null}
      */
     public static void slerp(QuatArray a, QuatArray b, float t, QuatArray out) {
         requireSameSize(a, b);
@@ -113,9 +179,20 @@ public final class QuatArray extends FloatElements {
     }
 
     /**
-     * Spherical interpolation of the quaternions at {@code a[ao..ao+3]} and {@code b[bo..bo+3]} along the shortest arc into {@code out[oo..oo+3]}: the
-     * same formula as {@link Quatf#slerp}, on plain arrays so that nothing is allocated. The result is renormalised (which also keeps long chains of
-     * blends from drifting off unit length). The output may overlap either input: all inputs are read before anything is written.
+     * Interpolates the quaternions at {@code a[ao..ao+3]} and {@code b[bo..bo+3]} spherically along
+     * the shortest arc into {@code out[oo..oo+3]}: the same formula as {@link Quatf#slerp}, on
+     * plain arrays so that nothing is allocated.
+     *
+     * <p>The result is renormalised (which also keeps long chains of blends from drifting off unit
+     * length). The output may overlap either input: all inputs are read before anything is written.
+     *
+     * @param a the first quaternions, {@code x, y, z, w} each
+     * @param ao the index of the first float of the first quaternion in {@code a}
+     * @param b the second quaternions, {@code x, y, z, w} each
+     * @param bo the index of the first float of the first quaternion in {@code b}
+     * @param t the interpolation parameter, 0 for {@code a} and 1 for {@code b}
+     * @param out receives the result
+     * @param oo the index of the first float of the first result in {@code out}
      */
     public static void slerp(float[] a, int ao, float[] b, int bo, float t, float[] out, int oo) {
         float ax = a[ao], ay = a[ao + 1], az = a[ao + 2], aw = a[ao + 3];
@@ -157,7 +234,10 @@ public final class QuatArray extends FloatElements {
     }
 
     /**
-     * Writes the rotation matrix of every (unit) quaternion to {@code out} as 4x4 matrices with no translation; {@code out} is resized to the element count.
+     * Writes the rotation matrix of every (unit) quaternion to {@code out} as 4x4 matrices with no
+     * translation; {@code out} is resized to the element count.
+     *
+     * @param out receives the result; must not be {@code null}
      */
     public void toMatrices(Mat4fArray out) {
         out.ensureCapacity(size);
@@ -188,8 +268,17 @@ public final class QuatArray extends FloatElements {
     // ---------------------------------------------------------------- compaction
 
     /**
-     * Normalized linear interpolation along the shortest arc: {@code normalize((1 - t) a + sign * t b)}. About as accurate as {@link #slerp} when the rotations are
-     * close (animation frames) and several times cheaper; for rotations far apart the angular speed is not constant. Same size and aliasing rules as {@code slerp}.
+     * Interpolates along the shortest arc with normalized linear interpolation:
+     * {@code normalize((1 - t) a + sign * t b)}.
+     *
+     * <p>About as accurate as {@link #slerp} when the rotations are close (animation frames) and
+     * several times cheaper; for rotations far apart the angular speed is not constant. Same size
+     * and aliasing rules as {@code slerp}.
+     *
+     * @param a the first quat array; must not be {@code null}
+     * @param b the second quat array; must not be {@code null}
+     * @param t the interpolation parameter, 0 for {@code a} and 1 for {@code b}
+     * @param out receives the result; must not be {@code null}
      */
     public static void nlerp(QuatArray a, QuatArray b, float t, QuatArray out) {
         requireSameSize(a, b);

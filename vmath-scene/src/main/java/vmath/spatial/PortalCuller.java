@@ -7,24 +7,48 @@ import vmath.core.Mat4f;
 import vmath.geo.DepthRange;
 
 /**
- * Portal culling: finds the sectors of a {@link PortalGraph} that can be seen from a viewpoint through a chain of open portals, and clears the visibility bit of every object that is
- * in none of them or outside the part of the screen through which its sectors are seen.
+ * Portal culling: finds the sectors of a {@link PortalGraph} that can be seen from a viewpoint
+ * through a chain of open portals, and clears the visibility bit of every object that is in none of
+ * them or outside the part of the screen through which its sectors are seen.
  *
- * <p><b>The traversal</b> starts in the sector of the eye with the whole screen, the rectangle {@code [-1, 1]^2} of normalised device coordinates. For each open portal of a sector whose
- * front the eye is on, the portal polygon is clipped to the half space in front of the eye, projected, and its bounding rectangle intersected with the rectangle through which the sector is seen; if
- * anything is left, the sector behind the portal is seen through that rectangle. A sector reached by several routes gets the bounding rectangle of all of them, and is processed again
- * only when that rectangle grows, which bounds the work (and a budget of {@code 16 * sectors + 64} growths, after which a sector gets the whole root rectangle, guarantees the end).
- * Nothing is allocated: all memory belongs to the culler and is sized by the graph.
+ * <p><b>The traversal</b> starts in the sector of the eye with the whole screen, the rectangle
+ * {@code [-1, 1]^2} of normalised device coordinates. For each open portal of a sector whose front
+ * the eye is on, the portal polygon is clipped to the half space in front of the eye, projected,
+ * and its bounding rectangle intersected with the rectangle through which the sector is seen; if
+ * anything is left, the sector behind the portal is seen through that rectangle. A sector reached
+ * by several routes gets the bounding rectangle of all of them, and is processed again only when
+ * that rectangle grows, which bounds the work (and a budget of {@code 16 * sectors + 64} growths,
+ * after which a sector gets the whole root rectangle, guarantees the end). Nothing is allocated:
+ * all memory belongs to the culler and is sized by the graph.
  *
- * <p><b>The object test</b> ({@link #cullObjects}) builds, for each visible sector, the six planes of the view volume narrowed to that sector's rectangle (the near and far planes are the
- * camera's own), and tests the bounds of the sector's objects against them; an object in several sectors survives if it passes in any one.
+ * <p><b>The object test</b> ({@link #cullObjects}) builds, for each visible sector, the six planes
+ * of the view volume narrowed to that sector's rectangle (the near and far planes are the camera's
+ * own), and tests the bounds of the sector's objects against them; an object in several sectors
+ * survives if it passes in any one.
  *
- * <p><b>Conservative.</b> The result never hides something that can be seen: the rectangles are bounding boxes of the projected polygons (slightly enlarged against rounding), a portal
- * the eye lies in is passed whole, an object whose bounds hold NaN is kept, and an eye outside every sector is the caller's decision ({@link PortalStage} culls nothing then). A
- * rectangle is looser than the exact pyramid of the portal chain, so objects just outside the true view through a doorway may survive. {@link SectorVisibility} can only remove sectors, and
- * is as conservative as what is passed in.
+ * <p><b>Conservative.</b> The result never hides something that can be seen: the rectangles are
+ * bounding boxes of the projected polygons (slightly enlarged against rounding), a portal the eye
+ * lies in is passed whole, an object whose bounds hold NaN is kept, and an eye outside every sector
+ * is the caller's decision ({@link PortalStage} culls nothing then). A rectangle is looser than the
+ * exact pyramid of the portal chain, so objects just outside the true view through a doorway may
+ * survive. {@link SectorVisibility} can only remove sectors, and is as conservative as what is
+ * passed in.
  *
- * <p>One culler per thread; the graph can be shared while nobody changes it. <b>Thread safety.</b> Not thread-safe.
+ * <p>One culler per thread; the graph can be shared while nobody changes it. <b>Thread safety.</b>
+ * Not thread-safe.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * PortalGraph.Builder builder = PortalGraph.builder();
+ * int a = builder.addBox(Aabbf.of(new Vec3f(0f, 0f, 0f), new Vec3f(10f, 3f, 10f)));
+ * int b = builder.addBox(Aabbf.of(new Vec3f(10f, 0f, 0f), new Vec3f(20f, 3f, 10f)));
+ * builder.autoPortals(0.01f);                                                // a portal where the two boxes share a face
+ * PortalCuller culler = new PortalCuller(builder.build());
+ * Mat4f viewProjection = Mat4f.perspective(1f, 1.5f, 0.1f, 100f, ClipSpace.OPENGL).mul(Mat4f.lookTo(new Vec3f(5f, 1.5f, 5f), Vec3f.UNIT_X, Vec3f.UNIT_Y));
+ * int visibleSectors = culler.traverse(viewProjection, DepthRange.of(ClipSpace.OPENGL), 5f, 1.5f, 5f, a);
+ * boolean seesB = culler.isSectorVisible(b);
+ * }</pre>
  */
 public final class PortalCuller {
 
@@ -52,7 +76,11 @@ public final class PortalCuller {
     private final double[] root = new double[4];
     private VisibilitySet kept = new VisibilitySet(64);
 
-    /** A culler for the sectors and portals of {@code graph}. */
+    /**
+     * Creates a culler for the sectors and portals of {@code graph}.
+     *
+     * @param graph the graph; must not be {@code null}
+     */
     public PortalCuller(PortalGraph graph) {
         this.graph = graph;
         int n = graph.sectorCount();
@@ -60,14 +88,25 @@ public final class PortalCuller {
         visibleSectors = new int[n];
     }
 
-    /** Narrows the traversal with a precomputed visibility set, or removes the narrowing when {@code null}: sectors that {@code visibility} says cannot be seen from the start sector are not entered. */
+    /**
+     * Narrows the traversal with a precomputed visibility set, or removes the narrowing when
+     * {@code null}: sectors that {@code visibility} says cannot be seen from the start sector are
+     * not entered.
+     *
+     * @param visibility the visibility; must not be {@code null}
+     */
     public void setVisibility(SectorVisibility visibility) {
         this.visibility = visibility;
     }
 
     /**
-     * Sets the number of times the traversal may grow the rectangle of a sector before it stops refining (the default is {@code 16 * sectors + 64}, never reached by ordinary levels);
-     * a negative value restores the default. A lower value makes a pathological graph finish sooner at the price of looser rectangles.
+     * Sets the number of times the traversal may grow the rectangle of a sector before it stops
+     * refining (the default is {@code 16 * sectors + 64}, never reached by ordinary levels); a
+     * negative value restores the default.
+     *
+     * <p>A lower value makes a pathological graph finish sooner at the price of looser rectangles.
+     *
+     * @param growths the growths
      */
     public void setGrowthBudget(long growths) {
         this.budgetOverride = growths;
@@ -76,8 +115,13 @@ public final class PortalCuller {
     // ------------------------------------------------------------ the traversal
 
     /**
-     * Sets the view of the next traversals: the view-projection matrix and its depth convention. Calling it once per frame and then {@link #traverse(float, float, float, int)} keeps the
+     * Sets the view of the next traversals: the view-projection matrix and its depth convention.
+     *
+     * <p>Calling it once per frame and then {@link #traverse(float, float, float, int)} keeps the
      * matrix out of the per-frame calls.
+     *
+     * @param viewProjection the view projection; must not be {@code null}
+     * @param depthRange the depth range; must not be {@code null}
      */
     public void setView(Mat4f viewProjection, DepthRange depthRange) {
         load(viewProjection);
@@ -86,8 +130,19 @@ public final class PortalCuller {
     }
 
     /**
-     * Finds the visible sectors for the view-projection matrix {@code viewProjection} (with the depth convention {@code depthRange}) and the eye at {@code (ex, ey, ez)} in the sector
-     * {@code startSector}, with the whole screen as the root rectangle. Returns the number of visible sectors, the start sector included.
+     * Finds the visible sectors for the view-projection matrix {@code viewProjection} (with the
+     * depth convention {@code depthRange}) and the eye at {@code (ex, ey, ez)} in the sector
+     * {@code startSector}, with the whole screen as the root rectangle.
+     *
+     * <p>Returns the number of visible sectors, the start sector included.
+     *
+     * @param viewProjection the view projection; must not be {@code null}
+     * @param depthRange the depth range; must not be {@code null}
+     * @param ex the x coordinate of the eye
+     * @param ey the y coordinate of the eye
+     * @param ez the z coordinate of the eye
+     * @param startSector the start sector
+     * @return the number of visible sectors, the start sector included
      */
     public int traverse(Mat4f viewProjection, DepthRange depthRange, float ex, float ey, float ez, int startSector) {
         setView(viewProjection, depthRange);
@@ -95,20 +150,71 @@ public final class PortalCuller {
     }
 
     /**
-     * {@link #traverse(Mat4f, DepthRange, float, float, float, int)} with a root rectangle in normalised device coordinates, for a view that does not use the whole screen (a portal
-     * view, a split-screen half, a scissored viewport). The rectangle is clamped to {@code [-1, 1]^2}.
+     * Traverses the portal graph like the basic overload, but starts from a rectangle in normalised
+     * device coordinates, for views that do not cover the whole screen, such as a portal or a
+     * picture-in-picture.
+     *
+     * <p>The rectangle is clamped to {@code [-1, 1]^2}.
+     *
+     * @param viewProjection the view projection; must not be {@code null}
+     * @param depthRange the depth range; must not be {@code null}
+     * @param ex the x coordinate of the eye
+     * @param ey the y coordinate of the eye
+     * @param ez the z coordinate of the eye
+     * @param startSector the start sector
+     * @param x0 the left edge of the screen rectangle that limits the traversal, in normalised
+     *     device coordinates
+     * @param y0 the bottom edge of the screen rectangle that limits the traversal, in normalised
+     *     device coordinates
+     * @param x1 the right edge of the screen rectangle that limits the traversal, in normalised
+     *     device coordinates
+     * @param y1 the top edge of the screen rectangle that limits the traversal, in normalised
+     *     device coordinates
+     * @return {@link #traverse(Mat4f, DepthRange, float, float, float, int)} with a root rectangle
+     *     in normalised device coordinates, for a view that does not use the whole screen (a portal
+     *     view, a split-screen half, a scissored viewport)
      */
     public int traverse(Mat4f viewProjection, DepthRange depthRange, float ex, float ey, float ez, int startSector, double x0, double y0, double x1, double y1) {
         setView(viewProjection, depthRange);
         return traverse(ex, ey, ez, startSector, x0, y0, x1, y1);
     }
 
-    /** {@link #traverse(Mat4f, DepthRange, float, float, float, int)} with the view set by {@link #setView}. */
+    /**
+     * Traverses the portal graph with the view that was set earlier, so the matrices need not be
+     * passed on every call.
+     *
+     * @param ex the x coordinate of the eye
+     * @param ey the y coordinate of the eye
+     * @param ez the z coordinate of the eye
+     * @param startSector the start sector
+     * @return {@link #traverse(Mat4f, DepthRange, float, float, float, int)} with the view set by
+     *     {@link #setView}
+     */
     public int traverse(float ex, float ey, float ez, int startSector) {
         return traverse(ex, ey, ez, startSector, -1.0, -1.0, 1.0, 1.0);
     }
 
-    /** {@link #traverse(Mat4f, DepthRange, float, float, float, int, double, double, double, double)} with the view set by {@link #setView}. */
+    /**
+     * Traverses the portal graph from a screen rectangle with the view that was set earlier.
+     *
+     * @param ex the x coordinate of the eye
+     * @param ey the y coordinate of the eye
+     * @param ez the z coordinate of the eye
+     * @param startSector the start sector
+     * @param x0 the left edge of the screen rectangle that limits the traversal, in normalised
+     *     device coordinates
+     * @param y0 the bottom edge of the screen rectangle that limits the traversal, in normalised
+     *     device coordinates
+     * @param x1 the right edge of the screen rectangle that limits the traversal, in normalised
+     *     device coordinates
+     * @param y1 the top edge of the screen rectangle that limits the traversal, in normalised
+     *     device coordinates
+     * @return
+     *     {@link #traverse(Mat4f, DepthRange, float, float, float, int, double, double, double, double)}
+     *     with the view set by {@link #setView}
+     * @throws IllegalStateException if {@link #setView} has not been called
+     * @throws IllegalArgumentException if {@code startSector} is not a sector of the graph
+     */
     public int traverse(float ex, float ey, float ez, int startSector, double x0, double y0, double x1, double y1) {
         if (!viewSet) {
             throw new IllegalStateException("call setView first");
@@ -198,7 +304,11 @@ public final class PortalCuller {
 
     private double outX0, outY0, outX1, outY1;
 
-    /** Projects portal {@code p}, clipped to the half space in front of the eye, and intersects its bounding rectangle with the given one into the {@code out} fields; false when nothing is left. */
+    /**
+     * Projects portal {@code p}, clipped to the half space in front of the eye, and intersects its
+     * bounding rectangle with the given one into the {@code out} fields; false when nothing is
+     * left.
+     */
     private boolean project(int p, double x0, double y0, double x1, double y1) {
         float[] v = graph.portalVertexArray();
         int first = graph.portalVertexStart(p), n = graph.portalVertexCount(p);
@@ -288,29 +398,57 @@ public final class PortalCuller {
 
     // ------------------------------------------------------------ results of the traversal
 
-    /** The number of sectors that the last traversal reached. */
+    /**
+     * Counts the sectors that the last traversal reached.
+     *
+     * @return the number of sectors that the last traversal reached
+     */
     public int visibleSectorCount() {
         return visibleCount;
     }
 
-    /** The {@code i}-th visible sector of the last traversal, in the order they were first reached, {@code i} below {@link #visibleSectorCount()}. */
+    /**
+     * Reads a visible sector of the last traversal, in the order in which they were reached.
+     *
+     * @param i the index
+     * @return the {@code i}-th visible sector of the last traversal, in the order they were first
+     *     reached, {@code i} below {@link #visibleSectorCount()}
+     */
     public int visibleSector(int i) {
         return visibleSectors[i];
     }
 
-    /** Whether the last traversal reached sector {@code s}. */
+    /**
+     * Returns whether the last traversal reached sector {@code s}.
+     *
+     * @param s the sector index
+     * @return {@code true} if the last traversal reached sector {@code s}
+     */
     public boolean isSectorVisible(int s) {
         return rect[4 * s] <= rect[4 * s + 2];
     }
 
     /**
-     * Writes the rectangle in normalised device coordinates through which the last traversal saw sector {@code s} to {@code out[0 .. 4)} as {@code x0, y0, x1, y1}; the sector must be visible.
+     * Writes the rectangle in normalised device coordinates through which the last traversal saw
+     * sector {@code s} to {@code out[0 .. 4)} as {@code x0, y0, x1, y1}; the sector must be
+     * visible.
+     *
+     * @param s the sector index
+     * @param out receives the result
      */
     public void sectorRect(int s, double[] out) {
         System.arraycopy(rect, 4 * s, out, 0, 4);
     }
 
-    /** Whether the last traversal stopped refining because it ran out of its budget (every sector reached afterwards got the whole root rectangle). It never happens for ordinary levels. */
+    /**
+     * Returns whether the last traversal stopped refining because it ran out of its budget (every
+     * sector reached afterwards got the whole root rectangle).
+     *
+     * <p>It never happens for ordinary levels.
+     *
+     * @return {@code true} if the last traversal stopped refining because it ran out of its budget
+     *     (every sector reached afterwards got the whole root rectangle)
+     */
     public boolean budgetExhausted() {
         return budgetExhausted;
     }
@@ -318,9 +456,17 @@ public final class PortalCuller {
     // ------------------------------------------------------------ the object test
 
     /**
-     * Clears the bit of every object in {@code visible} that is not seen: objects of sectors the last traversal did not reach, and objects outside the narrowed view volume of
-     * every sector they belong to. Objects that belong to no sector are kept, or cleared when {@code cullUnassigned} is true. Objects with an index beyond {@code bounds.size()} and the
-     * bits that are already clear are not touched.
+     * Clears the bit of every object in {@code visible} that is not seen: objects of sectors the
+     * last traversal did not reach, and objects outside the narrowed view volume of every sector
+     * they belong to.
+     *
+     * <p>Objects that belong to no sector are kept, or cleared when {@code cullUnassigned} is true.
+     * Objects with an index beyond {@code bounds.size()} and the bits that are already clear are
+     * not touched.
+     *
+     * @param bounds the bounds; must not be {@code null}
+     * @param visible the visibility set; must not be {@code null}
+     * @param cullUnassigned whether cull unassigned
      */
     public void cullObjects(BoundsArray bounds, VisibilitySet visible, boolean cullUnassigned) {
         int n = Math.min(bounds.size(), visible.capacity());
@@ -354,7 +500,10 @@ public final class PortalCuller {
         }
     }
 
-    /** The six planes of the view volume narrowed to the rectangle of sector {@code s}, unit normals pointing inward, into {@link #planes}. */
+    /**
+     * The six planes of the view volume narrowed to the rectangle of sector {@code s}, unit normals
+     * pointing inward, into {@link #planes}.
+     */
     private void narrowedPlanes(int s) {
         int r = 4 * s;
         double rx0 = rect[r], ry0 = rect[r + 1], rx1 = rect[r + 2], ry1 = rect[r + 3];

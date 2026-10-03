@@ -4,28 +4,63 @@ import vmath.annotations.Experimental;
 import vmath.core.Vec3f;
 
 /**
- * The six faces of a cube map in the order OpenGL, Vulkan, D3D and KTX2 all use for array layers, with the standard mapping between a direction and a
- * position on a face (the OpenGL specification's cube map selection table, also what Vulkan specifies).
+ * The six faces of a cube map in the order OpenGL, Vulkan, D3D and KTX2 all use for array layers,
+ * with the standard mapping between a direction and a position on a face (the OpenGL
+ * specification's cube map selection table, also what Vulkan specifies).
  *
- * <p>{@code u} and {@code v} run from 0 to 1 across the face, {@code (0, 0)} at the texel image's first texel (top-left in the usual image orientation).
- * These are the conventions of the <em>texture coordinate</em> space; a renderer that stores faces upside down must flip {@code v} itself.
+ * <p>{@code u} and {@code v} run from 0 to 1 across the face, {@code (0, 0)} at the texel image's
+ * first texel (top-left in the usual image orientation). These are the conventions of the
+ * <em>texture coordinate</em> space; a renderer that stores faces upside down must flip {@code v}
+ * itself.
+ *
+ * <p><b>Thread safety.</b> Immutable: the constants can be shared between threads.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * CubeFace face = CubeFace.of(1f, 0.2f, -0.3f);                // the face a direction points at
+ * float u = face.u(1f, 0.2f, -0.3f);
+ * float v = face.v(1f, 0.2f, -0.3f);
+ * Vec3f direction = face.direction(u, v);
+ * }</pre>
  */
 @Experimental("the orientation conventions are checked against the specification table only, not against a GPU")
 public enum CubeFace {
-    /** The face the +X axis points into. */
+    /**
+     * The face the +X axis points into.
+     */
     POSITIVE_X,
-    /** The face the -X axis points into. */
+    /**
+     * The face the -X axis points into.
+     */
     NEGATIVE_X,
-    /** The face the +Y axis points into. */
+    /**
+     * The face the +Y axis points into.
+     */
     POSITIVE_Y,
-    /** The face the -Y axis points into. */
+    /**
+     * The face the -Y axis points into.
+     */
     NEGATIVE_Y,
-    /** The face the +Z axis points into. */
+    /**
+     * The face the +Z axis points into.
+     */
     POSITIVE_Z,
-    /** The face the -Z axis points into. */
+    /**
+     * The face the -Z axis points into.
+     */
     NEGATIVE_Z;
 
-    /** The face a direction points at (the axis with the largest magnitude; ties go to x, then y, then z). */
+    /**
+     * Selects the cube face a direction hits, by finding the axis with the largest absolute
+     * component; used for cube map and point-light shadow lookups.
+     *
+     * @param x the x component
+     * @param y the y component
+     * @param z the z component
+     * @return the face a direction points at (the axis with the largest magnitude; ties go to x,
+     *     then y, then z)
+     */
     public static CubeFace of(float x, float y, float z) {
         float ax = Math.abs(x), ay = Math.abs(y), az = Math.abs(z);
         if (ax >= ay && ax >= az) {
@@ -37,7 +72,16 @@ public enum CubeFace {
         return z >= 0f ? POSITIVE_Z : NEGATIVE_Z;
     }
 
-    /** The {@code u} coordinate (0 to 1) of direction {@code (x, y, z)} on {@code face}; the direction must point into that face. */
+    /**
+     * Projects a direction onto this face and computes the horizontal texture coordinate with the
+     * conventions of cube map sampling; the direction must point into this face.
+     *
+     * @param x the x component
+     * @param y the y component
+     * @param z the z component
+     * @return the {@code u} coordinate (0 to 1) of direction {@code (x, y, z)} on {@code face}; the
+     *     direction must point into that face
+     */
     public float u(float x, float y, float z) {
         float sc, ma;
         switch (this) {
@@ -51,7 +95,15 @@ public enum CubeFace {
         return 0.5f * (sc / Math.abs(ma) + 1f);
     }
 
-    /** The {@code v} coordinate (0 to 1) of direction {@code (x, y, z)} on this face. */
+    /**
+     * Projects a direction onto this face and computes the vertical texture coordinate with the
+     * conventions of cube map sampling; the direction must point into this face.
+     *
+     * @param x the x component
+     * @param y the y component
+     * @param z the z component
+     * @return the {@code v} coordinate (0 to 1) of direction {@code (x, y, z)} on this face
+     */
     public float v(float x, float y, float z) {
         float tc, ma;
         switch (this) {
@@ -65,7 +117,15 @@ public enum CubeFace {
         return 0.5f * (tc / Math.abs(ma) + 1f);
     }
 
-    /** A (not normalised) direction through {@code (u, v)} of this face, the inverse of {@link #u} and {@link #v}. */
+    /**
+     * Constructs a direction from face texture coordinates, which is what a shader does when it
+     * bakes or filters a cube map; the result is not normalised.
+     *
+     * @param u the u coordinate on the face
+     * @param v the v coordinate on the face
+     * @return a (not normalised) direction through {@code (u, v)} of this face, the inverse of
+     *     {@link #u} and {@link #v}
+     */
     public Vec3f direction(float u, float v) {
         float sc = 2f * u - 1f, tc = 2f * v - 1f;
         return switch (this) {

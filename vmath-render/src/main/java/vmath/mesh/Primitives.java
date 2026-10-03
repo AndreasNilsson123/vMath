@@ -4,19 +4,32 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Procedural meshes: plane, box, UV sphere, icosphere, capsule, cylinder, cone and torus. Every mesh has normals, a first UV set and
- * tangents, is centred on the origin with +Y up, and winds counter-clockwise seen from outside (closed shapes have positive
+ * Procedural meshes: plane, box, UV sphere, icosphere, capsule, cylinder, cone and torus.
+ *
+ * <p>Every mesh has normals, a first UV set and tangents, is centred on the origin with +Y up, and
+ * winds counter-clockwise seen from outside (closed shapes have positive
  * {@link Mesh#signedVolume()}).
  *
- * <p><b>Seams are duplicated vertices, never gaps.</b> Where UVs or normals must differ across an edge (the seam of a sphere, the
- * rim of a cylinder cap, the corners of a box) the vertices are duplicated with <em>bit-identical positions</em>, so the surface is
- * watertight by position (weld them with {@code MeshOptimizer.weld} to merge them) while shading and texturing stay correct. Triangles that
- * would have no area (at the poles, between duplicated rows) are left out.
+ * <p><b>Seams are duplicated vertices, never gaps.</b> Where UVs or normals must differ across an
+ * edge (the seam of a sphere, the rim of a cylinder cap, the corners of a box) the vertices are
+ * duplicated with <em>bit-identical positions</em>, so the surface is watertight by position (weld
+ * them with {@code MeshOptimizer.weld} to merge them) while shading and texturing stay correct.
+ * Triangles that would have no area (at the poles, between duplicated rows) are left out.
  *
  * <p>Segment counts are clamped to sensible minimums (3 around, 1 along) instead of throwing.
  *
- * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time. The arrays and buffers you pass in are
- * not synchronised, so two threads must not write the same one.
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the
+ * same time. The arrays and buffers you pass in are not synchronised, so two threads must not write
+ * the same one.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * Mesh floor = Primitives.plane(10f, 10f, 10, 10);
+ * Mesh ball = Primitives.uvSphere(0.5f, 32, 16);
+ * Mesh pill = Primitives.capsule(0.3f, 1f, 16, 8);
+ * Mesh ring = Primitives.torus(1f, 0.25f, 48, 16);
+ * }</pre>
  */
 public final class Primitives {
 
@@ -25,7 +38,16 @@ public final class Primitives {
 
     // ---------------------------------------------------------------- plane and box
 
-    /** A flat rectangle in the XZ plane facing +Y, {@code width} along X and {@code depth} along Z, in a grid of cells. */
+    /**
+     * Generates a flat grid in the XZ plane facing up, with normals and texture coordinates.
+     *
+     * @param width the width
+     * @param depth the depth
+     * @param cellsX the cells x
+     * @param cellsZ the cells z
+     * @return a flat rectangle in the XZ plane facing +Y, {@code width} along X and {@code depth}
+     *     along Z, in a grid of cells
+     */
     public static Mesh plane(float width, float depth, int cellsX, int cellsZ) {
         int nx = Math.max(1, cellsX), nz = Math.max(1, cellsZ);
         Mesh m = new Mesh((nx + 1) * (nz + 1), nx * nz * 2);
@@ -45,7 +67,16 @@ public final class Primitives {
         return finish(m);
     }
 
-    /** A box with half-extents {@code hx, hy, hz}: 24 vertices (flat shading), each face with UVs from 0 to 1. */
+    /**
+     * Generates a box with separate vertices per face, so that the faces shade flat and carry their
+     * own texture coordinates.
+     *
+     * @param hx the half extent along x
+     * @param hy the half extent along y
+     * @param hz the half extent along z
+     * @return a box with half-extents {@code hx, hy, hz}: 24 vertices (flat shading), each face
+     *     with UVs from 0 to 1
+     */
     public static Mesh box(float hx, float hy, float hz) {
         Mesh m = new Mesh(24, 12);
         // each face: normal axis, and the two in-plane axes u, v chosen so that u x v = normal (counter-clockwise from outside)
@@ -74,7 +105,16 @@ public final class Primitives {
 
     // ---------------------------------------------------------------- spheres
 
-    /** A sphere as {@code rings} bands of {@code segments} quads: smooth UVs and normals, poles shared per column. */
+    /**
+     * Generates a latitude-longitude sphere with smooth normals and texture coordinates; the
+     * triangles shrink towards the poles.
+     *
+     * @param radius the radius
+     * @param segments the number of segments
+     * @param rings the rings
+     * @return a sphere as {@code rings} bands of {@code segments} quads: smooth UVs and normals,
+     *     poles shared per column
+     */
     public static Mesh uvSphere(float radius, int segments, int rings) {
         int s = Math.max(3, segments), r = Math.max(2, rings);
         float[] pr = new float[r + 1], py = new float[r + 1], nr = new float[r + 1], ny = new float[r + 1], pv = new float[r + 1];
@@ -90,7 +130,16 @@ public final class Primitives {
         return finish(revolve(s, pr, py, nr, ny, pv));
     }
 
-    /** A sphere made by subdividing an icosahedron: even triangles, no pole pinching. UVs are spherical and stretch at the seam. */
+    /**
+     * Generates a sphere by subdividing an icosahedron, which gives nearly equal triangles and no
+     * pole pinching; the triangle count grows by a factor of four per level.
+     *
+     * <p>UVs are spherical and stretch at the seam.
+     *
+     * @param radius the radius
+     * @param subdivisions the subdivisions
+     * @return a sphere made by subdividing an icosahedron: even triangles, no pole pinching
+     */
     public static Mesh icoSphere(float radius, int subdivisions) {
         int n = Math.max(0, Math.min(subdivisions, 8));
         double t = (1.0 + Math.sqrt(5.0)) / 2.0;
@@ -159,7 +208,16 @@ public final class Primitives {
 
     // ---------------------------------------------------------------- surfaces of revolution
 
-    /** A capsule: a cylinder of {@code cylinderHeight} between two hemispheres of {@code radius}, standing on the Y axis. */
+    /**
+     * Generates a capsule with a cylindrical middle and hemispherical caps, with smooth normals.
+     *
+     * @param radius the radius
+     * @param cylinderHeight the cylinder height
+     * @param segments the number of segments
+     * @param hemisphereRings the hemisphere rings
+     * @return a capsule: a cylinder of {@code cylinderHeight} between two hemispheres of
+     *     {@code radius}, standing on the Y axis
+     */
     public static Mesh capsule(float radius, float cylinderHeight, int segments, int hemisphereRings) {
         int s = Math.max(3, segments), h = Math.max(1, hemisphereRings);
         int rows = 2 * (h + 1);
@@ -192,7 +250,14 @@ public final class Primitives {
         return finish(revolve(s, pr, py, nr, ny, pv));
     }
 
-    /** A cylinder with flat caps (the caps have their own vertices and normals). */
+    /**
+     * Generates a cylinder with separate vertices for the caps, so that they shade flat.
+     *
+     * @param radius the radius
+     * @param height the height
+     * @param segments the number of segments
+     * @return a cylinder with flat caps (the caps have their own vertices and normals)
+     */
     public static Mesh cylinder(float radius, float height, int segments) {
         int s = Math.max(3, segments);
         float half = height * 0.5f;
@@ -204,7 +269,14 @@ public final class Primitives {
         return finish(revolve(s, pr, py, nr, ny, pv));
     }
 
-    /** A cone with a flat base and its apex up, {@code height} tall. */
+    /**
+     * Generates a cone with a flat base and the apex up.
+     *
+     * @param radius the radius
+     * @param height the height
+     * @param segments the number of segments
+     * @return a cone with a flat base and its apex up, {@code height} tall
+     */
     public static Mesh cone(float radius, float height, int segments) {
         int s = Math.max(3, segments);
         float half = height * 0.5f;
@@ -218,7 +290,16 @@ public final class Primitives {
         return finish(revolve(s, pr, py, nr, ny, pv));
     }
 
-    /** A torus around the Y axis: {@code majorRadius} from the axis to the tube's centre, {@code minorRadius} the tube's radius. */
+    /**
+     * Generates a torus with smooth normals and texture coordinates.
+     *
+     * @param majorRadius the major radius
+     * @param minorRadius the minor radius
+     * @param majorSegments the major segments
+     * @param minorSegments the minor segments
+     * @return a torus around the Y axis: {@code majorRadius} from the axis to the tube's centre,
+     *     {@code minorRadius} the tube's radius
+     */
     public static Mesh torus(float majorRadius, float minorRadius, int majorSegments, int minorSegments) {
         int ms = Math.max(3, majorSegments), ns = Math.max(3, minorSegments);
         Mesh m = new Mesh((ms + 1) * (ns + 1), ms * ns * 2);
@@ -237,9 +318,11 @@ public final class Primitives {
     }
 
     /**
-     * Builds a surface of revolution around Y from a profile: row {@code j} has ring radius {@code pr[j]} at height {@code py[j]},
-     * a normal with radial part {@code nr[j]} and vertical part {@code ny[j]}, and texture coordinate {@code v = pv[j]}; {@code u} runs
-     * once around. The last column repeats the first with identical positions.
+     * Builds a surface of revolution around Y from a profile: row {@code j} has ring radius
+     * {@code pr[j]} at height {@code py[j]}, a normal with radial part {@code nr[j]} and vertical
+     * part {@code ny[j]}, and texture coordinate {@code v = pv[j]}; {@code u} runs once around.
+     *
+     * <p>The last column repeats the first with identical positions.
      */
     private static Mesh revolve(int segments, float[] pr, float[] py, float[] nr, float[] ny, float[] pv) {
         int rows = pr.length;
@@ -261,7 +344,10 @@ public final class Primitives {
         return m;
     }
 
-    /** Triangles for the {@code (us + 1) x (vs + 1)} vertices laid out u-major (index {@code i * (vs + 1) + j}). */
+    /**
+     * Triangles for the {@code (us + 1) x (vs + 1)} vertices laid out u-major (index
+     * {@code i * (vs + 1) + j}).
+     */
     private static void grid(Mesh m, int us, int vs) {
         for (int i = 0; i < us; i++) {
             for (int j = 0; j < vs; j++) {
@@ -287,7 +373,9 @@ public final class Primitives {
 
     // ---------------------------------------------------------------- finishing
 
-    /** Fixes the winding of a closed mesh that came out inside out, then adds tangents. */
+    /**
+     * Fixes the winding of a closed mesh that came out inside out, then adds tangents.
+     */
     private static Mesh finish(Mesh m) {
         boolean closed = isClosedShape(m);
         if (closed && m.signedVolume() < 0) {
@@ -297,7 +385,11 @@ public final class Primitives {
         return m;
     }
 
-    /** Planes are open; everything else built here is closed. A flat mesh has (almost) zero extent along some axis. */
+    /**
+     * Planes are open; everything else built here is closed.
+     *
+     * <p>A flat mesh has (almost) zero extent along some axis.
+     */
     private static boolean isClosedShape(Mesh m) {
         var b = m.bounds();
         float ex = b.maxX() - b.minX(), ey = b.maxY() - b.minY(), ez = b.maxZ() - b.minZ();

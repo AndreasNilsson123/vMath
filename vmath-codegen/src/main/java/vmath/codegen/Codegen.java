@@ -16,7 +16,9 @@ import java.util.Set;
 import java.util.stream.Stream;
 
 /**
- * Build-time source generator. See {@code docs/CODEGEN.md}.
+ * Build-time source generator.
+ *
+ * <p>See {@code docs/CODEGEN.md}.
  *
  * <pre>
  *   --templates DIR       float templates for main   (repeatable via --test-templates for tests)
@@ -30,12 +32,25 @@ import java.util.stream.Stream;
  *   --gpu-register DIR    sources of a module below this one, read only so that {@code @GpuStruct} records can refer to its structs (repeatable)
  *   --gpu SRC=OUT         generate {@code <Name>Gpu} classes for {@code @GpuStruct} records found in SRC into OUT (repeatable)
  * </pre>
+ *
+ * <p><b>Thread safety.</b> Not designed for concurrent use: it is a command-line tool whose entry
+ * point reads and writes the directories named on the command line.
  */
 public final class Codegen {
 
     private Codegen() {
     }
 
+    /**
+     * Runs the generator; the arguments are described in the class comment.
+     *
+     * <p>Exits with status 1 and a message when a template is malformed.
+     *
+     * @param args the command-line arguments
+     * @throws IOException if a file cannot be read or written
+     * @throws IllegalArgumentException if an argument is unknown or {@code --gpu} is not of the
+     *     form {@code SOURCE_DIR=OUTPUT_DIR}
+     */
     public static void main(String[] args) throws IOException {
         Path templates = null;
         Path testTemplates = null;
@@ -183,7 +198,9 @@ public final class Codegen {
         return Files.readString(p, StandardCharsets.UTF_8);
     }
 
-    /** Writes only when the content changed, so timestamps stay stable and incremental builds work. */
+    /**
+     * Writes only when the content changed, so timestamps stay stable and incremental builds work.
+     */
     private static Path write(Path target, String content) throws IOException {
         Files.createDirectories(target.getParent());
         if (!Files.exists(target) || !Files.readString(target, StandardCharsets.UTF_8).equals(content)) {

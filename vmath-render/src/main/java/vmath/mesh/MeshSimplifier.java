@@ -9,33 +9,52 @@ import java.util.PriorityQueue;
 import vmath.annotations.Experimental;
 
 /**
- * Triangle-count reduction by edge collapse with quadric error metrics (Garland and Heckbert, "Surface Simplification Using Quadric Error Metrics", 1997).
+ * Triangle-count reduction by edge collapse with quadric error metrics (Garland and Heckbert,
+ * "Surface Simplification Using Quadric Error Metrics", 1997).
  *
- * <p><b>How it works.</b> Every vertex carries a quadric: the sum of the squared distances to the planes of the faces around it. Collapsing an edge moves the
- * two ends to the point that minimises the summed quadric (or to an end point or the midpoint when that is ill-posed), and costs the quadric value there.
- * The cheapest collapse is done first, using a priority queue; the topology is that of the <em>welded</em> positions.
+ * <p><b>How it works.</b> Every vertex carries a quadric: the sum of the squared distances to the
+ * planes of the faces around it. Collapsing an edge moves the two ends to the point that minimises
+ * the summed quadric (or to an end point or the midpoint when that is ill-posed), and costs the
+ * quadric value there. The cheapest collapse is done first, using a priority queue; the topology is
+ * that of the <em>welded</em> positions.
  *
  * <p><b>What is protected.</b>
  * <ul>
- *   <li><b>Attribute seams</b>: a position that several vertices share with different normals, UVs or tangents (a UV seam, a hard edge) is never moved or
- *       collapsed, so the attribute discontinuities of the input survive exactly. A heavily seamed mesh (a flat-shaded soup) therefore simplifies poorly;
- *       weld it first, or drop the attributes you do not need.</li>
- *   <li><b>Borders</b>: edges with one face get a penalty plane standing on them, so open boundaries keep their shape; {@code lockBorder} forbids touching
- *       them at all. An interior edge between two border vertices is never collapsed (it would pinch the mesh).</li>
- *   <li><b>Manifoldness</b>: a collapse is refused when it breaks the link condition (it would create a non-manifold edge or a hole) or flips the normal of any
- *       remaining triangle by more than about 78 degrees. A closed manifold mesh stays closed and keeps its Euler characteristic.</li>
+ *   <li><b>Attribute seams</b>: a position that several vertices share with different normals, UVs
+ *       or tangents (a UV seam, a hard edge) is never moved or collapsed, so the attribute
+ *       discontinuities of the input survive exactly. A heavily seamed mesh (a flat-shaded soup)
+ *       therefore simplifies poorly; weld it first, or drop the attributes you do not need.</li>
+ *   <li><b>Borders</b>: edges with one face get a penalty plane standing on them, so open
+ *       boundaries keep their shape; {@code lockBorder} forbids touching them at all. An interior
+ *       edge between two border vertices is never collapsed (it would pinch the mesh).</li>
+ *   <li><b>Manifoldness</b>: a collapse is refused when it breaks the link condition (it would
+ *       create a non-manifold edge or a hole) or flips the normal of any remaining triangle by more
+ *       than about 78 degrees. A closed manifold mesh stays closed and keeps its Euler
+ *       characteristic.</li>
  * </ul>
  *
- * <p><b>Attributes of the result.</b> When the mesh has normals, tangents or UVs, the new position is restricted to the edge (an end point or the midpoint) and
- * the survivor's attributes are interpolated to match (normals and tangent directions renormalised); without attributes the quadric minimiser is used. Normals are
- * not recomputed: after a strong reduction recompute them ({@link MeshTools#computeSmoothNormals}) when they should follow the new shape.
+ * <p><b>Attributes of the result.</b> When the mesh has normals, tangents or UVs, the new position
+ * is restricted to the edge (an end point or the midpoint) and the survivor's attributes are
+ * interpolated to match (normals and tangent directions renormalised); without attributes the
+ * quadric minimiser is used. Normals are not recomputed: after a strong reduction recompute them
+ * ({@link MeshTools#computeSmoothNormals}) when they should follow the new shape.
  *
- * <p><b>Error.</b> The reported error is the square root of the largest quadric cost of any performed collapse: an estimate in world units of how far the
- * surface moved (summed over the faces around the collapsed vertices), not a guaranteed Hausdorff distance. {@code docs/MESH.md} gives the measured true
- * distance next to the estimate.
+ * <p><b>Error.</b> The reported error is the square root of the largest quadric cost of any
+ * performed collapse: an estimate in world units of how far the surface moved (summed over the
+ * faces around the collapsed vertices), not a guaranteed Hausdorff distance. {@code docs/MESH.md}
+ * gives the measured true distance next to the estimate.
  *
- * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time. The arrays and buffers you pass in are
- * not synchronised, so two threads must not write the same one.
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the
+ * same time. The arrays and buffers you pass in are not synchronised, so two threads must not write
+ * the same one.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * Mesh mesh = Primitives.icoSphere(1f, 5);
+ * MeshSimplifier.Result result = MeshSimplifier.simplify(mesh, mesh.triangleCount() / 4, 0.01f, true);   // in place
+ * int after = result.trianglesAfter();
+ * }</pre>
  */
 @Experimental("the error estimate, the options and the result record may change")
 public final class MeshSimplifier {
@@ -46,22 +65,28 @@ public final class MeshSimplifier {
     /**
      * What {@link #simplify} did.
      *
-     * @param trianglesBefore triangles with nonzero area that went in (zero-area triangles are dropped first)
+     * @param trianglesBefore triangles with nonzero area that went in (zero-area triangles are
+     *     dropped first)
      * @param trianglesAfter triangles left
      * @param verticesAfter vertices left (unused ones are removed)
      * @param error the estimate described in the class comment, in world units
      * @param collapses number of edge collapses performed
-     * @param remap for every vertex after, the vertex of the input it came from (identical duplicates were merged into the first of them; a vertex that
-     *              survived a collapse carries the interpolated attributes and possibly a moved position, a vertex that took part in none is unchanged)
-     * @param attributes when extra attributes were given: {@code stride} values per vertex after, the mean of the attributes of all the input vertices that were
-     *                   merged into it; null otherwise
+     * @param remap for every vertex after, the vertex of the input it came from (identical
+     *     duplicates were merged into the first of them; a vertex that survived a collapse carries
+     *     the interpolated attributes and possibly a moved position, a vertex that took part in
+     *     none is unchanged)
+     * @param attributes when extra attributes were given: {@code stride} values per vertex after,
+     *     the mean of the attributes of all the input vertices that were merged into it; null
+     *     otherwise
      */
     public record Result(int trianglesBefore, int trianglesAfter, int verticesAfter, float error, int collapses, int[] remap, float[] attributes) {
     }
 
     private static final double BORDER_WEIGHT = 100.0;
 
-    /** Wraps an int array so that equal contents are equal keys. */
+    /**
+     * Wraps an int array so that equal contents are equal keys.
+     */
     private record Bits(int[] v) {
         @Override
         public boolean equals(Object o) {
@@ -78,30 +103,63 @@ public final class MeshSimplifier {
     }
 
     /**
-     * Reduces {@code mesh} in place to at most {@code targetTriangles} triangles, stopping early when the cheapest remaining collapse would exceed
-     * {@code maxError} (in world units, as the estimate described above) or no legal collapse is left.
+     * Reduces {@code mesh} in place to at most {@code targetTriangles} triangles, stopping early
+     * when the cheapest remaining collapse would exceed {@code maxError} (in world units, as the
+     * estimate described above) or no legal collapse is left.
+     *
+     * @param mesh the mesh; must not be {@code null}
+     * @param targetTriangles the target triangles
+     * @param maxError the max error
+     * @param lockBorder whether lock border
+     * @return the outcome of the simplification, never {@code null}
      */
     public static Result simplify(Mesh mesh, int targetTriangles, float maxError, boolean lockBorder) {
         return simplify(mesh, targetTriangles, maxError, lockBorder, null);
     }
 
     /**
-     * As {@link #simplify(Mesh, int, float, boolean)}, and additionally the vertices marked in {@code lockedVertices} (one flag per vertex, or null) are
-     * never moved or collapsed, like a seam; every vertex that shares a position with a locked one is locked with it. This is how the pieces of a cluster
-     * hierarchy keep their shared borders identical.
+     * Simplifies a mesh by edge collapses as the overload without locks does, and additionally
+     * leaves chosen vertices untouched, which is how seams between separately simplified pieces are
+     * kept watertight.
+     *
+     * <p>This is how the pieces of a cluster hierarchy keep their shared borders identical.
+     *
+     * @param mesh the mesh; must not be {@code null}
+     * @param targetTriangles the target triangles
+     * @param maxError the max error
+     * @param lockBorder whether lock border
+     * @param lockedVertices whether locked vertices
+     * @return the outcome of the simplification, never {@code null}
      */
     public static Result simplify(Mesh mesh, int targetTriangles, float maxError, boolean lockBorder, boolean[] lockedVertices) {
         return simplify(mesh, targetTriangles, maxError, lockBorder, lockedVertices, null, 0, 0f);
     }
 
     /**
-     * As above, with extra per-vertex attributes that the collapses must respect, such as skinning weights: {@code attributes} holds {@code stride} floats per
-     * vertex (for skin weights, one weight per joint, so a vertex is a dense vector with zeros for the joints that do not influence it). The cost of a collapse
-     * gets the term {@code attributeWeight * n_a n_b / (n_a + n_b) * |mean_a - mean_b|^2}, Ward's clustering criterion: the increase in the summed squared
-     * distance of the merged vertices' attributes to their common mean, where {@code n} counts the input vertices already merged into each side. Because it works on
-     * means and counts it measures accumulated drift, not just the difference across one edge, so a long chain of small steps cannot hide a large change.
-     * {@code attributeWeight} is the squared world distance that a squared unit of attribute difference is worth (0.0625 means that swinging a weight from 0 to 1
-     * is worth 0.25 units of position error). The survivors' means come back in {@link Result#attributes()}.
+     * Simplifies a mesh by edge collapses while respecting extra per-vertex attributes such as
+     * skinning weights, so that collapses do not merge vertices whose attributes differ too much.
+     *
+     * <p>The cost of a collapse gets the term
+     * {@code attributeWeight * n_a n_b / (n_a + n_b) * |mean_a - mean_b|^2}, Ward's clustering
+     * criterion: the increase in the summed squared distance of the merged vertices' attributes to
+     * their common mean, where {@code n} counts the input vertices already merged into each side.
+     * Because it works on means and counts it measures accumulated drift, not just the difference
+     * across one edge, so a long chain of small steps cannot hide a large change.
+     * {@code attributeWeight} is the squared world distance that a squared unit of attribute
+     * difference is worth (0.0625 means that swinging a weight from 0 to 1 is worth 0.25 units of
+     * position error). The survivors' means come back in {@link Result#attributes()}.
+     *
+     * @param mesh the mesh; must not be {@code null}
+     * @param targetTriangles the target triangles
+     * @param maxError the max error
+     * @param lockBorder whether lock border
+     * @param lockedVertices whether locked vertices
+     * @param attributes the attributes
+     * @param stride the distance between consecutive elements
+     * @param attributeWeight the attribute weight
+     * @return the outcome of the simplification, never {@code null}
+     * @throws IllegalArgumentException if {@code lockedVertices} or the attribute array is too
+     *     short, the stride is below 1 or the weight is negative
      */
     public static Result simplify(Mesh mesh, int targetTriangles, float maxError, boolean lockBorder, boolean[] lockedVertices, float[] attributes, int stride,
                                   float attributeWeight) {
@@ -409,7 +467,9 @@ public final class MeshSimplifier {
             quad[q + 9] += w * d * d;
         }
 
-        /** Number of live triangles that contain both nodes. */
+        /**
+         * Number of live triangles that contain both nodes.
+         */
         int edgeTriangles(int a, int b) {
             int n = 0;
             for (int i = 0; i < incCount[a]; i++) {
@@ -449,7 +509,10 @@ public final class MeshSimplifier {
             }
         }
 
-        /** The cost of collapsing {@code a} and {@code b}, writing the new position to {@code out}; NaN when the edge may not be collapsed. */
+        /**
+         * The cost of collapsing {@code a} and {@code b}, writing the new position to {@code out};
+         * NaN when the edge may not be collapsed.
+         */
         double evaluate(int a, int b, double[] out) {
             if (!alive[a] || !alive[b] || locked[a] || locked[b]) {
                 return Double.NaN;
@@ -497,7 +560,10 @@ public final class MeshSimplifier {
             return Math.max(0, best) + ward(a, b);
         }
 
-        /** The attribute term of a collapse (Ward's criterion on the merged means), 0 without attributes. */
+        /**
+         * The attribute term of a collapse (Ward's criterion on the merged means), 0 without
+         * attributes.
+         */
         double ward(int a, int b) {
             if (attr == null || attrWeight == 0f) {
                 return 0.0;
@@ -510,7 +576,9 @@ public final class MeshSimplifier {
             return attrWeight * ((double) members[a] * members[b] / (members[a] + members[b])) * d2;
         }
 
-        /** The minimiser of the quadric, or null when the 3 x 3 system is (nearly) singular. */
+        /**
+         * The minimiser of the quadric, or null when the 3 x 3 system is (nearly) singular.
+         */
         static double[] solve(double[] q) {
             double a = q[0], b = q[1], c = q[2], d = q[4], e = q[5], f = q[7];
             double det = a * (d * f - e * e) - b * (b * f - c * e) + c * (b * e - c * d);
@@ -595,7 +663,9 @@ public final class MeshSimplifier {
             return true;
         }
 
-        /** Merges {@code a} into {@code b} and moves {@code b} to {@code p}. */
+        /**
+         * Merges {@code a} into {@code b} and moves {@code b} to {@code p}.
+         */
         void collapse(int a, int b, double[] p) {
             if (attr != null) {
                 int total = members[a] + members[b];
@@ -647,7 +717,10 @@ public final class MeshSimplifier {
             version[a]++;
         }
 
-        /** Moves the attributes of vertex {@code dst} the fraction {@code t} of the way to those of {@code src}. */
+        /**
+         * Moves the attributes of vertex {@code dst} the fraction {@code t} of the way to those of
+         * {@code src}.
+         */
         void lerpAttributes(int dst, int src, double t) {
             if (t == 0 || dst < 0 || src < 0) {
                 return;
@@ -670,7 +743,10 @@ public final class MeshSimplifier {
             }
         }
 
-        /** Interpolates the first three components of a per-vertex vector stream and renormalises them. */
+        /**
+         * Interpolates the first three components of a per-vertex vector stream and renormalises
+         * them.
+         */
         static void lerpUnit(float[] a, int dst, int src, double t, int stride) {
             double x = a[dst * stride] + (a[src * stride] - a[dst * stride]) * t;
             double y = a[dst * stride + 1] + (a[src * stride + 1] - a[dst * stride + 1]) * t;

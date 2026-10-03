@@ -1,24 +1,42 @@
 package vmath.util;
 
 /**
- * The math of image-based lighting with the GGX microfacet model: the distribution and visibility terms, importance sampling of the GGX lobe, the split-sum approximation of Karis (2013)
- * that turns the specular reflection of an environment into two precomputed pieces, and the generators of those pieces on the CPU.
+ * The math of image-based lighting with the GGX microfacet model: the distribution and visibility
+ * terms, importance sampling of the GGX lobe, the split-sum approximation of Karis (2013) that
+ * turns the specular reflection of an environment into two precomputed pieces, and the generators
+ * of those pieces on the CPU.
  *
  * <ul>
- *   <li>{@link #ggxDistribution}, {@link #smithGgxVisibility}, {@link #smithGgxIbl}: the normal distribution function and the two forms of the Smith geometry term used for direct lights and for
- *       image-based lighting.</li>
- *   <li>{@link #importanceSampleGgx}: a half vector distributed like the GGX lobe, from two random numbers.</li>
- *   <li>{@link #dfg} and {@link #brdfLut}: the second half of the split sum, the scale {@code A} and bias {@code B} of the specular colour {@code F0 * A + B} as a function of
- *       {@code n . v} and roughness; the lookup table has two floats per texel.</li>
- *   <li>{@link #prefilterGgx}: the first half of the split sum, the environment averaged over the GGX lobe around a direction, which a renderer stores per roughness in the levels of
- *       a cube map.</li>
+ *   <li>{@link #ggxDistribution}, {@link #smithGgxVisibility}, {@link #smithGgxIbl}: the normal
+ *       distribution function and the two forms of the Smith geometry term used for direct lights
+ *       and for image-based lighting.</li>
+ *   <li>{@link #importanceSampleGgx}: a half vector distributed like the GGX lobe, from two random
+ *       numbers.</li>
+ *   <li>{@link #dfg} and {@link #brdfLut}: the second half of the split sum, the scale {@code A}
+ *       and bias {@code B} of the specular colour {@code F0 * A + B} as a function of {@code n . v}
+ *       and roughness; the lookup table has two floats per texel.</li>
+ *   <li>{@link #prefilterGgx}: the first half of the split sum, the environment averaged over the
+ *       GGX lobe around a direction, which a renderer stores per roughness in the levels of a cube
+ *       map.</li>
  * </ul>
  *
- * <p>The sums use the Hammersley points of {@link Sequences}, so they are deterministic and converge faster than random sampling. {@code roughness} is the perceptual
- * (artist) roughness; the GGX parameter is {@code alpha = roughness^2}. Environments are {@link SphericalHarmonics.Radiance} functions; for diffuse light use
- * {@link SphericalHarmonics} instead.
+ * <p>The sums use the Hammersley points of {@link Sequences}, so they are deterministic and
+ * converge faster than random sampling. {@code roughness} is the perceptual (artist) roughness; the
+ * GGX parameter is {@code alpha = roughness^2}. Environments are
+ * {@link SphericalHarmonics.Radiance} functions; for diffuse light use {@link SphericalHarmonics}
+ * instead.
  *
- * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time.
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the
+ * same time.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * double[] dfg = new double[2];
+ * Ibl.dfg(0.5, 0.3, 256, dfg);                                                  // scale and bias of the split-sum specular term
+ * float[] lut = new float[64 * 64 * 2];
+ * Ibl.brdfLut(64, 128, lut);                                                    // the whole table, two floats per texel
+ * }</pre>
  */
 public final class Ibl {
 
@@ -27,7 +45,16 @@ public final class Ibl {
 
     // ------------------------------------------------------------ the terms of the microfacet model
 
-    /** The GGX normal distribution {@code D(h) = alpha^2 / (pi ((n.h)^2 (alpha^2 - 1) + 1)^2)} for {@code n . h} and the perceptual roughness ({@code alpha = roughness^2}). */
+    /**
+     * Evaluates the GGX normal distribution, which describes how microfacet normals are spread for
+     * a given roughness; the roughness is the perceptual one, squared internally.
+     *
+     * @param noh the noh
+     * @param roughness the roughness
+     * @return the GGX normal distribution
+     *     {@code D(h) = alpha^2 / (pi ((n.h)^2 (alpha^2 - 1) + 1)^2)} for {@code n . h} and the
+     *     perceptual roughness ({@code alpha = roughness^2})
+     */
     public static double ggxDistribution(double noh, double roughness) {
         double a = roughness * roughness, a2 = a * a;
         double d = noh * noh * (a2 - 1.0) + 1.0;
@@ -35,8 +62,16 @@ public final class Ibl {
     }
 
     /**
-     * The height-correlated Smith visibility term {@code V = G / (4 (n.v) (n.l))} of GGX for direct lights (Heitz 2014), so that the specular BRDF is
-     * {@code D * V * F}. Both cosines must be positive.
+     * Evaluates the height-correlated Smith visibility term of GGX for direct lighting, which folds
+     * the geometry term and the denominator of the BRDF into one factor.
+     *
+     * <p>Both cosines must be positive.
+     *
+     * @param nov the nov
+     * @param nol the nol
+     * @param roughness the roughness
+     * @return the height-correlated Smith visibility term {@code V = G / (4 (n.v) (n.l))} of GGX
+     *     for direct lights (Heitz 2014), so that the specular BRDF is {@code D * V * F}
      */
     public static double smithGgxVisibility(double nov, double nol, double roughness) {
         double a2 = roughness * roughness * roughness * roughness;
@@ -46,8 +81,15 @@ public final class Ibl {
     }
 
     /**
-     * The uncorrelated Smith geometry term {@code G = G1(n.v) G1(n.l)} of Schlick-GGX with {@code k = alpha / 2}, the form Karis uses for image-based lighting (it is a different
-     * approximation from {@link #smithGgxVisibility}, which is for direct lights).
+     * Evaluates the geometry term of Schlick-GGX in the form used for image-based lighting, which
+     * uses a different remapping of roughness than direct lighting.
+     *
+     * @param nov the nov
+     * @param nol the nol
+     * @param roughness the roughness
+     * @return the uncorrelated Smith geometry term {@code G = G1(n.v) G1(n.l)} of Schlick-GGX with
+     *     {@code k = alpha / 2}, the form Karis uses for image-based lighting (it is a different
+     *     approximation from {@link #smithGgxVisibility}, which is for direct lights)
      */
     public static double smithGgxIbl(double nov, double nol, double roughness) {
         double k = roughness * roughness / 2.0;
@@ -57,8 +99,19 @@ public final class Ibl {
     // ------------------------------------------------------------ importance sampling
 
     /**
-     * A half vector distributed like the GGX lobe around the unit normal {@code (nx, ny, nz)}: the density of {@code h} is {@code D(n.h) (n.h)}. {@code u1} in {@code [0, 1)} gives the
-     * azimuth and {@code u2} in {@code [0, 1)} the polar angle (0 is exactly the normal). Written to {@code out[0 .. 3)} as a unit vector.
+     * Samples a half vector distributed like the GGX lobe around the unit normal
+     * {@code (nx, ny, nz)}: the density of {@code h} is {@code D(n.h) (n.h)}.
+     *
+     * <p>{@code u1} in {@code [0, 1)} gives the azimuth and {@code u2} in {@code [0, 1)} the polar
+     * angle (0 is exactly the normal). Written to {@code out[0 .. 3)} as a unit vector.
+     *
+     * @param u1 the first uniform random number, in {@code [0, 1)}
+     * @param u2 the second uniform random number, in {@code [0, 1)}
+     * @param roughness the roughness
+     * @param nx the x component of the normal
+     * @param ny the y component of the normal
+     * @param nz the z component of the normal
+     * @param out receives the result in {@code [0, 3)}
      */
     public static void importanceSampleGgx(double u1, double u2, double roughness, double nx, double ny, double nz, double[] out) {
         double a = roughness * roughness;
@@ -79,9 +132,19 @@ public final class Ibl {
     // ------------------------------------------------------------ the DFG term of the split sum
 
     /**
-     * The scale and bias of the split-sum specular term for the cosine {@code nov} between the normal and the view vector and the perceptual {@code roughness}: the specular colour of a
-     * surface of normal-incidence reflectance {@code F0} is {@code F0 * A + B}. Computed by importance sampling the GGX lobe with {@code samples} Hammersley points; {@code A} goes to
-     * {@code out[0]} and {@code B} to {@code out[1]}. Both are in {@code [0, 1]} and {@code A + B <= 1}, the energy of a single reflection.
+     * Computes the scale and bias of the split-sum specular term for the cosine {@code nov} between
+     * the normal and the view vector and the perceptual {@code roughness}: the specular colour of a
+     * surface of normal-incidence reflectance {@code F0} is {@code F0 * A + B}.
+     *
+     * <p>Computed by importance sampling the GGX lobe with {@code samples} Hammersley points;
+     * {@code A} goes to {@code out[0]} and {@code B} to {@code out[1]}. Both are in {@code [0, 1]}
+     * and {@code A + B <= 1}, the energy of a single reflection.
+     *
+     * @param nov the nov
+     * @param roughness the roughness
+     * @param samples the samples
+     * @param out receives the result in {@code [0, 2)}
+     * @throws IllegalArgumentException if {@code samples} is not positive
      */
     public static void dfg(double nov, double roughness, int samples, double[] out) {
         if (samples < 1) {
@@ -111,9 +174,18 @@ public final class Ibl {
     }
 
     /**
-     * Fills {@code out} with the table of {@link #dfg} for {@code size x size} texels: texel {@code (i, j)} holds {@code A} and {@code B} for {@code n . v = (i + 0.5) / size} and
-     * {@code roughness = (j + 0.5) / size}, at {@code out[2 (j size + i)]} and {@code out[2 (j size + i) + 1]}. Each texel takes {@code samples} samples; 128 to 1024 gives a smooth table
-     * (the table is smooth, so a texture of 32 x 32 or 64 x 64 is enough).
+     * Fills {@code out} with the table of {@link #dfg} for {@code size x size} texels: texel
+     * {@code (i, j)} holds {@code A} and {@code B} for {@code n . v = (i + 0.5) / size} and
+     * {@code roughness = (j + 0.5) / size}, at {@code out[2 (j size + i)]} and
+     * {@code out[2 (j size + i) + 1]}.
+     *
+     * <p>Each texel takes {@code samples} samples; 128 to 1024 gives a smooth table (the table is
+     * smooth, so a texture of 32 x 32 or 64 x 64 is enough).
+     *
+     * @param size the size
+     * @param samples the samples
+     * @param out receives the result
+     * @throws IllegalArgumentException if {@code out} cannot hold the table
      */
     public static void brdfLut(int size, int samples, float[] out) {
         if (size < 1 || (long) size * size * 2 > out.length) {
@@ -133,9 +205,22 @@ public final class Ibl {
     // ------------------------------------------------------------ the prefiltered environment
 
     /**
-     * The environment averaged over the GGX lobe around the direction {@code (nx, ny, nz)} (taken as both the normal and the view direction, the usual simplification of the split
-     * sum): the sum over {@code samples} importance-sampled light directions {@code l} of {@code env(l) (n . l)}, divided by the sum of {@code n . l}. Roughness 0 returns the
-     * environment in the direction itself; for a constant environment the result is that constant. Written to {@code out[0 .. 3)}.
+     * Prefilters the environment over the GGX lobe around the direction {@code (nx, ny, nz)} (taken
+     * as both the normal and the view direction, the usual simplification of the split sum): the
+     * sum over {@code samples} importance-sampled light directions {@code l} of
+     * {@code env(l) (n . l)}, divided by the sum of {@code n . l}.
+     *
+     * <p>Roughness 0 returns the environment in the direction itself; for a constant environment
+     * the result is that constant. Written to {@code out[0 .. 3)}.
+     *
+     * @param env the env; must not be {@code null}
+     * @param nx the x component of the normal
+     * @param ny the y component of the normal
+     * @param nz the z component of the normal
+     * @param roughness the roughness
+     * @param samples the samples
+     * @param out receives the result in {@code [0, 3)}
+     * @throws IllegalArgumentException if {@code samples} is not positive
      */
     public static void prefilterGgx(SphericalHarmonics.Radiance env, double nx, double ny, double nz, double roughness, int samples, double[] out) {
         if (samples < 1) {

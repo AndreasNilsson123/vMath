@@ -7,30 +7,52 @@ import vmath.bulk.VisibilitySet;
 /**
  * Picks a level of detail per object from how large it appears on screen.
  *
- * <p><b>The metric.</b> The size of an object is the diameter, in pixels of screen height, of its bounding sphere:
- * {@code 2 * radius * pixelScale / distance} (see {@link CullContext#pixelScale()}), times an optional bias. It needs no
- * matrices, is conservative for box-shaped objects, and does not change when the camera turns.
+ * <p><b>The metric.</b> The size of an object is the diameter, in pixels of screen height, of its
+ * bounding sphere: {@code 2 * radius * pixelScale / distance} (see
+ * {@link CullContext#pixelScale()}), times an optional bias. It needs no matrices, is conservative
+ * for box-shaped objects, and does not change when the camera turns.
  *
- * <p><b>Thresholds.</b> With {@code L} levels there are {@code L - 1} thresholds in strictly <em>descending</em> order.
- * An object at least {@code thresholds[0]} pixels big uses level 0 (full detail); below {@code thresholds[0]} but at least
- * {@code thresholds[1]} it uses level 1; and so on. Below {@code cullBelow} pixels it is not drawn at all.
+ * <p><b>Thresholds.</b> With {@code L} levels there are {@code L - 1} thresholds in strictly
+ * <em>descending</em> order. An object at least {@code thresholds[0]} pixels big uses level 0 (full
+ * detail); below {@code thresholds[0]} but at least {@code thresholds[1]} it uses level 1; and so
+ * on. Below {@code cullBelow} pixels it is not drawn at all.
  *
- * <p><b>Hysteresis.</b> Switching exactly at a threshold makes objects flicker between two levels when the camera hovers there.
- * With {@code hysteresis = h} an object keeps its previous level until its size is clearly past the threshold: it drops a level
- * only once below {@code threshold * (1 - h)} and climbs back only once above {@code threshold * (1 + h)}. The previous levels
- * live in a caller-owned {@code byte[]} that {@link #select} updates in place, so nothing is allocated.
+ * <p><b>Hysteresis.</b> Switching exactly at a threshold makes objects flicker between two levels
+ * when the camera hovers there. With {@code hysteresis = h} an object keeps its previous level
+ * until its size is clearly past the threshold: it drops a level only once below
+ * {@code threshold * (1 - h)} and climbs back only once above {@code threshold * (1 + h)}. The
+ * previous levels live in a caller-owned {@code byte[]} that {@link #select} updates in place, so
+ * nothing is allocated.
  *
- * <p><b>Cross-fade.</b> The optional {@code fade} output tells a renderer how far the object has moved toward the next, lower
- * level: {@code 0} well inside the chosen level, rising to {@code 1} as the size falls from {@code threshold * (1 + fadeBand)}
- * to {@code threshold}. Draw the chosen level with weight {@code 1 - fade} and the next level with weight {@code fade}. The
- * blend is continuous across a threshold: just above it the object is fully the lower level already (fade 1), and just below
- * it that lower level is the chosen one (fade 0).
+ * <p><b>Cross-fade.</b> The optional {@code fade} output tells a renderer how far the object has
+ * moved toward the next, lower level: {@code 0} well inside the chosen level, rising to {@code 1}
+ * as the size falls from {@code threshold * (1 + fadeBand)} to {@code threshold}. Draw the chosen
+ * level with weight {@code 1 - fade} and the next level with weight {@code fade}. The blend is
+ * continuous across a threshold: just above it the object is fully the lower level already (fade
+ * 1), and just below it that lower level is the chosen one (fade 0).
  *
  * <p>Instances are immutable and thread-safe.
+ *
+ * <p><b>Thread safety.</b> Immutable and thread-safe: instances can be shared between threads.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * LodSelector lods = LodSelector.of(new float[] {200f, 80f, 20f});          // pixel sizes at which the level changes
+ * int level = lods.levelFor(100f);                                          // 1
+ * BoundsArray bounds = new BoundsArray(1000);
+ * VisibilitySet visible = new VisibilitySet(1000);
+ * byte[] levels = new byte[1000];
+ * float[] fade = new float[1000];
+ * lods.select(CullContext.perspective(Frustumf.fromViewProjection(Mat4f.IDENTITY, DepthRange.of(ClipSpace.OPENGL)), Vec3f.ZERO, 1f, 1080), bounds, visible, levels, fade);
+ * }</pre>
  */
 public final class LodSelector {
 
-    /** Value of a level array entry for "no history yet" (the first {@link #select} computes it without hysteresis). */
+    /**
+     * Value of a level array entry for "no history yet" (the first {@link #select} computes it
+     * without hysteresis).
+     */
     public static final byte NO_LEVEL = -1;
 
     private final float[] thresholds;
@@ -39,10 +61,17 @@ public final class LodSelector {
     private final float fadeBand;
 
     /**
-     * @param thresholds pixel sizes at which the level changes, strictly descending, at most 126 of them
-     * @param cullBelow  objects smaller than this many pixels are culled ({@code 0} keeps everything)
+     * Creates a selector for the given level thresholds, culling threshold, hysteresis and
+     * cross-fade band.
+     *
+     * @param thresholds pixel sizes at which the level changes, strictly descending, at most 126 of
+     *     them
+     * @param cullBelow objects smaller than this many pixels are culled ({@code 0} keeps
+     *     everything)
      * @param hysteresis fraction of a threshold to overshoot before switching, {@code 0 <= h < 1}
      * @param fadeBand   fraction of a threshold over which the cross-fade ramps, {@code >= 0} ({@code 0} disables fading)
+     * @throws IllegalArgumentException if there are more than 126 thresholds, or they are not
+     *     positive, finite and strictly descending, or another argument is invalid
      */
     public LodSelector(float[] thresholds, float cullBelow, float hysteresis, float fadeBand) {
         if (thresholds.length > 126) {
@@ -74,17 +103,35 @@ public final class LodSelector {
         this.fadeBand = fadeBand;
     }
 
-    /** Levels with the given thresholds, no culling, 10% hysteresis and 20% cross-fade. */
+    /**
+     * Creates a level-of-detail selector from size thresholds with default hysteresis and
+     * cross-fade settings.
+     *
+     * @param thresholds the thresholds
+     * @return levels with the given thresholds, no culling, 10% hysteresis and 20% cross-fade
+     */
     public static LodSelector of(float... thresholds) {
         return new LodSelector(thresholds, 0f, 0.1f, 0.2f);
     }
 
-    /** Number of levels (one more than the number of thresholds). */
+    /**
+     * Counts the levels of detail.
+     *
+     * @return number of levels (one more than the number of thresholds)
+     */
     public int levels() {
         return thresholds.length + 1;
     }
 
-    /** The level for a size, with no hysteresis and no history. NaN sizes get level 0 (full detail). */
+    /**
+     * Selects a level for a size by comparing it with the thresholds, without any history, so the
+     * choice can flicker at a threshold.
+     *
+     * <p>NaN sizes get level 0 (full detail).
+     *
+     * @param sizePixels the size pixels
+     * @return the level for a size, with no hysteresis and no history
+     */
     public int levelFor(float sizePixels) {
         int level = 0;
         while (level < thresholds.length && sizePixels < thresholds[level]) {
@@ -93,7 +140,15 @@ public final class LodSelector {
         return level;
     }
 
-    /** Cross-fade factor for {@code sizePixels} at {@code level}: 0 inside the level up to 1 at its lower threshold. */
+    /**
+     * Computes the cross-fade factor for a size and level, which rises towards the threshold where
+     * the next level takes over.
+     *
+     * @param sizePixels the size pixels
+     * @param level the level
+     * @return cross-fade factor for {@code sizePixels} at {@code level}: 0 inside the level up to 1
+     *     at its lower threshold
+     */
     public float fadeFor(float sizePixels, int level) {
         if (level >= thresholds.length || fadeBand <= 0f) {
             return 0f;
@@ -104,13 +159,22 @@ public final class LodSelector {
     }
 
     /**
-     * Picks a level for every visible object. Objects smaller than {@code cullBelow} have their bit cleared in
-     * {@code visible}; all others get their level written to {@code levels[i]} (and the cross-fade to {@code fade[i]} when
-     * {@code fade} is not null). Entries of objects that are not visible are left alone.
+     * Picks a level for every visible object.
      *
-     * @param levels previous levels in, new levels out; initialise with {@link #NO_LEVEL} (for example
-     *               {@code Arrays.fill(levels, LodSelector.NO_LEVEL)}); must hold {@code bounds.size()} entries
+     * <p>Objects smaller than {@code cullBelow} have their bit cleared in {@code visible}; all
+     * others get their level written to {@code levels[i]} (and the cross-fade to {@code fade[i]}
+     * when {@code fade} is not null). Entries of objects that are not visible are left alone.
+     *
+     * @param ctx the culling context; must not be {@code null}
+     * @param bounds the bounds; must not be {@code null}
+     * @param visible the visibility set; must not be {@code null}
+     * @param levels previous levels in, new levels out; initialise with {@link #NO_LEVEL} (for
+     *     example {@code Arrays.fill(levels, LodSelector.NO_LEVEL)}); must hold
+     *     {@code bounds.size()} entries
+     * @param fade the fade
      * @param bias   multiplies every size: values above 1 keep more detail, below 1 switch earlier
+     * @throws IllegalArgumentException if {@code levels} or {@code fade} has fewer entries than
+     *     there are objects
      */
     public void select(CullContext ctx, BoundsArray bounds, VisibilitySet visible, byte[] levels, float[] fade, float bias) {
         int n = bounds.size();
@@ -157,7 +221,16 @@ public final class LodSelector {
         }
     }
 
-    /** {@link #select(CullContext, BoundsArray, VisibilitySet, byte[], float[], float)} with bias 1. */
+    /**
+     * Selects the levels with a bias of 1, as
+     * {@link #select(CullContext, BoundsArray, VisibilitySet, byte[], float[], float)} does.
+     *
+     * @param ctx the culling context; must not be {@code null}
+     * @param bounds the bounds; must not be {@code null}
+     * @param visible the visibility set; must not be {@code null}
+     * @param levels the levels
+     * @param fade the fade
+     */
     public void select(CullContext ctx, BoundsArray bounds, VisibilitySet visible, byte[] levels, float[] fade) {
         select(ctx, bounds, visible, levels, fade, 1f);
     }

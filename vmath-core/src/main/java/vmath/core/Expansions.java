@@ -3,24 +3,33 @@ package vmath.core;
 import java.util.Arrays;
 
 /**
- * Exact arithmetic on floating-point expansions, after J. R. Shewchuk, "Adaptive Precision Floating-Point Arithmetic and Fast Robust Geometric Predicates" (1997). An
- * expansion is a {@code double[]} of non-overlapping components in increasing order of magnitude whose exact sum is the number; sums, differences and products of
- * expansions are exact (no rounding), so the sign of the result is the sign of the largest component. The cost grows with the number of components, which is why
- * {@link Predicates} only comes here when its floating-point filter cannot decide.
+ * Exact arithmetic on floating-point expansions, after J.
  *
- * <p>Exact as long as no intermediate value overflows and no product underflows below {@code 2^-969}: the callers document the range of coordinates they accept.
+ * <p>R. Shewchuk, "Adaptive Precision Floating-Point Arithmetic and Fast Robust Geometric
+ * Predicates" (1997). An expansion is a {@code double[]} of non-overlapping components in
+ * increasing order of magnitude whose exact sum is the number; sums, differences and products of
+ * expansions are exact (no rounding), so the sign of the result is the sign of the largest
+ * component. The cost grows with the number of components, which is why {@link Predicates} only
+ * comes here when its floating-point filter cannot decide.
+ *
+ * <p>Exact as long as no intermediate value overflows and no product underflows below
+ * {@code 2^-969}: the callers document the range of coordinates they accept.
  */
 final class Expansions {
 
     private Expansions() {
     }
 
-    /** The expansion of one double. */
+    /**
+     * The expansion of one double.
+     */
     static double[] of(double a) {
         return new double[] {a};
     }
 
-    /** The exact difference {@code a - b} as an expansion of one or two components. */
+    /**
+     * The exact difference {@code a - b} as an expansion of one or two components.
+     */
     static double[] diff(double a, double b) {
         double x = a - b;
         double bv = a - x;
@@ -31,7 +40,9 @@ final class Expansions {
         return y != 0.0 ? new double[] {y, x} : new double[] {x};
     }
 
-    /** The exact sum of two expansions (Shewchuk's fast-expansion-sum with zero elimination). */
+    /**
+     * The exact sum of two expansions (Shewchuk's fast-expansion-sum with zero elimination).
+     */
     static double[] sum(double[] e, double[] f) {
         int elen = e.length, flen = f.length;
         double[] h = new double[elen + flen];
@@ -108,7 +119,9 @@ final class Expansions {
         return hindex == h.length ? h : Arrays.copyOf(h, hindex);
     }
 
-    /** {@code -e}. */
+    /**
+     * {@code -e}.
+     */
     static double[] negate(double[] e) {
         double[] h = new double[e.length];
         for (int i = 0; i < e.length; i++) {
@@ -117,12 +130,17 @@ final class Expansions {
         return h;
     }
 
-    /** The exact difference of two expansions. */
+    /**
+     * The exact difference of two expansions.
+     */
     static double[] sub(double[] e, double[] f) {
         return sum(e, negate(f));
     }
 
-    /** The exact product of an expansion and a double (Shewchuk's scale-expansion with zero elimination). */
+    /**
+     * The exact product of an expansion and a double (Shewchuk's scale-expansion with zero
+     * elimination).
+     */
     static double[] scale(double[] e, double b) {
         double[] h = new double[2 * e.length];
         int hindex = 0;
@@ -154,7 +172,9 @@ final class Expansions {
         return hindex == h.length ? h : Arrays.copyOf(h, hindex);
     }
 
-    /** The exact product of two expansions. */
+    /**
+     * The exact product of two expansions.
+     */
     static double[] mul(double[] e, double[] f) {
         double[] big = e.length >= f.length ? e : f;
         double[] small = big == e ? f : e;
@@ -165,13 +185,17 @@ final class Expansions {
         return acc;
     }
 
-    /** The sign of the expansion: that of its largest (last) component, 0 when it is zero. */
+    /**
+     * The sign of the expansion: that of its largest (last) component, 0 when it is zero.
+     */
     static int sign(double[] e) {
         double top = e[e.length - 1];
         return top > 0.0 ? 1 : top < 0.0 ? -1 : 0;
     }
 
-    /** An estimate of the value: the sum of the components, accurate to one rounding. */
+    /**
+     * An estimate of the value: the sum of the components, accurate to one rounding.
+     */
     static double estimate(double[] e) {
         double s = 0.0;
         for (double c : e) {

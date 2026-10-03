@@ -3,58 +3,113 @@ package vmath.geo;
 import vmath.annotations.Experimental;
 
 /**
- * Collision queries between two {@link ConvexShape}s: whether they overlap, how far apart they are (with the closest point on each), and, when they overlap, how deeply and in
- * which direction (with a contact point on each). They are the Gilbert-Johnson-Keerthi algorithm for the distance and the expanding polytope algorithm (EPA) for the penetration,
- * both working on the Minkowski difference of the shapes through their support functions, in double precision.
+ * Collision queries between two {@link ConvexShape}s: whether they overlap, how far apart they are
+ * (with the closest point on each), and, when they overlap, how deeply and in which direction (with
+ * a contact point on each).
  *
- * <p>An instance owns its working arrays, so after construction the queries <b>allocate nothing</b> (the shapes' support functions must not either); use one instance per thread.
- * Results go to a caller-supplied {@link Result}.
+ * <p>They are the Gilbert-Johnson-Keerthi algorithm for the distance and the expanding polytope
+ * algorithm (EPA) for the penetration, both working on the Minkowski difference of the shapes
+ * through their support functions, in double precision.
  *
- * <p><b>Conventions.</b> {@code normal} is a unit vector such that moving the second shape by {@code normal * depth} (or, for a distance, the first by {@code normal * distance}
- * towards it) separates them: it points from the first shape towards the second. {@code pointA} lies on the first shape and {@code pointB} on the second; for a distance,
- * {@code pointB - pointA} has length {@code distance}; for a penetration, {@code pointA - pointB = normal * depth}.
+ * <p>An instance owns its working arrays, so after construction the queries <b>allocate nothing</b>
+ * (the shapes' support functions must not either); use one instance per thread. Results go to a
+ * caller-supplied {@link Result}.
  *
- * <p><b>Tolerances.</b> The iteration stops when the closest point stops improving by more than a relative {@value #RELATIVE_TOLERANCE}; shapes closer than {@value #TOUCH_DISTANCE} count
- * as touching and are reported as overlapping with a depth of about zero. The distance is accurate to about that relative tolerance of itself; EPA's depth is accurate to about
- * {@value #EPA_TOLERANCE} times the size of the shapes. Both are limited by the {@value #MAX_ITERATIONS} iterations allowed (never reached in the tests, which use polytopes of
- * up to 200 vertices and rounded shapes), and EPA by room for {@value #MAX_FACES} faces; EPA is allowed {@value #MAX_EPA_ITERATIONS} iterations, which is far more than a polytope needs but converges to only about 1e-3 of the radius for two almost concentric spheres. Shapes with no volume (a flat polytope pressed against another) may report a depth of
- * zero.
+ * <p><b>Conventions.</b> {@code normal} is a unit vector such that moving the second shape by
+ * {@code normal * depth} (or, for a distance, the first by {@code normal * distance} towards it)
+ * separates them: it points from the first shape towards the second. {@code pointA} lies on the
+ * first shape and {@code pointB} on the second; for a distance, {@code pointB - pointA} has length
+ * {@code distance}; for a penetration, {@code pointA - pointB = normal * depth}.
  *
- * <p><b>Thread safety.</b> Not thread-safe (it holds scratch memory): one instance per thread. The shapes may be shared.
+ * <p><b>Tolerances.</b> The iteration stops when the closest point stops improving by more than a
+ * relative {@value #RELATIVE_TOLERANCE}; shapes closer than {@value #TOUCH_DISTANCE} count as
+ * touching and are reported as overlapping with a depth of about zero. The distance is accurate to
+ * about that relative tolerance of itself; EPA's depth is accurate to about {@value #EPA_TOLERANCE}
+ * times the size of the shapes. Both are limited by the {@value #MAX_ITERATIONS} iterations allowed
+ * (never reached in the tests, which use polytopes of up to 200 vertices and rounded shapes), and
+ * EPA by room for {@value #MAX_FACES} faces; EPA is allowed {@value #MAX_EPA_ITERATIONS}
+ * iterations, which is far more than a polytope needs but converges to only about 1e-3 of the
+ * radius for two almost concentric spheres. Shapes with no volume (a flat polytope pressed against
+ * another) may report a depth of zero.
+ *
+ * <p><b>Thread safety.</b> Not thread-safe (it holds scratch memory): one instance per thread. The
+ * shapes may be shared.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * Gjk gjk = new Gjk();                                                 // keeps its scratch space: reuse it
+ * Gjk.Result result = new Gjk.Result();
+ * ConvexShape a = ConvexShapes.of(Spheref.of(Vec3f.ZERO, 1f));
+ * ConvexShape b = ConvexShapes.of(Spheref.of(new Vec3f(1.5f, 0f, 0f), 1f));
+ * if (gjk.penetration(a, b, result)) {
+ *     double depth = result.depth;                                     // how far they overlap
+ *     double nx = result.normal[0];                                    // from a towards b
+ * }
+ * }</pre>
  */
 @Experimental("the tolerances and the Result fields may change when the swept and continuous queries are added")
 public final class Gjk {
 
-    /** The relative improvement below which the distance iteration stops. */
+    /**
+     * The relative improvement below which the distance iteration stops.
+     */
     public static final double RELATIVE_TOLERANCE = 1e-12;
-    /** Shapes closer than this are touching. */
+    /**
+     * Shapes closer than this are touching.
+     */
     public static final double TOUCH_DISTANCE = 1e-9;
-    /** EPA stops when the support point is this close, relative to the size, to the nearest face. */
+    /**
+     * EPA stops when the support point is this close, relative to the size, to the nearest face.
+     */
     public static final double EPA_TOLERANCE = 1e-9;
-    /** The iteration limit of GJK and EPA. */
+    /**
+     * The iteration limit of GJK and EPA.
+     */
     public static final int MAX_ITERATIONS = 128;
-    /** The iteration limit of EPA, which needs many more steps than GJK to converge on smooth shapes. */
+    /**
+     * The iteration limit of EPA, which needs many more steps than GJK to converge on smooth
+     * shapes.
+     */
     public static final int MAX_EPA_ITERATIONS = 500;
-    /** The room for faces of the expanding polytope. */
+    /**
+     * The room for faces of the expanding polytope.
+     */
     public static final int MAX_FACES = 2048;
     private static final int MAX_VERTICES = 520;
 
-    /** What a query reports; reuse one object for many queries. */
+    /**
+     * What a query reports; reuse one object for many queries.
+     */
     public static final class Result {
-        /** The distance between the shapes: 0 when they overlap or touch. */
+        /**
+         * The distance between the shapes: 0 when they overlap or touch.
+         */
         public double distance;
-        /** The penetration depth when they overlap (0 otherwise). */
+        /**
+         * The penetration depth when they overlap (0 otherwise).
+         */
         public double depth;
-        /** Whether the shapes overlap or touch. */
+        /**
+         * Whether the shapes overlap or touch.
+         */
         public boolean overlapping;
-        /** A unit vector from the first shape towards the second (see the class comment). */
+        /**
+         * A unit vector from the first shape towards the second (see the class comment).
+         */
         public final double[] normal = new double[3];
-        /** The closest point on the first shape (a contact point when overlapping). */
+        /**
+         * The closest point on the first shape (a contact point when overlapping).
+         */
         public final double[] pointA = new double[3];
-        /** The closest point on the second shape (a contact point when overlapping). */
+        /**
+         * The closest point on the second shape (a contact point when overlapping).
+         */
         public final double[] pointB = new double[3];
 
-        /** An empty result. */
+        /**
+         * Creates an empty result.
+         */
         public Result() {
         }
     }
@@ -89,13 +144,17 @@ public final class Gjk {
     private int vertices;
     private int faces;
 
-    /** A query object with its working arrays; reuse it for many queries. */
+    /**
+     * Creates a query object with its working arrays; reuse it for many queries.
+     */
     public Gjk() {
     }
 
     // ---------------------------------------------------------------- the Minkowski difference
 
-    /** {@code support_A(d) - support_B(-d)} into {@code simplex[slot]}, remembering the two points. */
+    /**
+     * {@code support_A(d) - support_B(-d)} into {@code simplex[slot]}, remembering the two points.
+     */
     private void minkowski(ConvexShape a, ConvexShape b, double dx, double dy, double dz, double[] outW, double[] outA, double[] outB) {
         a.support(dx, dy, dz, outA);
         b.support(-dx, -dy, -dz, outB);
@@ -106,14 +165,30 @@ public final class Gjk {
 
     // ---------------------------------------------------------------- GJK
 
-    /** Whether the shapes overlap or touch (their distance is at most {@link #TOUCH_DISTANCE}). */
+    /**
+     * Returns whether the shapes overlap or touch (their distance is at most
+     * {@link #TOUCH_DISTANCE}).
+     *
+     * @param a the first convex shape; must not be {@code null}
+     * @param b the second convex shape; must not be {@code null}
+     * @return {@code true} if the shapes overlap or touch (their distance is at most
+     *     {@link #TOUCH_DISTANCE})
+     */
     public boolean intersects(ConvexShape a, ConvexShape b) {
         return run(a, b);
     }
 
     /**
-     * The distance between the shapes, 0 when they overlap or touch, with the closest point on each in {@code result} (when they overlap {@code pointA} and {@code pointB} are
-     * a pair of points that coincide to within the tolerance, and {@code normal} is not set).
+     * Computes the distance between two convex shapes with the Gilbert-Johnson-Keerthi algorithm,
+     * which works on support functions only; overlapping shapes give zero, and the closest points
+     * are written to the result object, which is why the query allocates nothing.
+     *
+     * @param a the first convex shape; must not be {@code null}
+     * @param b the second convex shape; must not be {@code null}
+     * @param result receives the result; must not be {@code null}
+     * @return the distance between the shapes, 0 when they overlap or touch, with the closest point
+     *     on each in {@code result} (when they overlap {@code pointA} and {@code pointB} are a pair
+     *     of points that coincide to within the tolerance, and {@code normal} is not set)
      */
     public double distance(ConvexShape a, ConvexShape b, Result result) {
         boolean inside = run(a, b);
@@ -134,8 +209,16 @@ public final class Gjk {
     }
 
     /**
-     * Tests for overlap and, when the shapes overlap, finds the penetration: the depth, the unit normal from the first towards the second shape, and a contact point on each.
-     * Returns false (and sets {@code result.distance}) when they are apart.
+     * Tests for overlap and, when the shapes overlap, finds the penetration: the depth, the unit
+     * normal from the first towards the second shape, and a contact point on each.
+     *
+     * <p>Returns false (and sets {@code result.distance}) when they are apart.
+     *
+     * @param a the first convex shape; must not be {@code null}
+     * @param b the second convex shape; must not be {@code null}
+     * @param result receives the result; must not be {@code null}
+     * @return {@code true} if the shapes overlap, in which case {@code result} holds the
+     *     penetration; {@code false} otherwise
      */
     public boolean penetration(ConvexShape a, ConvexShape b, Result result) {
         boolean inside = run(a, b);
@@ -173,7 +256,12 @@ public final class Gjk {
         r.pointB[2] = pbz;
     }
 
-    /** Runs GJK; returns true when the origin is inside (or within the touch distance of) the Minkowski difference. On return {@code v}, the simplex and {@code lambda} are set. */
+    /**
+     * Runs GJK; returns true when the origin is inside (or within the touch distance of) the
+     * Minkowski difference.
+     *
+     * <p>On return {@code v}, the simplex and {@code lambda} are set.
+     */
     private boolean run(ConvexShape a, ConvexShape b) {
         size = 1;
         minkowski(a, b, 1, 0, 0, w[0], wa[0], wb[0]);
@@ -250,8 +338,10 @@ public final class Gjk {
     // ---------------------------------------------------------------- closest point of the simplex to the origin
 
     /**
-     * Replaces the simplex by the smallest face of it that contains the closest point to the origin, and sets {@code v} and {@code lambda}. Returns true when the simplex is a
-     * tetrahedron that contains the origin.
+     * Replaces the simplex by the smallest face of it that contains the closest point to the
+     * origin, and sets {@code v} and {@code lambda}.
+     *
+     * <p>Returns true when the simplex is a tetrahedron that contains the origin.
      */
     private boolean reduce() {
         switch (size) {
@@ -280,7 +370,10 @@ public final class Gjk {
         }
     }
 
-    /** Sets the best result for a segment of simplex points {@code i, j}, into bestIdx / bestW / bestV. */
+    /**
+     * Sets the best result for a segment of simplex points {@code i, j}, into bestIdx / bestW /
+     * bestV.
+     */
     private void closestSegment(int i, int j) {
         double abx = w[j][0] - w[i][0], aby = w[j][1] - w[i][1], abz = w[j][2] - w[i][2];
         double ab2 = abx * abx + aby * aby + abz * abz;
@@ -304,7 +397,10 @@ public final class Gjk {
         bestV[2] = w[i][2] + abz * t;
     }
 
-    /** Moves the first {@code count} entries of bestIdx / bestW into the front of the simplex (dropping zero weights) and sets v and lambda. */
+    /**
+     * Moves the first {@code count} entries of bestIdx / bestW into the front of the simplex
+     * (dropping zero weights) and sets v and lambda.
+     */
     private void keep(int count) {
         int m = 0;
         // copy into the front: indices are increasing, so a forward in-place copy is safe
@@ -333,7 +429,10 @@ public final class Gjk {
         v[2] = bestV[2];
     }
 
-    /** Closest point of the triangle {@code i, j, k} of the simplex to the origin (Ericson, "Real-Time Collision Detection" 5.1.5): weights in cw, point in cv. */
+    /**
+     * Closest point of the triangle {@code i, j, k} of the simplex to the origin (Ericson,
+     * "Real-Time Collision Detection" 5.1.5): weights in cw, point in cv.
+     */
     private double closestTriangle(int i, int j, int k) {
         double ax = w[i][0], ay = w[i][1], az = w[i][2];
         double abx = w[j][0] - ax, aby = w[j][1] - ay, abz = w[j][2] - az;
@@ -389,7 +488,10 @@ public final class Gjk {
         return setTriangle(w0, w1, w2, px, py, pz);
     }
 
-    /** The closest point to the origin on the edges of the (flat) triangle {@code i, j, k}; the weights go to cw, the point to cv. */
+    /**
+     * The closest point to the origin on the edges of the (flat) triangle {@code i, j, k}; the
+     * weights go to cw, the point to cv.
+     */
     private double closestOfEdges(int i, int j, int k) {
         double best = Double.POSITIVE_INFINITY;
         for (int e = 0; e < 3; e++) {
@@ -432,7 +534,9 @@ public final class Gjk {
         return px * px + py * py + pz * pz;
     }
 
-    /** The tetrahedron case of {@link #reduce()}. */
+    /**
+     * The tetrahedron case of {@link #reduce()}.
+     */
     private boolean reduceTetrahedron() {
         // the origin is inside when its barycentric coordinates are all non-negative and reproduce it; plane-side tests are not used because they are unreliable for the
         // nearly flat tetrahedra that appear when the iteration is converging
@@ -466,7 +570,10 @@ public final class Gjk {
         return false;
     }
 
-    /** Tries the face {@code (i, j, k)}: when its closest point to the origin is nearer than {@code best}, records it and returns the new best squared distance. */
+    /**
+     * Tries the face {@code (i, j, k)}: when its closest point to the origin is nearer than
+     * {@code best}, records it and returns the new best squared distance.
+     */
     private double considerFace(int i, int j, int k, double best) {
         double d2 = closestTriangle(i, j, k);
         if (d2 >= best) {
@@ -623,7 +730,10 @@ public final class Gjk {
         // A - B has its nearest boundary point at n * depth, so moving B by +n * depth moves that point to the origin
     }
 
-    /** The smallest barycentric coordinate of the projection of the origin on face {@code f}: negative when the projection falls outside the triangle. */
+    /**
+     * The smallest barycentric coordinate of the projection of the origin on face {@code f}:
+     * negative when the projection falls outside the triangle.
+     */
     private double minBarycentric(int f) {
         int ia = fv[3 * f], ib = fv[3 * f + 1], ic = fv[3 * f + 2];
         double qx = fn[3 * f] * fd[f], qy = fn[3 * f + 1] * fd[f], qz = fn[3 * f + 2] * fd[f];
@@ -640,7 +750,9 @@ public final class Gjk {
         return Math.min(1 - bv - bw, Math.min(bv, bw));
     }
 
-    /** Moves the live faces to the front of the face arrays. */
+    /**
+     * Moves the live faces to the front of the face arrays.
+     */
     private void compactFaces() {
         int m = 0;
         for (int f = 0; f < faces; f++) {
@@ -667,7 +779,10 @@ public final class Gjk {
         vertices++;
     }
 
-    /** Adds the face (a, b, c) with its outward normal; {@code inside} is a vertex known to be inside (or -1: the origin is inside). */
+    /**
+     * Adds the face (a, b, c) with its outward normal; {@code inside} is a vertex known to be
+     * inside (or -1: the origin is inside).
+     */
     private void addFace(int a, int b, int c, int inside) {
         int f = faces++;
         double ux = ev[b][0] - ev[a][0], uy = ev[b][1] - ev[a][1], uz = ev[b][2] - ev[a][2];
@@ -701,7 +816,11 @@ public final class Gjk {
         fAlive[f] = true;
     }
 
-    /** Adds the directed edge to the horizon list, cancelling it against its reverse. Returns the new edge count. */
+    /**
+     * Adds the directed edge to the horizon list, cancelling it against its reverse.
+     *
+     * <p>Returns the new edge count.
+     */
     private int addEdge(int count, int a, int b) {
         for (int e = 0; e < count; e++) {
             if (horizon[2 * e] == b && horizon[2 * e + 1] == a) {
@@ -723,8 +842,10 @@ public final class Gjk {
     private final double[] probeB = new double[3];
 
     /**
-     * Adds Minkowski points until the vertices span space, at each step the probe direction whose support point is farthest from what there is already (a nearly flat start
-     * would make the faces of the polytope unreliable); false if no probe adds a dimension (the difference has no volume).
+     * Adds Minkowski points until the vertices span space, at each step the probe direction whose
+     * support point is farthest from what there is already (a nearly flat start would make the
+     * faces of the polytope unreliable); false if no probe adds a dimension (the difference has no
+     * volume).
      */
     private boolean growToTetrahedron(ConvexShape a, ConvexShape b) {
         while (vertices < 4) {
@@ -752,7 +873,10 @@ public final class Gjk {
         return true;
     }
 
-    /** How far the point is from the point, line or plane spanned by the first {@code p} vertices (0 for p = 0 is treated as 1: any point is fine). */
+    /**
+     * How far the point is from the point, line or plane spanned by the first {@code p} vertices (0
+     * for p = 0 is treated as 1: any point is fine).
+     */
     private double independence(int p, double[] q) {
         if (p == 0) {
             return 1;

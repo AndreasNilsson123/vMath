@@ -4,28 +4,48 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Keyframed animation data for a skeleton: for each animated joint up to three tracks (translation, rotation, scale), each a sorted list
- * of key times with a value per key. Everything is stored in flat arrays (one for all key times, one for all key values), so a clip
+ * Keyframed animation data for a skeleton: for each animated joint up to three tracks (translation,
+ * rotation, scale), each a sorted list of key times with a value per key.
+ *
+ * <p>Everything is stored in flat arrays (one for all key times, one for all key values), so a clip
  * with thousands of keys is a few arrays, and it is immutable once built.
  *
- * <p>Between keys, translation and scale are interpolated linearly and rotation by slerp along the shortest arc. Before the first key a
- * track holds its first value and after the last its last value. A joint or channel without a track keeps whatever the pose already
- * held (normally the bind pose). Step or cubic interpolation is not supported.
+ * <p>Between keys, translation and scale are interpolated linearly and rotation by slerp along the
+ * shortest arc. Before the first key a track holds its first value and after the last its last
+ * value. A joint or channel without a track keeps whatever the pose already held (normally the bind
+ * pose). Step or cubic interpolation is not supported.
  *
  * <p>Build one with {@link #builder(int)}.
  *
- * <p><b>Thread safety.</b> Immutable after construction, so it can be shared between threads freely. The arrays it hands out are its own storage: do
- * not modify them.
+ * <p><b>Thread safety.</b> Immutable after construction, so it can be shared between threads
+ * freely. The arrays it hands out are its own storage: do not modify them.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * float[] times = {0f, 1f, 2f};
+ * float[] positions = {0f, 0f, 0f, 1f, 0f, 0f, 2f, 0f, 0f};               // one joint moving along x
+ * AnimationClip clip = AnimationClip.builder(1).translation(0, times, positions).build();
+ * float duration = clip.duration();                                       // 2
+ * }</pre>
  */
 public final class AnimationClip {
 
-    /** The three animatable channels of a joint. */
+    /**
+     * The three animatable channels of a joint.
+     */
     public enum Channel {
-        /** Position: three components, x y z. */
+        /**
+         * Position: three components, x y z.
+         */
         TRANSLATION(3),
-        /** Orientation: four components, a unit quaternion x y z w. */
+        /**
+         * Orientation: four components, a unit quaternion x y z w.
+         */
         ROTATION(4),
-        /** Scale: three components, x y z. */
+        /**
+         * Scale: three components, x y z.
+         */
         SCALE(3);
 
         private final int components;
@@ -34,7 +54,12 @@ public final class AnimationClip {
             this.components = components;
         }
 
-        /** Floats per key value: 3 for translation and scale, 4 for a rotation quaternion ({@code x, y, z, w}). */
+        /**
+         * Exposes how many floats one key of the channel holds.
+         *
+         * @return floats per key value: 3 for translation and scale, 4 for a rotation quaternion
+         *     ({@code x, y, z, w})
+         */
         public int components() {
             return components;
         }
@@ -63,27 +88,50 @@ public final class AnimationClip {
         this.values = values;
     }
 
-    /** A builder for a clip that animates {@code jointCount} joints (at least 1). */
+    /**
+     * Starts a builder for a clip that animates the given number of joints.
+     *
+     * @param jointCount the joint count
+     * @return a builder for a clip that animates {@code jointCount} joints (at least 1)
+     */
     public static Builder builder(int jointCount) {
         return new Builder(jointCount);
     }
 
-    /** The number of joints the clip's tracks may address. */
+    /**
+     * Exposes the number of joints that the clip's tracks may address.
+     *
+     * @return the number of joints the clip's tracks may address
+     */
     public int jointCount() {
         return jointCount;
     }
 
-    /** Length of the clip in seconds: the time of the last key of any track, or the length given to the builder if that is larger. */
+    /**
+     * Computes the length of the clip, which is the time of its last key unless the builder asked
+     * for a longer clip.
+     *
+     * @return length of the clip in seconds: the time of the last key of any track, or the length
+     *     given to the builder if that is larger
+     */
     public float duration() {
         return duration;
     }
 
-    /** The number of tracks: one per animated joint and channel. */
+    /**
+     * Counts the tracks of the clip, one per animated joint and channel.
+     *
+     * @return the number of tracks: one per animated joint and channel
+     */
     public int trackCount() {
         return trackJoint.length;
     }
 
-    /** Total number of keys over all tracks. */
+    /**
+     * Counts the keys over all tracks of the clip.
+     *
+     * @return total number of keys over all tracks
+     */
     public int keyCount() {
         return times.length;
     }
@@ -116,7 +164,9 @@ public final class AnimationClip {
         return values;
     }
 
-    /** Collects tracks and validates them. */
+    /**
+     * Collects tracks and validates them.
+     */
     public static final class Builder {
         private final int jointCount;
         private float minDuration;
@@ -133,8 +183,20 @@ public final class AnimationClip {
         }
 
         /**
-         * Adds a track. {@code times} must be strictly increasing and finite (at least one key); {@code values} holds
-         * {@link Channel#components()} floats per key. Rotation keys are normalised. The arrays are copied.
+         * Adds a track.
+         *
+         * <p>{@code times} must be strictly increasing and finite (at least one key);
+         * {@code values} holds {@link Channel#components()} floats per key. Rotation keys are
+         * normalised. The arrays are copied.
+         *
+         * @param joint the joint index
+         * @param channel the channel; must not be {@code null}
+         * @param times the key times in seconds
+         * @param values the values
+         * @return this builder, for chaining
+         * @throws IllegalArgumentException if the track is invalid: the joint is out of range or
+         *     already has a track of the channel, there is no key, or the times and values do not
+         *     match the channel
          */
         public Builder track(int joint, Channel channel, float[] times, float[] values) {
             if (joint < 0 || joint >= jointCount) {
@@ -175,22 +237,51 @@ public final class AnimationClip {
             return this;
         }
 
-        /** Adds a translation track: {@code xyz} holds three floats per key; see {@link #track}. */
+        /**
+         * Adds a translation track: {@code xyz} holds three floats per key; see {@link #track}.
+         *
+         * @param joint the joint index
+         * @param times the key times in seconds
+         * @param xyz the three components
+         * @return this builder, for chaining
+         */
         public Builder translation(int joint, float[] times, float[] xyz) {
             return track(joint, Channel.TRANSLATION, times, xyz);
         }
 
-        /** Adds a rotation track: {@code xyzw} holds four floats per key (unit quaternions); see {@link #track}. */
+        /**
+         * Adds a rotation track: {@code xyzw} holds four floats per key (unit quaternions); see
+         * {@link #track}.
+         *
+         * @param joint the joint index
+         * @param times the key times in seconds
+         * @param xyzw the xyzw
+         * @return this builder, for chaining
+         */
         public Builder rotation(int joint, float[] times, float[] xyzw) {
             return track(joint, Channel.ROTATION, times, xyzw);
         }
 
-        /** Adds a scale track: {@code xyz} holds three floats per key; see {@link #track}. */
+        /**
+         * Adds a scale track: {@code xyz} holds three floats per key; see {@link #track}.
+         *
+         * @param joint the joint index
+         * @param times the key times in seconds
+         * @param xyz the three components
+         * @return this builder, for chaining
+         */
         public Builder scale(int joint, float[] times, float[] xyz) {
             return track(joint, Channel.SCALE, times, xyz);
         }
 
-        /** Makes the clip at least this long even if its last key is earlier (a clip that holds its last pose). */
+        /**
+         * Makes the clip at least this long even if its last key is earlier (a clip that holds its
+         * last pose).
+         *
+         * @param seconds the seconds
+         * @return this builder, for chaining
+         * @throws IllegalArgumentException if {@code seconds} is not finite and not negative
+         */
         public Builder duration(float seconds) {
             if (!(seconds >= 0f) || Float.isInfinite(seconds)) {
                 throw new IllegalArgumentException("duration must be finite and >= 0: " + seconds);
@@ -199,7 +290,11 @@ public final class AnimationClip {
             return this;
         }
 
-        /** Builds the clip from the tracks added so far; the builder may be reused. */
+        /**
+         * Builds the clip from the tracks added so far; the builder may be reused.
+         *
+         * @return the clip, never {@code null}
+         */
         public AnimationClip build() {
             int tracks = joints.size();
             int keys = 0;

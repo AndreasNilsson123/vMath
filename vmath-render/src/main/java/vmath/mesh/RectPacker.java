@@ -4,15 +4,31 @@ import java.util.Arrays;
 import vmath.annotations.Experimental;
 
 /**
- * Packs axis-aligned integer rectangles into a bin without overlap: the MaxRects algorithm with the best-short-side-fit rule (Jukka Jylanki, "A Thousand Ways
- * to Pack the Bin"), rectangles placed largest first. It is what atlas building (lightmaps, glyphs, sprites, shadow-map pages) needs, and it is exact in
- * the sense that a successful result never overlaps and never leaves the bin; it is a heuristic in the sense that it can fail on a set that some packing
- * would fit.
+ * Packs axis-aligned integer rectangles into a bin without overlap: the MaxRects algorithm with the
+ * best-short-side-fit rule (Jukka Jylanki, "A Thousand Ways to Pack the Bin"), rectangles placed
+ * largest first.
  *
- * <p>Rectangles are given as parallel arrays of widths and heights in texels. Padding is the caller's business: add it to the sizes.
+ * <p>It is what atlas building (lightmaps, glyphs, sprites, shadow-map pages) needs, and it is
+ * exact in the sense that a successful result never overlaps and never leaves the bin; it is a
+ * heuristic in the sense that it can fail on a set that some packing would fit.
  *
- * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time. The arrays and buffers you pass in are
- * not synchronised, so two threads must not write the same one.
+ * <p>Rectangles are given as parallel arrays of widths and heights in texels. Padding is the
+ * caller's business: add it to the sizes.
+ *
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the
+ * same time. The arrays and buffers you pass in are not synchronised, so two threads must not write
+ * the same one.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * int[] widths = {64, 32, 128};
+ * int[] heights = {64, 64, 32};
+ * int[] x = new int[3];
+ * int[] y = new int[3];
+ * boolean[] rotated = new boolean[3];
+ * boolean fits = RectPacker.pack(widths, heights, 256, 256, true, x, y, rotated);
+ * }</pre>
  */
 @Experimental("the heuristic and the result type may change")
 public final class RectPacker {
@@ -20,15 +36,38 @@ public final class RectPacker {
     private RectPacker() {
     }
 
-    /** A packing: the bin size used and, per input rectangle, its position and whether it was rotated by 90 degrees (width and height swapped). */
+    /**
+     * A packing: the bin size used and, per input rectangle, its position and whether it was
+     * rotated by 90 degrees (width and height swapped).
+     *
+     * @param width the width
+     * @param height the height
+     * @param x the x
+     * @param y the y
+     * @param rotated whether rotated
+     */
     public record Result(int width, int height, int[] x, int[] y, boolean[] rotated) {
     }
 
     /**
-     * Tries to pack into a {@code binWidth} x {@code binHeight} bin. On success fills {@code outX}, {@code outY} and {@code outRotated} (each of length at
-     * least the rectangle count) and returns true; on failure returns false and the outputs are undefined.
+     * Tries to pack into a {@code binWidth} x {@code binHeight} bin.
      *
-     * @param allowRotation permit turning a rectangle by 90 degrees; a rotated rectangle occupies {@code h x w}
+     * <p>On success fills {@code outX}, {@code outY} and {@code outRotated} (each of length at
+     * least the rectangle count) and returns true; on failure returns false and the outputs are
+     * undefined.
+     *
+     * @param w the widths of the rectangles
+     * @param h the heights of the rectangles
+     * @param binWidth the bin width
+     * @param binHeight the bin height
+     * @param allowRotation permit turning a rectangle by 90 degrees; a rotated rectangle occupies
+     *     {@code h x w}
+     * @param outX the out x
+     * @param outY the out y
+     * @param outRotated whether out rotated
+     * @return {@code true} if every rectangle fits into the bin; {@code false} otherwise
+     * @throws IllegalArgumentException if {@code w} and {@code h} differ in length or a rectangle
+     *     is smaller than 1 in a dimension
      */
     public static boolean pack(int[] w, int[] h, int binWidth, int binHeight, boolean allowRotation, int[] outX, int[] outY, boolean[] outRotated) {
         int n = w.length;
@@ -152,8 +191,17 @@ public final class RectPacker {
     }
 
     /**
-     * The smallest power-of-two bin (width and height each a power of two, not larger than {@code maxSize}) that {@link #pack} fits everything into, trying
-     * the smaller areas first; {@code null} when even {@code maxSize} x {@code maxSize} is not enough.
+     * Packs rectangles into the smallest power-of-two atlas that fits them, by trying growing sizes
+     * with the same packer; useful for texture atlases that must be power-of-two sized.
+     *
+     * @param w the widths of the rectangles
+     * @param h the heights of the rectangles
+     * @param maxSize the max size
+     * @param allowRotation {@code true} to permit turning a rectangle by 90 degrees, as for
+     *     {@link #pack}
+     * @return the smallest power-of-two bin (width and height each a power of two, not larger than
+     *     {@code maxSize}) that {@link #pack} fits everything into, trying the smaller areas first;
+     *     {@code null} when even {@code maxSize} x {@code maxSize} is not enough
      */
     public static Result packSmallestPowerOfTwo(int[] w, int[] h, int maxSize, boolean allowRotation) {
         int n = w.length;

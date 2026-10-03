@@ -5,9 +5,12 @@ import jdk.incubator.vector.VectorSpecies;
 import vmath.bulk.MatrixKernel;
 
 /**
- * The batch 4x4 product with the Vector API: every column of a matrix is one 128-bit vector, and a column of the result is the sum of the columns of the left
- * matrix scaled by the entries of the matching column of the right matrix, computed with fused multiply-add. The result can differ from the scalar kernel in the
- * last bit (fused against separately rounded operations).
+ * The batch 4x4 product with the Vector API: every column of a matrix is one 128-bit vector, and a
+ * column of the result is the sum of the columns of the left matrix scaled by the entries of the
+ * matching column of the right matrix, computed with fused multiply-add.
+ *
+ * <p>The result can differ from the scalar kernel in the last bit (fused against separately rounded
+ * operations).
  */
 final class SimdMatrixKernel implements MatrixKernel {
 

@@ -3,27 +3,50 @@ package vmath.spatial;
 import vmath.bulk.BoundsArray;
 import vmath.bulk.VisibilitySet;
 
-/** The built-in {@link CullStage}s. */
+/**
+ * The built-in {@link CullStage}s.
+ *
+ * <p><b>Thread safety.</b> See the nested classes: {@link CullStages.Frustum} owns scratch memory
+ * and needs one instance per thread.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * CullStage frustum = new CullStages.Frustum();                          // the best kernel available
+ * CullStage near = new CullStages.Distance(150f);                        // nothing beyond 150 units
+ * CullStage tiny = new CullStages.SmallFeature(2f);                      // nothing smaller than 2 pixels
+ * CullPipeline pipeline = CullPipeline.of(new CullStage[] {frustum, near, tiny});
+ * }</pre>
+ */
 public final class CullStages {
 
     private CullStages() {
     }
 
     /**
-     * Frustum culling with a batch {@link FrustumKernel}. The default constructor takes the best kernel available
-     * ({@link FrustumKernels#best()}: SIMD when the {@code vmath-simd} module is present, otherwise scalar). The kernel owns
+     * Frustum culling with a batch {@link FrustumKernel}.
+     *
+     * <p>The default constructor takes the best kernel available ({@link FrustumKernels#best()}:
+     * SIMD when the {@code vmath-simd} module is present, otherwise scalar). The kernel owns
      * scratch memory, so give each thread its own stage.
      */
     public static final class Frustum implements CullStage {
 
         private final FrustumKernel kernel;
 
-        /** A frustum stage that uses the best kernel found by {@link FrustumKernels#best()} (the SIMD one when its module is on the module or class path). */
+        /**
+         * Creates a frustum stage that uses the best kernel found by {@link FrustumKernels#best()}
+         * (the SIMD one when its module is on the module or class path).
+         */
         public Frustum() {
             this(FrustumKernels.best());
         }
 
-        /** A frustum stage that uses the given kernel. */
+        /**
+         * Creates a frustum stage that uses the given kernel.
+         *
+         * @param kernel the kernel; must not be {@code null}
+         */
         public Frustum(FrustumKernel kernel) {
             this.kernel = kernel;
         }
@@ -34,12 +57,19 @@ public final class CullStages {
         }
     }
 
-    /** Rejects objects whose bounds are entirely farther than {@code maxDistance} from the camera. */
+    /**
+     * Rejects objects whose bounds are entirely farther than {@code maxDistance} from the camera.
+     */
     public static final class Distance implements CullStage {
 
         private final float maxDistanceSquared;
 
-        /** A stage that rejects objects entirely farther than {@code maxDistance} from the camera. */
+        /**
+         * Creates a stage that rejects objects entirely farther than {@code maxDistance} from the
+         * camera.
+         *
+         * @param maxDistance the max distance
+         */
         public Distance(float maxDistance) {
             this.maxDistanceSquared = maxDistance * maxDistance;
         }
@@ -62,15 +92,22 @@ public final class CullStages {
     }
 
     /**
-     * Rejects objects that would cover fewer than {@code minPixels} pixels of screen height: the bounding sphere's
-     * projected size, {@code radius * pixelScale / distance}, is a conservative-enough proxy and needs no matrices.
-     * Does nothing when the context's {@code pixelScale} is zero.
+     * Rejects objects that would cover fewer than {@code minPixels} pixels of screen height: the
+     * bounding sphere's projected size, {@code radius * pixelScale / distance}, is a
+     * conservative-enough proxy and needs no matrices.
+     *
+     * <p>Does nothing when the context's {@code pixelScale} is zero.
      */
     public static final class SmallFeature implements CullStage {
 
         private final float minPixels;
 
-        /** A stage that rejects objects that would cover fewer than {@code minPixels} pixels of screen height. */
+        /**
+         * Creates a stage that rejects objects that would cover fewer than {@code minPixels} pixels
+         * of screen height.
+         *
+         * @param minPixels the min pixels
+         */
         public SmallFeature(float minPixels) {
             this.minPixels = minPixels;
         }

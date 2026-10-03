@@ -6,39 +6,63 @@ import vmath.gl.VertexBufferLayout;
 import vmath.gl.VertexFormat;
 
 /**
- * How the vertices of a {@link Mesh} are laid out in one interleaved buffer: which attributes, in which order, in which format.
- * Build one with the fluent methods, then pass it to {@link MeshExport#writeVertices}. The offsets and the stride are computed as attributes are
- * added, so they can be handed straight to a vertex-array or pipeline description.
+ * How the vertices of a {@link Mesh} are laid out in one interleaved buffer: which attributes, in
+ * which order, in which format.
+ *
+ * <p>Build one with the fluent methods, then pass it to {@link MeshExport#writeVertices}. The
+ * offsets and the stride are computed as attributes are added, so they can be handed straight to a
+ * vertex-array or pipeline description.
  *
  * <pre>{@code
  * VertexLayout layout = VertexLayout.builder().position().normalOct16().tangent().uvHalf(0).build();
  * }</pre>
  *
- * <p><b>Thread safety.</b> Immutable after construction, so it can be shared between threads freely. The arrays it hands out are its own storage: do
- * not modify them.
+ * <p><b>Thread safety.</b> Immutable after construction, so it can be shared between threads
+ * freely. The arrays it hands out are its own storage: do not modify them.
  */
 public final class VertexLayout {
 
-    /** The format of one attribute. */
+    /**
+     * The format of one attribute.
+     */
     public enum Format {
-        /** Three 32-bit floats. */
+        /**
+         * Three 32-bit floats.
+         */
         POSITION_F32X3(12),
         /**
-         * Three unorm16 coordinates relative to the mesh's bounding box and a fourth one equal to 1 (so a {@code vec4} read works with one matrix): 8 bytes. The
-         * dequantization matrix is {@link MeshExport#positionQuantizer(Mesh)}'s {@code dequantizationMatrix()}; the error is half a step, {@code size / 131070} per axis.
+         * Three unorm16 coordinates relative to the mesh's bounding box and a fourth one equal to 1
+         * (so a {@code vec4} read works with one matrix): 8 bytes.
+         *
+         * <p>The dequantization matrix is {@link MeshExport#positionQuantizer(Mesh)}'s
+         * {@code dequantizationMatrix()}; the error is half a step, {@code size / 131070} per axis.
          */
         POSITION_UNORM16X4(8),
-        /** Three 32-bit floats. */
+        /**
+         * Three 32-bit floats.
+         */
         NORMAL_F32X3(12),
-        /** Two 16-bit octahedral coordinates in one 32-bit word (see {@code vmath.pack.Octahedral}); about 4e-5 radians of error. */
+        /**
+         * Two 16-bit octahedral coordinates in one 32-bit word (see {@code vmath.pack.Octahedral});
+         * about 4e-5 radians of error.
+         */
         NORMAL_OCT16(4),
-        /** Four 32-bit floats: the tangent and the handedness sign. */
+        /**
+         * Four 32-bit floats: the tangent and the handedness sign.
+         */
         TANGENT_F32X4(16),
-        /** Two 32-bit floats. */
+        /**
+         * Two 32-bit floats.
+         */
         UV_F32X2(8),
-        /** Two half floats in one 32-bit word. */
+        /**
+         * Two half floats in one 32-bit word.
+         */
         UV_HALF2(4),
-        /** Two unorm16 coordinates relative to the rectangle around the set's texture coordinates ({@link MeshExport#uvQuantizer(Mesh, int)}): 4 bytes. */
+        /**
+         * Two unorm16 coordinates relative to the rectangle around the set's texture coordinates
+         * ({@link MeshExport#uvQuantizer(Mesh, int)}): 4 bytes.
+         */
         UV_UNORM16X2(4);
 
         private final int bytes;
@@ -47,13 +71,25 @@ public final class VertexLayout {
             this.bytes = bytes;
         }
 
-        /** The size of one value of the format in bytes. */
+        /**
+         * Exposes the size of one value of the format in bytes.
+         *
+         * @return the size of one value of the format in bytes
+         */
         public int bytes() {
             return bytes;
         }
     }
 
-    /** One attribute of the layout. {@code uvSet} is meaningful for the UV formats only. */
+    /**
+     * One attribute of the layout.
+     *
+     * <p>{@code uvSet} is meaningful for the UV formats only.
+     *
+     * @param format the format; must not be {@code null}
+     * @param uvSet the uv set
+     * @param offset the index of the first element to read or write
+     */
     public record Attribute(Format format, int uvSet, int offset) {
     }
 
@@ -65,24 +101,42 @@ public final class VertexLayout {
         this.stride = stride;
     }
 
-    /** A builder for a layout; attributes are laid out in the order they are added. */
+    /**
+     * Starts a builder for a vertex layout; attributes are packed in the order they are added.
+     *
+     * @return a builder for a layout; attributes are laid out in the order they are added
+     */
     public static Builder builder() {
         return new Builder();
     }
 
-    /** The attributes in memory order. */
+    /**
+     * Exposes the attributes of the layout in memory order.
+     *
+     * @return the attributes in memory order
+     */
     public List<Attribute> attributes() {
         return attributes;
     }
 
-    /** Bytes from the start of one vertex to the start of the next (padded to a multiple of 4). */
+    /**
+     * Exposes the distance between consecutive vertices, padded to four bytes.
+     *
+     * @return bytes from the start of one vertex to the start of the next (padded to a multiple of
+     *     4)
+     */
     public int stride() {
         return stride;
     }
 
     /**
-     * The same layout as a {@link VertexBufferLayout}, ready to turn into OpenGL, Vulkan and GLSL descriptions: shader locations 0, 1, 2, ... in attribute order and
-     * the names {@code position}, {@code normal}, {@code tangent} and {@code uv<set>} (the second uv set is {@code uv1}).
+     * Converts the layout into the description used for graphics API setup, with fixed attribute
+     * names and consecutive shader locations.
+     *
+     * @return the same layout as a {@link VertexBufferLayout}, ready to turn into OpenGL, Vulkan
+     *     and GLSL descriptions: shader locations 0, 1, 2, ... in attribute order and the names
+     *     {@code position}, {@code normal}, {@code tangent} and {@code uv<set>} (the second uv set
+     *     is {@code uv1})
      */
     public VertexBufferLayout toBufferLayout() {
         VertexBufferLayout.Builder b = VertexBufferLayout.builder();
@@ -108,7 +162,9 @@ public final class VertexLayout {
         return b.build(stride);
     }
 
-    /** Fluent builder for {@link VertexLayout}. */
+    /**
+     * Fluent builder for {@link VertexLayout}.
+     */
     public static final class Builder {
         private final List<Attribute> list = new ArrayList<>();
         private int offset;
@@ -122,47 +178,91 @@ public final class VertexLayout {
             return this;
         }
 
-        /** Adds a position of three floats (12 bytes). */
+        /**
+         * Adds a position of three floats (12 bytes).
+         *
+         * @return this builder, for chaining
+         */
         public Builder position() {
             return add(Format.POSITION_F32X3, 0);
         }
 
-        /** A position quantized to unorm16 inside the mesh's bounding box, padded to four components (8 bytes). */
+        /**
+         * Adds a position attribute quantised to 16 bits per component inside the mesh's bounding
+         * box, which halves the position size at the price of a decode step in the shader.
+         *
+         * @return a position quantized to unorm16 inside the mesh's bounding box, padded to four
+         *     components (8 bytes)
+         */
         public Builder positionUnorm16() {
             return add(Format.POSITION_UNORM16X4, 0);
         }
 
-        /** Adds a normal of three floats (12 bytes). */
+        /**
+         * Adds a normal of three floats (12 bytes).
+         *
+         * @return this builder, for chaining
+         */
         public Builder normal() {
             return add(Format.NORMAL_F32X3, 0);
         }
 
-        /** Adds a normal in octahedral form, two snorm16 (4 bytes). */
+        /**
+         * Adds a normal in octahedral form, two snorm16 (4 bytes).
+         *
+         * @return this builder, for chaining
+         */
         public Builder normalOct16() {
             return add(Format.NORMAL_OCT16, 0);
         }
 
-        /** Adds a tangent of four floats, the fourth the handedness (16 bytes). */
+        /**
+         * Adds a tangent of four floats, the fourth the handedness (16 bytes).
+         *
+         * @return this builder, for chaining
+         */
         public Builder tangent() {
             return add(Format.TANGENT_F32X4, 0);
         }
 
-        /** Adds texture coordinate set {@code set} as two floats (8 bytes). */
+        /**
+         * Adds texture coordinate set {@code set} as two floats (8 bytes).
+         *
+         * @param set the set
+         * @return this builder, for chaining
+         */
         public Builder uv(int set) {
             return add(Format.UV_F32X2, set);
         }
 
-        /** Adds texture coordinate set {@code set} as two half floats (4 bytes). */
+        /**
+         * Adds texture coordinate set {@code set} as two half floats (4 bytes).
+         *
+         * @param set the set
+         * @return this builder, for chaining
+         */
         public Builder uvHalf(int set) {
             return add(Format.UV_HALF2, set);
         }
 
-        /** A texture coordinate quantized to unorm16 inside the rectangle that covers the set (4 bytes). */
+        /**
+         * Adds a texture coordinate attribute quantised to 16 bits per component over the rectangle
+         * that the coordinates cover, which halves the size at the price of a decode step.
+         *
+         * @param set the set
+         * @return a texture coordinate quantized to unorm16 inside the rectangle that covers the
+         *     set (4 bytes)
+         */
         public Builder uvUnorm16(int set) {
             return add(Format.UV_UNORM16X2, set);
         }
 
-        /** Builds the layout; {@link IllegalStateException} when no attribute was added. */
+        /**
+         * Builds the layout; {@link IllegalStateException} when no attribute was added.
+         *
+         * @return the layout, never {@code null}
+         * @throws IllegalStateException if no attribute was added
+         */
         public VertexLayout build() {
             if (list.isEmpty()) {
                 throw new IllegalStateException("a vertex layout needs at least one attribute");

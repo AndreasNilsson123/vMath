@@ -5,20 +5,42 @@ import java.util.Arrays;
 import java.util.List;
 
 /**
- * Morph targets (blend shapes) of one mesh: for each target the <b>change</b> of the position of every vertex it moves, optionally also of the normal and of the tangent, stored
- * <em>sparsely</em> (only the vertices whose change is larger than a tolerance, as is typical of a facial expression that touches a part of the head). A pose of the mesh is the base mesh
- * plus the sum of {@code weight * delta} over the targets: the weights usually come from an animation (the glTF morph weights) and are mostly zero.
+ * Morph targets (blend shapes) of one mesh: for each target the <b>change</b> of the position of
+ * every vertex it moves, optionally also of the normal and of the tangent, stored <em>sparsely</em>
+ * (only the vertices whose change is larger than a tolerance, as is typical of a facial expression
+ * that touches a part of the head).
+ *
+ * <p>A pose of the mesh is the base mesh plus the sum of {@code weight * delta} over the targets:
+ * the weights usually come from an animation (the glTF morph weights) and are mostly zero.
  *
  * <ul>
- *   <li>{@link #apply} adds the weighted deltas to a copy of the base positions (and {@link #applyNormals} to the normals, optionally renormalising them) on the CPU, in time proportional to
- *       the number of stored entries of the targets with a non-zero weight.</li>
- *   <li>{@link #activeTargets} picks the few targets with the largest weights, the standard way to fit a GPU morph budget of 4 or 8 targets per draw.</li>
- *   <li>{@link #boundsExpansion} gives the distance by which a pose can move any vertex away from the base mesh, a conservative growth for the culling bounds of a morphed mesh.</li>
- *   <li>The pack methods write the data for the GPU: dense (a block of {@code vertexCount} deltas per target), sparse (vertex indices and deltas, for a scatter), or sparse with 16-bit
- *       signed normalised deltas scaled per target ({@link #packSparseSnorm16}), a quarter of the size of 4 floats.</li>
+ *   <li>{@link #apply} adds the weighted deltas to a copy of the base positions (and
+ *       {@link #applyNormals} to the normals, optionally renormalising them) on the CPU, in time
+ *       proportional to the number of stored entries of the targets with a non-zero weight.</li>
+ *   <li>{@link #activeTargets} picks the few targets with the largest weights, the standard way to
+ *       fit a GPU morph budget of 4 or 8 targets per draw.</li>
+ *   <li>{@link #boundsExpansion} gives the distance by which a pose can move any vertex away from
+ *       the base mesh, a conservative growth for the culling bounds of a morphed mesh.</li>
+ *   <li>The pack methods write the data for the GPU: dense (a block of {@code vertexCount} deltas
+ *       per target), sparse (vertex indices and deltas, for a scatter), or sparse with 16-bit
+ *       signed normalised deltas scaled per target ({@link #packSparseSnorm16}), a quarter of the
+ *       size of 4 floats.</li>
  * </ul>
  *
- * <p>Build one with {@link #builder(int)}. <b>Thread safety.</b> Immutable once built: safe to share between threads. The apply methods write only into the arrays you pass.
+ * <p>Build one with {@link #builder(int)}. <b>Thread safety.</b> Immutable once built: safe to
+ * share between threads. The apply methods write only into the arrays you pass.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * float[] smile = new float[3 * 4];                                       // position deltas for 4 vertices, mostly zero
+ * smile[3] = 0.1f;
+ * MorphTargets targets = MorphTargets.builder(4).target("smile", smile).build();   // stores only the vertices that move
+ * float[] base = new float[3 * 4];
+ * float[] weights = {0.5f};
+ * float[] morphed = new float[3 * 4];
+ * targets.apply(base, weights, morphed);                                  // base + weights[t] * delta_t
+ * }</pre>
  */
 public final class MorphTargets {
 
@@ -48,47 +70,88 @@ public final class MorphTargets {
         this.names = names;
     }
 
-    /** A builder for the targets of a mesh of {@code vertexCount} vertices. */
+    /**
+     * Starts a builder for the morph targets of a mesh with the given number of vertices.
+     *
+     * @param vertexCount the number of vertices
+     * @return a builder for the targets of a mesh of {@code vertexCount} vertices
+     */
     public static Builder builder(int vertexCount) {
         return new Builder(vertexCount);
     }
 
-    /** The number of vertices of the mesh the targets belong to. */
+    /**
+     * Exposes the number of vertices of the mesh that the targets belong to.
+     *
+     * @return the number of vertices of the mesh the targets belong to
+     */
     public int vertexCount() {
         return vertexCount;
     }
 
-    /** The number of targets. */
+    /**
+     * Counts the morph targets.
+     *
+     * @return the number of targets
+     */
     public int targetCount() {
         return targetCount;
     }
 
-    /** Whether the targets carry normal deltas. */
+    /**
+     * Returns whether the targets carry normal deltas.
+     *
+     * @return {@code true} if the targets carry normal deltas
+     */
     public boolean hasNormals() {
         return hasNormals;
     }
 
-    /** Whether the targets carry tangent deltas. */
+    /**
+     * Returns whether the targets carry tangent deltas.
+     *
+     * @return {@code true} if the targets carry tangent deltas
+     */
     public boolean hasTangents() {
         return hasTangents;
     }
 
-    /** The name of target {@code t}, or an empty string when it was added without one. */
+    /**
+     * Looks up the name of a target, which is empty when none was given.
+     *
+     * @param t the target index
+     * @return the name of target {@code t}, or an empty string when it was added without one
+     */
     public String name(int t) {
         return names[t];
     }
 
-    /** The number of vertices that target {@code t} moves (its stored entries). */
+    /**
+     * Counts the vertices that one target moves, which is the number of its stored sparse entries.
+     *
+     * @param t the target index
+     * @return the number of vertices that target {@code t} moves (its stored entries)
+     */
     public int entryCount(int t) {
         return targetStart[t + 1] - targetStart[t];
     }
 
-    /** The total number of stored entries over all targets. */
+    /**
+     * Counts the sparse entries over all targets.
+     *
+     * @return the total number of stored entries over all targets
+     */
     public int entryCount() {
         return vertex.length;
     }
 
-    /** The largest distance by which target {@code t}, at weight 1, moves any vertex. */
+    /**
+     * Reads the worst-case displacement of a target at full weight, which is the input for
+     * conservative bounds of morphed meshes.
+     *
+     * @param t the target index
+     * @return the largest distance by which target {@code t}, at weight 1, moves any vertex
+     */
     public float maxDisplacement(int t) {
         return maxDisplacement[t];
     }
@@ -96,8 +159,17 @@ public final class MorphTargets {
     // ------------------------------------------------------------ applying
 
     /**
-     * Writes {@code basePositions + sum over t of weights[t] * delta_t} to {@code out} (3 floats per vertex). {@code out} may be the same array as {@code basePositions}, in which case the
-     * deltas are added in place. Targets with a weight of exactly zero are skipped. {@code weights} needs at least {@link #targetCount()} entries; further ones are ignored.
+     * Writes {@code basePositions + sum over t of weights[t] * delta_t} to {@code out} (3 floats
+     * per vertex).
+     *
+     * <p>{@code out} may be the same array as {@code basePositions}, in which case the deltas are
+     * added in place. Targets with a weight of exactly zero are skipped. {@code weights} needs at
+     * least {@link #targetCount()} entries; further ones are ignored.
+     *
+     * @param basePositions the base positions
+     * @param weights the weights
+     * @param out receives the result
+     * @throws IllegalArgumentException if {@code out} has room for fewer vertices than the mesh has
      */
     public void apply(float[] basePositions, float[] weights, float[] out) {
         check(basePositions, 3, "positions");
@@ -112,8 +184,19 @@ public final class MorphTargets {
     }
 
     /**
-     * Writes the morphed normals to {@code out}: {@code baseNormals + sum of weights[t] * normalDelta_t}, and with {@code renormalize} each normal that a target touched is scaled back to
-     * unit length (a normal that has shrunk to zero is left as the base normal). The targets must carry normals ({@link #hasNormals()}).
+     * Writes the morphed normals to {@code out}:
+     * {@code baseNormals + sum of weights[t] * normalDelta_t}, and with {@code renormalize} each
+     * normal that a target touched is scaled back to unit length (a normal that has shrunk to zero
+     * is left as the base normal).
+     *
+     * <p>The targets must carry normals ({@link #hasNormals()}).
+     *
+     * @param baseNormals the base normals (at least 3 elements)
+     * @param weights the weights
+     * @param out receives the result in {@code [0, 3)}
+     * @param renormalize whether renormalize
+     * @throws IllegalStateException if the targets have no normal deltas
+     * @throws IllegalArgumentException if {@code out} has room for fewer vertices than the mesh has
      */
     public void applyNormals(float[] baseNormals, float[] weights, float[] out, boolean renormalize) {
         if (!hasNormals) {
@@ -151,7 +234,18 @@ public final class MorphTargets {
         }
     }
 
-    /** Writes the morphed tangents (the {@code xyz} of each tangent, 3 floats per vertex) to {@code out}: the base plus the weighted tangent deltas. The targets must carry tangents. */
+    /**
+     * Writes the morphed tangents (the {@code xyz} of each tangent, 3 floats per vertex) to
+     * {@code out}: the base plus the weighted tangent deltas.
+     *
+     * <p>The targets must carry tangents.
+     *
+     * @param baseTangents the base tangents
+     * @param weights the weights
+     * @param out receives the result
+     * @throws IllegalStateException if the targets have no tangent deltas
+     * @throws IllegalArgumentException if {@code out} has room for fewer vertices than the mesh has
+     */
     public void applyTangents(float[] baseTangents, float[] weights, float[] out) {
         if (!hasTangents) {
             throw new IllegalStateException("the targets have no tangent deltas");
@@ -197,9 +291,20 @@ public final class MorphTargets {
     // ------------------------------------------------------------ weights and bounds
 
     /**
-     * Chooses the targets to draw when only {@code maxActive} can be: those whose weight has an absolute value above {@code threshold}, the largest first (ties by the lower index).
-     * Their indices go to {@code outIndex} and their weights to {@code outWeight}, both of at least {@code maxActive} entries. Returns how many there are, at most {@code maxActive}.
-     * The weights are not rescaled; the dropped ones are simply not applied.
+     * Chooses the targets to draw when only {@code maxActive} can be: those whose weight has an
+     * absolute value above {@code threshold}, the largest first (ties by the lower index).
+     *
+     * <p>Their indices go to {@code outIndex} and their weights to {@code outWeight}, both of at
+     * least {@code maxActive} entries. Returns how many there are, at most {@code maxActive}. The
+     * weights are not rescaled; the dropped ones are simply not applied.
+     *
+     * @param weights the weights
+     * @param threshold the threshold
+     * @param maxActive the max active
+     * @param outIndex the out index
+     * @param outWeight the out weight
+     * @return how many there are, at most {@code maxActive}
+     * @throws IllegalArgumentException if the output arrays are shorter than {@code maxActive}
      */
     public int activeTargets(float[] weights, float threshold, int maxActive, int[] outIndex, float[] outWeight) {
         checkWeights(weights);
@@ -233,8 +338,16 @@ public final class MorphTargets {
     }
 
     /**
-     * An upper bound of the distance by which the weights can move any vertex: {@code sum of |weights[t]| * maxDisplacement(t)}. Add it to the margin of the culling bounds of the mesh
-     * (a conservative inflation: it is reached only when all moving vertices of every target coincide).
+     * Computes a conservative bound for how far the current weights can move any vertex, by summing
+     * the weighted maximum displacements, so that culling bounds can be expanded safely; the bound
+     * is generally not tight.
+     *
+     * <p>Add it to the margin of the culling bounds of the mesh (a conservative inflation: it is
+     * reached only when all moving vertices of every target coincide).
+     *
+     * @param weights the weights
+     * @return an upper bound of the distance by which the weights can move any vertex:
+     *     {@code sum of |weights[t]| * maxDisplacement(t)}
      */
     public float boundsExpansion(float[] weights) {
         checkWeights(weights);
@@ -248,8 +361,16 @@ public final class MorphTargets {
     // ------------------------------------------------------------ packing for the GPU
 
     /**
-     * The dense block for the GPU: {@code targetCount * vertexCount} position deltas, target after target, vertex after vertex, each with {@code stride} floats (3, or 4 when the shader
-     * reads {@code vec4}s: the fourth is 0). {@code out} needs {@code targetCount * vertexCount * stride} floats. Vertices a target does not move hold zeros.
+     * Packs the dense block for the GPU: {@code targetCount * vertexCount} position deltas, target
+     * after target, vertex after vertex, each with {@code stride} floats (3, or 4 when the shader
+     * reads {@code vec4}s: the fourth is 0).
+     *
+     * <p>{@code out} needs {@code targetCount * vertexCount * stride} floats. Vertices a target
+     * does not move hold zeros.
+     *
+     * @param out receives the result in {@code [0, 3)}
+     * @param stride the distance between consecutive elements
+     * @throws IllegalArgumentException if {@code stride} is not 3 or 4, or {@code out} is too short
      */
     public void packDense(float[] out, int stride) {
         if (stride != 3 && stride != 4) {
@@ -272,9 +393,20 @@ public final class MorphTargets {
     }
 
     /**
-     * The sparse form for a scatter on the GPU: {@code targetOffsets[t] .. targetOffsets[t + 1] - 1} are the entries of target {@code t} ({@code targetCount + 1} ints), {@code vertexIds}
-     * the vertex of each entry and {@code deltas} its position delta with {@code stride} floats (3 or 4, the fourth 0). The arrays need {@code targetCount + 1}, {@link #entryCount()}
-     * and {@code entryCount() * stride} elements.
+     * Packs the sparse form for a scatter on the GPU:
+     * {@code targetOffsets[t] .. targetOffsets[t + 1] - 1} are the entries of target {@code t}
+     * ({@code targetCount + 1} ints), {@code vertexIds} the vertex of each entry and {@code deltas}
+     * its position delta with {@code stride} floats (3 or 4, the fourth 0).
+     *
+     * <p>The arrays need {@code targetCount + 1}, {@link #entryCount()} and
+     * {@code entryCount() * stride} elements.
+     *
+     * @param targetOffsets the target offsets
+     * @param vertexIds the vertex ids
+     * @param deltas the deltas
+     * @param stride the distance between consecutive elements
+     * @throws IllegalArgumentException if {@code stride} is not 3 or 4, or an output array is too
+     *     small
      */
     public void packSparse(int[] targetOffsets, int[] vertexIds, float[] deltas, int stride) {
         if (stride != 3 && stride != 4) {
@@ -296,9 +428,18 @@ public final class MorphTargets {
     }
 
     /**
-     * The sparse form with 16-bit signed normalised deltas: every target gets a scale (the largest absolute component of its position deltas, {@code scales[t]}) and each component is stored as
-     * {@code round(delta / scale * 32767)}, three {@code short}s per entry in {@code deltas}. The shader multiplies by {@code scale / 32767}. The error of a decoded component is at most
-     * {@code scales[t] / 65534}. {@code scales} needs {@code targetCount} floats and {@code deltas} {@code 3 * entryCount()} shorts.
+     * Packs the sparse form with 16-bit signed normalised deltas: every target gets a scale (the
+     * largest absolute component of its position deltas, {@code scales[t]}) and each component is
+     * stored as {@code round(delta / scale * 32767)}, three {@code short}s per entry in
+     * {@code deltas}.
+     *
+     * <p>The shader multiplies by {@code scale / 32767}. The error of a decoded component is at
+     * most {@code scales[t] / 65534}. {@code scales} needs {@code targetCount} floats and
+     * {@code deltas} {@code 3 * entryCount()} shorts.
+     *
+     * @param scales the scales
+     * @param deltas the deltas
+     * @throws IllegalArgumentException if an output array is too small
      */
     public void packSparseSnorm16(float[] scales, short[] deltas) {
         if (scales.length < targetCount || deltas.length < 3 * vertex.length) {
@@ -318,7 +459,16 @@ public final class MorphTargets {
         }
     }
 
-    /** Decodes the entries of {@link #packSparseSnorm16}: {@code out[3 e + k] = deltas[3 e + k] * scales[t] / 32767} for each target {@code t} and entry {@code e} of it. */
+    /**
+     * Decodes the entries of {@link #packSparseSnorm16}:
+     * {@code out[3 e + k] = deltas[3 e + k] * scales[t] / 32767} for each target {@code t} and
+     * entry {@code e} of it.
+     *
+     * @param scales the scales
+     * @param deltas the deltas
+     * @param out receives the result
+     * @throws IllegalArgumentException if an array is too small
+     */
     public void unpackSparseSnorm16(float[] scales, short[] deltas, float[] out) {
         if (scales.length < targetCount || deltas.length < 3 * vertex.length || out.length < 3 * vertex.length) {
             throw new IllegalArgumentException("the arrays are too small for " + targetCount + " targets and " + vertex.length + " entries");
@@ -332,19 +482,35 @@ public final class MorphTargets {
         }
     }
 
-    /** The vertex index of entry {@code e} of the sparse form (entries are ordered by target, and by vertex within a target). */
+    /**
+     * Reads which vertex a sparse entry moves; the entries of a target are ordered by vertex, which
+     * supports merging.
+     *
+     * @param e the entry index in the sparse form
+     * @return the vertex index of entry {@code e} of the sparse form (entries are ordered by
+     *     target, and by vertex within a target)
+     */
     public int entryVertex(int e) {
         return vertex[e];
     }
 
-    /** The offset of the first entry of target {@code t} in the sparse form; {@code targetOffset(targetCount())} is the total. */
+    /**
+     * Reads where the entries of a target start in the sparse storage; the offset after the last
+     * target is the total entry count.
+     *
+     * @param t the target index
+     * @return the offset of the first entry of target {@code t} in the sparse form;
+     *     {@code targetOffset(targetCount())} is the total
+     */
     public int targetOffset(int t) {
         return targetStart[t];
     }
 
     // ------------------------------------------------------------ the builder
 
-    /** Collects targets from dense per-vertex deltas and stores them sparsely. */
+    /**
+     * Collects targets from dense per-vertex deltas and stores them sparsely.
+     */
     public static final class Builder {
 
         private final int vertexCount;
@@ -360,8 +526,15 @@ public final class MorphTargets {
         }
 
         /**
-         * Sets the tolerance below which a vertex counts as not moved: a vertex is stored when any component of its position, normal or tangent delta has an absolute value above it. The
-         * default 0 stores every vertex with any change. Dropping tiny deltas changes the result by at most that tolerance per component per target at weight 1.
+         * Sets the tolerance below which a vertex counts as not moved: a vertex is stored when any
+         * component of its position, normal or tangent delta has an absolute value above it.
+         *
+         * <p>The default 0 stores every vertex with any change. Dropping tiny deltas changes the
+         * result by at most that tolerance per component per target at weight 1.
+         *
+         * @param tolerance the tolerance
+         * @return this builder, for chaining
+         * @throws IllegalArgumentException if {@code tolerance} is negative
          */
         public Builder tolerance(float tolerance) {
             if (!(tolerance >= 0f)) {
@@ -371,14 +544,31 @@ public final class MorphTargets {
             return this;
         }
 
-        /** Adds a target with position deltas only: {@code positionDeltas} has 3 floats per vertex. */
+        /**
+         * Adds a target with position deltas only: {@code positionDeltas} has 3 floats per vertex.
+         *
+         * @param name the name; must not be {@code null}
+         * @param positionDeltas the position deltas
+         * @return this builder, for chaining
+         */
         public Builder target(String name, float[] positionDeltas) {
             return target(name, positionDeltas, null, null);
         }
 
         /**
-         * Adds a target from dense deltas of 3 floats per vertex: the positions, and optionally (null when absent) the normals and the tangents. Every target of a set must have the
-         * same optional parts as the first. The arrays are copied.
+         * Adds a target from dense deltas of 3 floats per vertex: the positions, and optionally
+         * (null when absent) the normals and the tangents.
+         *
+         * <p>Every target of a set must have the same optional parts as the first. The arrays are
+         * copied.
+         *
+         * @param name the name; may be {@code null}
+         * @param positionDeltas the position deltas
+         * @param normalDeltas the normal deltas
+         * @param tangentDeltas the tangent deltas
+         * @return this builder, for chaining
+         * @throws IllegalArgumentException if a delta array does not hold 3 floats per vertex, only
+         *     some targets have normal and tangent deltas, or a delta is not finite
          */
         public Builder target(String name, float[] positionDeltas, float[] normalDeltas, float[] tangentDeltas) {
             if (positionDeltas.length != 3 * vertexCount || (normalDeltas != null && normalDeltas.length != 3 * vertexCount) || (tangentDeltas != null && tangentDeltas.length != 3 * vertexCount)) {
@@ -403,7 +593,14 @@ public final class MorphTargets {
             return this;
         }
 
-        /** Builds the sparse set from the targets added so far; the builder may be reused. At least one target is needed. */
+        /**
+         * Builds the sparse set from the targets added so far; the builder may be reused.
+         *
+         * <p>At least one target is needed.
+         *
+         * @return the morph targets, never {@code null}
+         * @throws IllegalStateException if no target was added
+         */
         public MorphTargets build() {
             int n = positions.size();
             if (n == 0) {

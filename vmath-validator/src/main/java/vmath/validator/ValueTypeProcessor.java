@@ -35,26 +35,39 @@ import javax.lang.model.type.TypeMirror;
 import javax.tools.Diagnostic;
 
 /**
- * Checks, while the code compiles, the rules that keep the types marked {@code @vmath.annotations.ValueType} valid {@code value record}s under Valhalla (JEP 401). A value object has no identity,
- * so on a value type:
+ * Checks, while the code compiles, the rules that keep the types marked
+ * {@code @vmath.annotations.ValueType} valid {@code value record}s under Valhalla (JEP 401).
+ *
+ * <p>A value object has no identity, so on a value type:
  *
  * <ul>
- *   <li>{@code ==} and {@code !=} are rejected (comparison against {@code null} is fine): use {@code equals} or {@code approxEquals};</li>
- *   <li>{@code synchronized (x)}, and {@code wait}, {@code notify} and {@code notifyAll} on it, are rejected;</li>
+ *   <li>{@code ==} and {@code !=} are rejected (comparison against {@code null} is fine): use
+ *       {@code equals} or {@code approxEquals};</li>
+ *   <li>{@code synchronized (x)}, and {@code wait}, {@code notify} and {@code notifyAll} on it, are
+ *       rejected;</li>
  *   <li>{@code System.identityHashCode(x)} is rejected;</li>
- *   <li>{@code IdentityHashMap}, {@code WeakHashMap}, {@code WeakReference}, {@code SoftReference} and {@code PhantomReference} with a value type as their type argument are rejected;</li>
- *   <li>a {@code @ValueType} declaration must be a record, must not be {@code synchronized} in any method, and must not declare {@code finalize}.</li>
+ *   <li>{@code IdentityHashMap}, {@code WeakHashMap}, {@code WeakReference}, {@code SoftReference}
+ *       and {@code PhantomReference} with a value type as their type argument are rejected;</li>
+ *   <li>a {@code @ValueType} declaration must be a record, must not be {@code synchronized} in any
+ *       method, and must not declare {@code finalize}.</li>
  * </ul>
  *
- * <p>Unlike a text scan this sees the <b>types</b>: the operand of {@code ==} is a value type because the compiler resolved it so, whatever it is called, whether it is a field of another
- * class, a method result or a lambda parameter. The check runs after the compiler's attribution of each class ({@code ANALYZE}), through the {@code TaskListener} of the compilation, and reports
- * through the compiler's own diagnostics, so a violation is an error at its line and the build fails.
+ * <p>Unlike a text scan this sees the <b>types</b>: the operand of {@code ==} is a value type
+ * because the compiler resolved it so, whatever it is called, whether it is a field of another
+ * class, a method result or a lambda parameter. The check runs after the compiler's attribution of
+ * each class ({@code ANALYZE}), through the {@code TaskListener} of the compilation, and reports
+ * through the compiler's own diagnostics, so a violation is an error at its line and the build
+ * fails.
  *
- * <p><b>What it knows.</b> A type is a value type if its declaration carries {@code @ValueType}. The annotation has class retention, so the marker is read from source for the types compiled
- * together with the code and from the class files of the modules below for the others; the generator keeps it on the float and double twins. Code that uses the library from a jar sees the marker
- * too, if it runs the processor. The option {@code -Avmath.validator=off} turns the processor off, {@code -Avmath.validator=warn} makes violations warnings.
+ * <p><b>What it knows.</b> A type is a value type if its declaration carries {@code @ValueType}.
+ * The annotation has class retention, so the marker is read from source for the types compiled
+ * together with the code and from the class files of the modules below for the others; the
+ * generator keeps it on the float and double twins. Code that uses the library from a jar sees the
+ * marker too, if it runs the processor. The option {@code -Avmath.validator=off} turns the
+ * processor off, {@code -Avmath.validator=warn} makes violations warnings.
  *
- * <p><b>Thread safety.</b> One instance lives in one compilation; the compiler calls it from one thread.
+ * <p><b>Thread safety.</b> One instance lives in one compilation; the compiler calls it from one
+ * thread.
  */
 @SupportedAnnotationTypes("*")
 @SupportedOptions("vmath.validator")
@@ -68,7 +81,9 @@ public final class ValueTypeProcessor extends AbstractProcessor {
     private Diagnostic.Kind severity = Diagnostic.Kind.ERROR;
     private boolean enabled = true;
 
-    /** Creates the processor; the compiler does it through the service file. */
+    /**
+     * Creates the processor; the compiler does it through the service file.
+     */
     public ValueTypeProcessor() {
     }
 

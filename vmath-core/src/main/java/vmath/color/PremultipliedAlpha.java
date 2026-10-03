@@ -3,15 +3,31 @@ package vmath.color;
 import vmath.annotations.Experimental;
 
 /**
- * Premultiplied alpha: colour channels stored already multiplied by alpha, so that blending is {@code src + dst * (1 - src.a)} with no per-channel multiply by the
- * source alpha, filtering does not bleed the colour of transparent texels, and additive and alpha blending are the same operation. Convert at the edges of the
- * pipeline (texture import, export) and keep the data premultiplied in between. Do the arithmetic on <em>linear</em> values: premultiply after decoding sRGB
+ * Premultiplied alpha: colour channels stored already multiplied by alpha, so that blending is
+ * {@code src + dst * (1 - src.a)} with no per-channel multiply by the source alpha, filtering does
+ * not bleed the colour of transparent texels, and additive and alpha blending are the same
+ * operation.
+ *
+ * <p>Convert at the edges of the pipeline (texture import, export) and keep the data premultiplied
+ * in between. Do the arithmetic on <em>linear</em> values: premultiply after decoding sRGB
  * ({@link Srgb}), unpremultiply before encoding.
  *
- * <p>Pixels are {@code r, g, b, a} consecutive floats; the 8-bit packed form is a 32-bit int with red in the lowest byte, as {@code Norm.packUnorm4x8} writes it.
+ * <p>Pixels are {@code r, g, b, a} consecutive floats; the 8-bit packed form is a 32-bit int with
+ * red in the lowest byte, as {@code Norm.packUnorm4x8} writes it.
  *
- * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time. The arrays and buffers you pass in are
- * not synchronised, so two threads must not write the same one.
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the
+ * same time. The arrays and buffers you pass in are not synchronised, so two threads must not write
+ * the same one.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * float[] rgba = {1f, 0.5f, 0.25f, 0.5f};
+ * PremultipliedAlpha.premultiply(rgba, 0, 1);
+ * int packed = PremultipliedAlpha.premultiplyRgba8(0x80FF8040);
+ * float[] out = new float[4];
+ * PremultipliedAlpha.over(rgba, 0, new float[] {0f, 0f, 0f, 1f}, 0, out, 0);
+ * }</pre>
  */
 @Experimental("the set of helpers may grow")
 public final class PremultipliedAlpha {
@@ -19,7 +35,14 @@ public final class PremultipliedAlpha {
     private PremultipliedAlpha() {
     }
 
-    /** Multiplies the colour channels of {@code pixels} RGBA pixels by their alpha, in place, starting at float index {@code offset}. */
+    /**
+     * Multiplies the colour channels of {@code pixels} RGBA pixels by their alpha, in place,
+     * starting at float index {@code offset}.
+     *
+     * @param rgba the rgba
+     * @param offset the index of the first element to read or write
+     * @param pixels the size in pixels
+     */
     public static void premultiply(float[] rgba, int offset, int pixels) {
         check(rgba, offset, pixels);
         for (int p = 0, i = offset; p < pixels; p++, i += 4) {
@@ -30,7 +53,14 @@ public final class PremultipliedAlpha {
         }
     }
 
-    /** Divides the colour channels by alpha, in place; a pixel with alpha 0 becomes (0, 0, 0, 0), since its colour is not recoverable. */
+    /**
+     * Divides the colour channels by alpha, in place; a pixel with alpha 0 becomes (0, 0, 0, 0),
+     * since its colour is not recoverable.
+     *
+     * @param rgba the rgba
+     * @param offset the index of the first element to read or write
+     * @param pixels the size in pixels
+     */
     public static void unpremultiply(float[] rgba, int offset, int pixels) {
         check(rgba, offset, pixels);
         for (int p = 0, i = offset; p < pixels; p++, i += 4) {
@@ -56,8 +86,18 @@ public final class PremultipliedAlpha {
     }
 
     /**
-     * The "over" operator on premultiplied colours: the source drawn on top of the destination, {@code out = src + dst * (1 - src.a)} for all four channels. The
-     * arrays may be the same; {@code src} and {@code dst} are read at {@code so} and {@code dsto}, the result is written at {@code oo}.
+     * Composites the source over the destination with the "over" operator on premultiplied colours,
+     * {@code out = src + dst * (1 - src.a)} for all four channels.
+     *
+     * <p>The arrays may be the same; {@code src} and {@code dst} are read at {@code so} and
+     * {@code dsto}, the result is written at {@code oo}.
+     *
+     * @param src the source to read from
+     * @param so the index of the first float of the source pixel in {@code src}
+     * @param dst receives the result
+     * @param dsto the dsto
+     * @param out receives the result
+     * @param oo the index of the first float of the result in {@code out}
      */
     public static void over(float[] src, int so, float[] dst, int dsto, float[] out, int oo) {
         float inv = 1f - src[so + 3];
@@ -68,7 +108,13 @@ public final class PremultipliedAlpha {
         out[oo + 3] = a;
     }
 
-    /** Premultiplies a packed 8-bit RGBA pixel, rounding each channel to nearest ({@code (c * a + 127) / 255}, which has no ties because 255 is odd). */
+    /**
+     * Premultiplies a packed 8-bit RGBA pixel, rounding each channel to nearest
+     * ({@code (c * a + 127) / 255}, which has no ties because 255 is odd).
+     *
+     * @param packed the packed value
+     * @return the premultiplied pixel, packed like the input
+     */
     public static int premultiplyRgba8(int packed) {
         int a = packed >>> 24;
         int r = ((packed & 0xFF) * a + 127) / 255;
@@ -78,8 +124,14 @@ public final class PremultipliedAlpha {
     }
 
     /**
-     * Unpremultiplies a packed 8-bit RGBA pixel, rounding to nearest and clamping to 255; alpha 0 gives 0. The 8-bit round trip is lossy for small alpha: a colour channel
-     * only keeps about {@code log2(alpha)} of its eight bits.
+     * Unpremultiplies a packed 8-bit RGBA pixel, rounding to nearest and clamping to 255; alpha 0
+     * gives 0.
+     *
+     * <p>The 8-bit round trip is lossy for small alpha: a colour channel only keeps about
+     * {@code log2(alpha)} of its eight bits.
+     *
+     * @param packed the packed value
+     * @return the straight-alpha pixel, packed like the input; {@code 0} when the alpha is 0
      */
     public static int unpremultiplyRgba8(int packed) {
         int a = packed >>> 24;

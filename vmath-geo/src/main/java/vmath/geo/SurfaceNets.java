@@ -3,22 +3,48 @@ package vmath.geo;
 import java.util.Arrays;
 
 /**
- * Meshes the zero set of an {@link Sdf} with <b>Naive Surface Nets</b>: the field is sampled on a regular grid, every cell that the surface passes through gets one vertex (the average of the points
- * where the surface crosses the cell's edges, found by linear interpolation of the samples), and every grid edge that the surface crosses becomes a quad joining the four cells around it. The result is a
- * closed, consistently wound triangle mesh with the triangles counter-clockwise seen from outside (the side where the field is positive), so it can go to {@code MassProperties.ofMesh} or to a renderer
- * as it is.
+ * Meshes the zero set of an {@link Sdf} with <b>Naive Surface Nets</b>: the field is sampled on a
+ * regular grid, every cell that the surface passes through gets one vertex (the average of the
+ * points where the surface crosses the cell's edges, found by linear interpolation of the samples),
+ * and every grid edge that the surface crosses becomes a quad joining the four cells around it.
  *
- * <p><b>What you get.</b> About one vertex per surface cell, quads of the same size, no sliver triangles worth the name (a quad is split along its shorter diagonal), and no sharp features: edges and corners
- * of a box are rounded off by about one cell, because the vertex of a cell is a smoothed average, not the solution of a quadric error problem as in dual contouring. {@link #projection(int)} moves each vertex
- * onto the surface by Newton steps, which removes the error of the linear interpolation but not the rounding of sharp features. Normals ({@link #normals(boolean)}) are the gradient of the field.
+ * <p>The result is a closed, consistently wound triangle mesh with the triangles counter-clockwise
+ * seen from outside (the side where the field is positive), so it can go to
+ * {@code MassProperties.ofMesh} or to a renderer as it is.
  *
- * <p><b>The grid.</b> The box {@code [min, max]} is divided into {@code nx * ny * nz} cells; the field is sampled at their {@code (nx + 1)(ny + 1)(nz + 1)} corners. A surface that leaves the box is cut
- * there and the mesh is <b>open</b> at the border: choose a box that contains the solid with at least one cell to spare to get a closed mesh. A sample exactly at the iso value counts as outside.
+ * <p><b>What you get.</b> About one vertex per surface cell, quads of the same size, no sliver
+ * triangles worth the name (a quad is split along its shorter diagonal), and no sharp features:
+ * edges and corners of a box are rounded off by about one cell, because the vertex of a cell is a
+ * smoothed average, not the solution of a quadric error problem as in dual contouring.
+ * {@link #projection(int)} moves each vertex onto the surface by Newton steps, which removes the
+ * error of the linear interpolation but not the rounding of sharp features. Normals
+ * ({@link #normals(boolean)}) are the gradient of the field.
  *
- * <p><b>Allocation.</b> One instance owns its working storage and its output arrays and reuses them: after the first call for a grid size, meshing the same size again allocates nothing unless the output
- * outgrows the arrays (they double). The arrays returned by {@link #positions()} and the others are live: they hold the last result until the next call, and are longer than the count says.
+ * <p><b>The grid.</b> The box {@code [min, max]} is divided into {@code nx * ny * nz} cells; the
+ * field is sampled at their {@code (nx + 1)(ny + 1)(nz + 1)} corners. A surface that leaves the box
+ * is cut there and the mesh is <b>open</b> at the border: choose a box that contains the solid with
+ * at least one cell to spare to get a closed mesh. A sample exactly at the iso value counts as
+ * outside.
  *
- * <p><b>Thread safety.</b> Not thread-safe: use one instance per thread. The {@link Sdf} is called from the calling thread only.
+ * <p><b>Allocation.</b> One instance owns its working storage and its output arrays and reuses
+ * them: after the first call for a grid size, meshing the same size again allocates nothing unless
+ * the output outgrows the arrays (they double). The arrays returned by {@link #positions()} and the
+ * others are live: they hold the last result until the next call, and are longer than the count
+ * says.
+ *
+ * <p><b>Thread safety.</b> Not thread-safe: use one instance per thread. The {@link Sdf} is called
+ * from the calling thread only.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * Sdf shape = Sdfs.torus(0f, 0f, 0f, 1f, 0.35f);
+ * SurfaceNets nets = new SurfaceNets().projection(1).normals(true);     // reuse the mesher: it keeps its buffers
+ * nets.mesh(shape, -1.6f, -0.6f, -1.6f, 1.6f, 0.6f, 1.6f, 64, 24, 64);
+ * float[] positions = nets.positions();                                  // the first 3 * vertexCount() floats
+ * int[] indices = nets.indices();                                        // the first 3 * triangleCount() ints
+ * int triangles = nets.triangleCount();
+ * }</pre>
  */
 public final class SurfaceNets {
 
@@ -33,18 +59,30 @@ public final class SurfaceNets {
     private int vertexCount, triangleCount;
     private final float[] scratch = new float[3];
     private Sdf current;
-    /** The field being meshed with the iso level subtracted, as one object so that projection and normals allocate nothing per vertex. */
+    /**
+     * The field being meshed with the iso level subtracted, as one object so that projection and
+     * normals allocate nothing per vertex.
+     */
     private final Sdf shifted = (x, y, z) -> current.distance(x, y, z) - iso;
 
     // the 12 edges of a cell as pairs of corner numbers; the corner number is x + 2 y + 4 z
     private static final int[] EDGE_A = {0, 2, 4, 6, 0, 1, 4, 5, 0, 1, 2, 3};
     private static final int[] EDGE_B = {1, 3, 5, 7, 2, 3, 6, 7, 4, 5, 6, 7};
 
-    /** A mesher with the iso value 0, no projection and no normals. */
+    /**
+     * Creates a mesher with the iso value 0, no projection and no normals.
+     */
     public SurfaceNets() {
     }
 
-    /** The level of the field that is meshed (default 0: the surface; other values give offset surfaces). */
+    /**
+     * Sets the level of the field that is meshed.
+     *
+     * @param iso the iso
+     * @return the level of the field that is meshed (default 0: the surface; other values give
+     *     offset surfaces)
+     * @throws IllegalArgumentException if {@code iso} is not finite
+     */
     public SurfaceNets isoLevel(float iso) {
         if (Float.isNaN(iso) || Float.isInfinite(iso)) {
             throw new IllegalArgumentException("the iso level must be finite: " + iso);
@@ -53,7 +91,17 @@ public final class SurfaceNets {
         return this;
     }
 
-    /** The number of Newton steps that move each vertex onto the surface after it is placed (default 0; 1 or 2 is usually enough for a smooth field). The vertex stays inside its cell. */
+    /**
+     * Sets how many Newton steps pull each vertex onto the surface after placement, which costs
+     * field evaluations for a more accurate surface.
+     *
+     * <p>The vertex stays inside its cell.
+     *
+     * @param steps the steps
+     * @return the number of Newton steps that move each vertex onto the surface after it is placed
+     *     (default 0; 1 or 2 is usually enough for a smooth field)
+     * @throws IllegalArgumentException if {@code steps} is negative
+     */
     public SurfaceNets projection(int steps) {
         if (steps < 0) {
             throw new IllegalArgumentException("the number of projection steps must not be negative: " + steps);
@@ -62,17 +110,36 @@ public final class SurfaceNets {
         return this;
     }
 
-    /** Whether to compute a normal per vertex from the gradient of the field (default false). */
+    /**
+     * Returns whether to compute a normal per vertex from the gradient of the field (default
+     * false).
+     *
+     * @param enabled whether enabled
+     * @return this mesher, for chaining
+     */
     public SurfaceNets normals(boolean enabled) {
         this.computeNormals = enabled;
         return this;
     }
 
     /**
-     * Meshes {@code sdf} on the grid of {@code nx * ny * nz} cells over the box {@code [min, max]}; the result is read with {@link #vertexCount}, {@link #positions}, {@link #normals},
-     * {@link #triangleCount} and {@link #indices}.
+     * Returns the meshes {@code sdf} on the grid of {@code nx * ny * nz} cells over the box
+     * {@code [min, max]}; the result is read with {@link #vertexCount}, {@link #positions},
+     * {@link #normals}, {@link #triangleCount} and {@link #indices}.
      *
-     * @throws IllegalArgumentException if a cell count is below 1, the box is empty or not finite, or the grid has more than about 2 billion samples
+     * @param sdf the sdf; must not be {@code null}
+     * @param minX the smallest x coordinate
+     * @param minY the smallest y coordinate
+     * @param minZ the smallest z coordinate
+     * @param maxX the largest x coordinate
+     * @param maxY the largest y coordinate
+     * @param maxZ the largest z coordinate
+     * @param nx the number of cells along x
+     * @param ny the number of cells along y
+     * @param nz the number of cells along z
+     * @return this mesher, which holds the result
+     * @throws IllegalArgumentException if a cell count is below 1, the box is empty or not finite,
+     *     or the grid has more than about 2 billion samples
      */
     public SurfaceNets mesh(Sdf sdf, float minX, float minY, float minZ, float maxX, float maxY, float maxZ, int nx, int ny, int nz) {
         if (nx < 1 || ny < 1 || nz < 1) {
@@ -241,7 +308,10 @@ public final class SurfaceNets {
         return v;
     }
 
-    /** Adds the quad {@code a, b, c, d} (counter-clockwise for an edge whose first sample is inside) as two triangles split along the shorter diagonal. */
+    /**
+     * Adds the quad {@code a, b, c, d} (counter-clockwise for an edge whose first sample is inside)
+     * as two triangles split along the shorter diagonal.
+     */
     private void quad(int a, int b, int c, int d, boolean firstInside) {
         if (!firstInside) { // the surface faces the other way: reverse the order
             int t = b;
@@ -272,27 +342,55 @@ public final class SurfaceNets {
         triangleCount += 2;
     }
 
-    /** The number of vertices of the last mesh. */
+    /**
+     * Counts the vertices of the last mesh, which is the valid length of the position and normal
+     * arrays.
+     *
+     * @return the number of vertices of the last mesh
+     */
     public int vertexCount() {
         return vertexCount;
     }
 
-    /** The number of triangles of the last mesh. */
+    /**
+     * Counts the triangles of the last mesh, which is the valid length of the index array.
+     *
+     * @return the number of triangles of the last mesh
+     */
     public int triangleCount() {
         return triangleCount;
     }
 
-    /** The positions {@code x, y, z} of the vertices: the first {@code 3 * vertexCount()} floats of a live array that is longer than that. */
+    /**
+     * Exposes the vertex positions of the last mesh as the live internal array, which is longer
+     * than the data and is overwritten by the next run.
+     *
+     * @return the positions {@code x, y, z} of the vertices: the first {@code 3 * vertexCount()}
+     *     floats of a live array that is longer than that
+     */
     public float[] positions() {
         return positions;
     }
 
-    /** The unit normals {@code x, y, z} of the vertices, if {@link #normals(boolean)} was on for the last mesh (else the array is stale): the first {@code 3 * vertexCount()} floats of a live array. */
+    /**
+     * Exposes the vertex normals of the last mesh as the live internal array; valid only when
+     * normal generation was enabled, longer than the data, and overwritten by the next run.
+     *
+     * @return the unit normals {@code x, y, z} of the vertices, if {@link #normals(boolean)} was on
+     *     for the last mesh (else the array is stale): the first {@code 3 * vertexCount()} floats
+     *     of a live array
+     */
     public float[] normals() {
         return normals;
     }
 
-    /** The triangle indices: the first {@code 3 * triangleCount()} ints of a live array that is longer than that. */
+    /**
+     * Exposes the triangle indices of the last mesh as the live internal array, which is longer
+     * than the data and is overwritten by the next run.
+     *
+     * @return the triangle indices: the first {@code 3 * triangleCount()} ints of a live array that
+     *     is longer than that
+     */
     public int[] indices() {
         return indices;
     }

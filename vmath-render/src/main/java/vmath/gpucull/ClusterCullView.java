@@ -8,11 +8,25 @@ import vmath.core.Mat4f;
 import vmath.core.Vec4f;
 
 /**
- * Per-view parameters of a cluster culling pass, a std140 uniform block: like {@link CullView} plus the eye and the numbers of the level-of-detail choice.
+ * Per-view parameters of a cluster culling pass, a std140 uniform block: like {@link CullView} plus
+ * the eye and the numbers of the level-of-detail choice.
+ *
+ * <p><b>Thread safety.</b> Immutable: instances can be shared between threads without
+ * synchronization.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * Vec4f[] planes = new Vec4f[6];
+ * Arrays.fill(planes, new Vec4f(0f, 0f, 1f, 100f));
+ * ClusterCullView view = new ClusterCullView(planes, Mat4f.IDENTITY, new Vec4f(0f, 0f, 0f, 1000f), 10, 256, 128, 8, 0.1f, 1f, 0, 0);
+ * }</pre>
  *
  * @param planes         the six frustum planes (inward normals, {@code vec4(normal, d)})
+ *
  * @param viewProjection the matrix that produced the depth image of the Hi-Z pyramid
- * @param eyePixelScale  {@code xyz}: the eye in the space of the cluster data, {@code w}: {@code pixelScale}, {@code viewportHeight / (2 tan(fovY / 2))}
+ * @param eyePixelScale {@code xyz}: the eye in the space of the cluster data, {@code w}:
+ *     {@code pixelScale}, {@code viewportHeight / (2 tan(fovY / 2))}
  * @param clusterCount   number of valid entries in the cluster buffer
  * @param hzbWidth       width of level 0 of the Hi-Z pyramid
  * @param hzbHeight      height of level 0

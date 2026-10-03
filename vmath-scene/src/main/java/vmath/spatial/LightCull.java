@@ -4,21 +4,47 @@ import vmath.bulk.BoundsArray;
 import vmath.bulk.VisibilitySet;
 
 /**
- * Culling against the volume a local light reaches: which objects a point light or spot light can touch, and which faces of a
- * point light's shadow cube map they land in. All functions work on {@link BoundsArray} and clear bits of a
- * {@link VisibilitySet} (only visible objects are examined), and none allocates.
+ * Culling against the volume a local light reaches: which objects a point light or spot light can
+ * touch, and which faces of a point light's shadow cube map they land in.
+ *
+ * <p>All functions work on {@link BoundsArray} and clear bits of a {@link VisibilitySet} (only
+ * visible objects are examined), and none allocates.
  *
  * <p>Every test is conservative: an object the light reaches is never removed.
  *
- * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the same time. The arrays and buffers you pass in are
- * not synchronised, so two threads must not write the same one.
+ * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the
+ * same time. The arrays and buffers you pass in are not synchronised, so two threads must not write
+ * the same one.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * BoundsArray bounds = new BoundsArray(100);
+ * VisibilitySet visible = new VisibilitySet(100);
+ * visible.setAll(0);
+ * int cleared = LightCull.pointLight(bounds, visible, 0f, 5f, 0f, 20f);    // the objects the light cannot reach
+ * byte[] faces = new byte[100];
+ * LightCull.cubeFaces(bounds, visible, 0f, 5f, 0f, 20f, faces);            // which shadow cube faces each object touches
+ * }</pre>
  */
 public final class LightCull {
 
     private LightCull() {
     }
 
-    /** Clears every visible object whose box is farther than {@code range} from the light. Returns how many were cleared. */
+    /**
+     * Clears every visible object whose box is farther than {@code range} from the light.
+     *
+     * <p>Returns how many were cleared.
+     *
+     * @param bounds the bounds; must not be {@code null}
+     * @param visible the visibility set; must not be {@code null}
+     * @param x the x component
+     * @param y the y component
+     * @param z the z component
+     * @param range the range
+     * @return how many were cleared
+     */
     public static int pointLight(BoundsArray bounds, VisibilitySet visible, float x, float y, float z, float range) {
         float r2 = range * range;
         float[] x0 = bounds.minXs(), y0 = bounds.minYs(), z0 = bounds.minZs();
@@ -35,10 +61,26 @@ public final class LightCull {
     }
 
     /**
-     * Clears every visible object that a spot light cannot reach: the light sits at {@code (ax, ay, az)}, shines along
-     * {@code (dx, dy, dz)} (any length) with the given half-angle (radians, below pi/2) out to {@code range}. Each box is
-     * represented by its bounding sphere, so the test may keep objects near the cone's edge that miss it by a hair.
-     * Returns how many were cleared.
+     * Clears every visible object that a spot light cannot reach: the light sits at
+     * {@code (ax, ay, az)}, shines along {@code (dx, dy, dz)} (any length) with the given
+     * half-angle (radians, below pi/2) out to {@code range}.
+     *
+     * <p>Each box is represented by its bounding sphere, so the test may keep objects near the
+     * cone's edge that miss it by a hair. Returns how many were cleared.
+     *
+     * @param bounds the bounds; must not be {@code null}
+     * @param visible the visibility set; must not be {@code null}
+     * @param ax the x coordinate of the light
+     * @param ay the y coordinate of the light
+     * @param az the z coordinate of the light
+     * @param dx the x component of the direction
+     * @param dy the y component of the direction
+     * @param dz the z component of the direction
+     * @param halfAngle the half angle
+     * @param range the range
+     * @return how many were cleared
+     * @throws IllegalArgumentException if {@code halfAngle} is not in {@code (0, pi/2)} or the
+     *     direction is zero
      */
     public static int spotLight(BoundsArray bounds, VisibilitySet visible, float ax, float ay, float az,
                                 float dx, float dy, float dz, float halfAngle, float range) {
@@ -75,15 +117,28 @@ public final class LightCull {
     }
 
     /**
-     * For a point light at {@code (x, y, z)} reaching {@code range}: clears visible objects that touch none of its six cube
-     * faces, and stores for the others a bit mask of the faces they touch in {@code masks[i]} (bit {@code f} for face
-     * {@code f} of {@code vmath.camera.CubeFaces}: +X, -X, +Y, -Y, +Z, -Z). An object that straddles a face boundary has several
-     * bits set and must be drawn into each of those faces. Objects outside {@code range} are cleared too. Returns how many
-     * were cleared.
+     * Returns for a point light at {@code (x, y, z)} reaching {@code range}: clears visible objects
+     * that touch none of its six cube faces, and stores for the others a bit mask of the faces they
+     * touch in {@code masks[i]} (bit {@code f} for face {@code f} of
+     * {@code vmath.camera.CubeFaces}: +X, -X, +Y, -Y, +Z, -Z).
      *
-     * <p>A face is set when the box is not entirely outside one of the four side planes of that face's 90 degree pyramid
-     * (an ordinary conservative box-plane test), so the mask may contain a face the box only just misses, never the reverse.
-     * Entries of {@code masks} for objects that are not visible are left alone.
+     * <p>An object that straddles a face boundary has several bits set and must be drawn into each
+     * of those faces. Objects outside {@code range} are cleared too. Returns how many were cleared.
+     *
+     * <p>A face is set when the box is not entirely outside one of the four side planes of that
+     * face's 90 degree pyramid (an ordinary conservative box-plane test), so the mask may contain a
+     * face the box only just misses, never the reverse. Entries of {@code masks} for objects that
+     * are not visible are left alone.
+     *
+     * @param bounds the bounds; must not be {@code null}
+     * @param visible the visibility set; must not be {@code null}
+     * @param x the x component
+     * @param y the y component
+     * @param z the z component
+     * @param range the range
+     * @param masks the masks
+     * @return how many were cleared
+     * @throws IllegalArgumentException if {@code masks} has fewer entries than there are boxes
      */
     public static int cubeFaces(BoundsArray bounds, VisibilitySet visible, float x, float y, float z, float range, byte[] masks) {
         int n = bounds.size();
@@ -115,8 +170,20 @@ public final class LightCull {
     }
 
     /**
-     * The cube faces a box touches, given the box relative to the light (light at the origin). Bit {@code f} is set unless the
-     * box lies entirely outside a side plane of face {@code f}'s pyramid.
+     * Computes which faces of a cube map a box touches from the light's point of view, so that a
+     * point-light shadow pass renders only the faces that matter.
+     *
+     * <p>Bit {@code f} is set unless the box lies entirely outside a side plane of face {@code f}'s
+     * pyramid.
+     *
+     * @param minX the smallest x coordinate
+     * @param minY the smallest y coordinate
+     * @param minZ the smallest z coordinate
+     * @param maxX the largest x coordinate
+     * @param maxY the largest y coordinate
+     * @param maxZ the largest z coordinate
+     * @return the cube faces a box touches, given the box relative to the light (light at the
+     *     origin)
      */
     public static int faceMask(float minX, float minY, float minZ, float maxX, float maxY, float maxZ) {
         // the largest value of (main +- side) over the box, for each axis as the main axis

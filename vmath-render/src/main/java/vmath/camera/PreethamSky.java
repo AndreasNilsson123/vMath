@@ -1,19 +1,40 @@
 package vmath.camera;
 
 /**
- * The analytic clear-sky model of Preetham, Shirley and Smits ("A Practical Analytic Model for Daylight", SIGGRAPH 1999): the luminance and colour of the sky in every direction
- * for a given sun position and turbidity, from a handful of formulas. The sky luminance {@code Y} and the chromaticity {@code (x, y)} each follow the distribution of Perez,
- * {@code F(theta, gamma) = (1 + A exp(B / cos theta)) (1 + C exp(D gamma) + E cos^2 gamma)}, where {@code theta} is the angle of the view direction from the zenith and {@code gamma} the
- * angle between the view direction and the sun; the five coefficients are linear functions of the turbidity, and the value at the zenith is a function of turbidity and sun
- * position. The result at a direction is {@code zenith * F(theta, gamma) / F(0, sunTheta)}.
+ * The analytic clear-sky model of Preetham, Shirley and Smits ("A Practical Analytic Model for
+ * Daylight", SIGGRAPH 1999): the luminance and colour of the sky in every direction for a given sun
+ * position and turbidity, from a handful of formulas.
  *
- * <p><b>Turbidity</b> is the ratio of haze scattering to molecular scattering: about 2 for a very clear sky, 6 for a hazy one. The model was fitted for turbidities from 2 to 6
- * and a sun above the horizon; the constructor accepts 1 to 12, the formulas still produce numbers there, but they are extrapolation. The model has no ground and no clouds, and is not defined for a sun below the horizon (see Zotti and Wilkie, "A Critical Review of the Preetham Skylight Model", for its errors against measurements), so the sun zenith angle is clamped to 90 degrees (the sunset sky): fade the result yourself for the night.
+ * <p>The sky luminance {@code Y} and the chromaticity {@code (x, y)} each follow the distribution
+ * of Perez,
+ * {@code F(theta, gamma) = (1 + A exp(B / cos theta)) (1 + C exp(D gamma) + E cos^2 gamma)}, where
+ * {@code theta} is the angle of the view direction from the zenith and {@code gamma} the angle
+ * between the view direction and the sun; the five coefficients are linear functions of the
+ * turbidity, and the value at the zenith is a function of turbidity and sun position. The result at
+ * a direction is {@code zenith * F(theta, gamma) / F(0, sunTheta)}.
  *
- * <p><b>Units.</b> Luminance is in <b>candela per square metre</b> (the paper's kilocandela per square metre times 1000). Directions are unit or non-unit vectors in a frame with the y axis
- * up. Colours are returned as CIE xyY or as <b>linear sRGB</b> (Rec. 709 primaries, D65 white point), not tone-mapped and not clamped.
+ * <p><b>Turbidity</b> is the ratio of haze scattering to molecular scattering: about 2 for a very
+ * clear sky, 6 for a hazy one. The model was fitted for turbidities from 2 to 6 and a sun above the
+ * horizon; the constructor accepts 1 to 12, the formulas still produce numbers there, but they are
+ * extrapolation. The model has no ground and no clouds, and is not defined for a sun below the
+ * horizon (see Zotti and Wilkie, "A Critical Review of the Preetham Skylight Model", for its errors
+ * against measurements), so the sun zenith angle is clamped to 90 degrees (the sunset sky): fade
+ * the result yourself for the night.
+ *
+ * <p><b>Units.</b> Luminance is in <b>candela per square metre</b> (the paper's kilocandela per
+ * square metre times 1000). Directions are unit or non-unit vectors in a frame with the y axis up.
+ * Colours are returned as CIE xyY or as <b>linear sRGB</b> (Rec. 709 primaries, D65 white point),
+ * not tone-mapped and not clamped.
  *
  * <p><b>Thread safety.</b> Immutable: safe to share between threads.
+ *
+ * <p><b>Example:</b>
+ *
+ * <pre>{@code
+ * PreethamSky sky = new PreethamSky(2.5, Math.toRadians(40));                          // turbidity, sun angle from the zenith
+ * double[] rgb = new double[3];
+ * sky.rgb(0.0, 1.0, 0.0, 0.5, 0.8, 0.3, rgb);                                          // view direction, sun direction: linear sRGB
+ * }</pre>
  */
 public final class PreethamSky {
 
@@ -23,7 +44,14 @@ public final class PreethamSky {
     private final double zenithY, zenithX, zenithChromaY;
     private final double[] normalization = new double[3]; // F(0, sunTheta) per channel
 
-    /** The sky for the given turbidity (1 to 12) and the angle of the sun from the zenith in radians (clamped to {@code [0, pi / 2]}). */
+    /**
+     * Creates the sky for the given turbidity (1 to 12) and the angle of the sun from the zenith in
+     * radians (clamped to {@code [0, pi / 2]}).
+     *
+     * @param turbidity the turbidity
+     * @param sunZenithAngle the sun zenith angle
+     * @throws IllegalArgumentException if the turbidity is not in {@code [1, 12]}
+     */
     public PreethamSky(double turbidity, double sunZenithAngle) {
         if (!(turbidity >= 1.0 && turbidity <= 12.0)) {
             throw new IllegalArgumentException("the turbidity must be in [1, 12]: " + turbidity);
@@ -49,32 +77,56 @@ public final class PreethamSky {
         }
     }
 
-    /** The turbidity. */
+    /**
+     * Exposes the turbidity of the atmosphere that the model was built for.
+     *
+     * @return the turbidity
+     */
     public double turbidity() {
         return turbidity;
     }
 
-    /** The angle of the sun from the zenith in radians, after clamping to {@code [0, pi / 2]}. */
+    /**
+     * Exposes the sun angle from the zenith, after clamping to the range that the model supports.
+     *
+     * @return the angle of the sun from the zenith in radians, after clamping to
+     *     {@code [0, pi / 2]}
+     */
     public double sunZenithAngle() {
         return sunTheta;
     }
 
-    /** The luminance of the sky at the zenith in cd/m^2. */
+    /**
+     * Exposes the luminance of the sky at the zenith.
+     *
+     * @return the luminance of the sky at the zenith in cd/m^2
+     */
     public double zenithLuminance() {
         return zenithY;
     }
 
-    /** The CIE x chromaticity of the sky at the zenith. */
+    /**
+     * Exposes the x chromaticity of the sky at the zenith.
+     *
+     * @return the CIE x chromaticity of the sky at the zenith
+     */
     public double zenithX() {
         return zenithX;
     }
 
-    /** The CIE y chromaticity of the sky at the zenith. */
+    /**
+     * Exposes the y chromaticity of the sky at the zenith.
+     *
+     * @return the CIE y chromaticity of the sky at the zenith
+     */
     public double zenithChromaticityY() {
         return zenithChromaY;
     }
 
-    /** The Perez distribution of channel {@code c} (0 luminance, 1 x, 2 y) for the view zenith angle {@code theta} and the angle {@code gamma} to the sun. */
+    /**
+     * The Perez distribution of channel {@code c} (0 luminance, 1 x, 2 y) for the view zenith angle
+     * {@code theta} and the angle {@code gamma} to the sun.
+     */
     private double perez(int c, double theta, double gamma) {
         double[] k = coefficients[c];
         double cosTheta = Math.cos(theta);
@@ -85,9 +137,16 @@ public final class PreethamSky {
     }
 
     /**
-     * The sky colour as CIE xyY for a view direction with zenith angle {@code theta} (radians from the zenith, 0 straight up, {@code pi / 2} at the horizon; larger values give the
-     * horizon value) and angle {@code gamma} to the sun (radians, 0 looking at the sun). {@code out[0]} receives {@code x}, {@code out[1]} receives {@code y} and {@code out[2]}
+     * Computes the sky colour as CIE xyY for a view direction with zenith angle {@code theta}
+     * (radians from the zenith, 0 straight up, {@code pi / 2} at the horizon; larger values give
+     * the horizon value) and angle {@code gamma} to the sun (radians, 0 looking at the sun).
+     *
+     * <p>{@code out[0]} receives {@code x}, {@code out[1]} receives {@code y} and {@code out[2]}
      * the luminance in cd/m^2.
+     *
+     * @param theta the theta
+     * @param gamma the gamma
+     * @param out receives the result in {@code [0, 3)}
      */
     public void xyY(double theta, double gamma, double[] out) {
         out[0] = zenithX * perez(1, theta, gamma) / normalization[1];
@@ -96,8 +155,19 @@ public final class PreethamSky {
     }
 
     /**
-     * {@link #xyY(double, double, double[])} for a view direction {@code (vx, vy, vz)} and a sun direction {@code (sx, sy, sz)}, both vectors in a frame with the y axis up (they
-     * need not be normalised, but must not be zero). The sun direction should be the one the sun zenith angle of the constructor describes.
+     * Computes the sky colour as {@link #xyY(double, double, double[])} does, for a view direction
+     * {@code (vx, vy, vz)} and a sun direction {@code (sx, sy, sz)}, both vectors in a frame with
+     * the y axis up (they need not be normalised, but must not be zero).
+     *
+     * <p>The sun direction should be the one the sun zenith angle of the constructor describes.
+     *
+     * @param vx the x component of the unit view direction
+     * @param vy the y component of the unit view direction
+     * @param vz the z component of the unit view direction
+     * @param sx the x component of the unit sun direction
+     * @param sy the y component of the unit sun direction
+     * @param sz the z component of the unit sun direction
+     * @param out receives the result
      */
     public void xyY(double vx, double vy, double vz, double sx, double sy, double sz, double[] out) {
         double vl = Math.sqrt(vx * vx + vy * vy + vz * vz), sl = Math.sqrt(sx * sx + sy * sy + sz * sz);
@@ -107,8 +177,17 @@ public final class PreethamSky {
     }
 
     /**
-     * The sky colour in linear sRGB (cd/m^2 per channel, not clamped) for the view and sun directions of {@link #xyY(double, double, double, double, double, double, double[])},
-     * written to {@code out[0 .. 3)}.
+     * Computes the sky colour in linear sRGB (cd/m^2 per channel, not clamped) for the view and sun
+     * directions of {@link #xyY(double, double, double, double, double, double, double[])}, written
+     * to {@code out[0 .. 3)}.
+     *
+     * @param vx the x component of the unit view direction
+     * @param vy the y component of the unit view direction
+     * @param vz the z component of the unit view direction
+     * @param sx the x component of the unit sun direction
+     * @param sy the y component of the unit sun direction
+     * @param sz the z component of the unit sun direction
+     * @param out receives the result in {@code [0, 3)}
      */
     public void rgb(double vx, double vy, double vz, double sx, double sy, double sz, double[] out) {
         xyY(vx, vy, vz, sx, sy, sz, out);
@@ -116,8 +195,15 @@ public final class PreethamSky {
     }
 
     /**
-     * Converts a colour from CIE xyY (chromaticity {@code x, y} and luminance {@code Y}) to linear sRGB (Rec. 709 primaries, D65 white): the XYZ values, then the standard matrix.
-     * {@code out} may be the same array that held the xyY values. A zero {@code y} gives black.
+     * Converts a colour from CIE xyY (chromaticity {@code x, y} and luminance {@code Y}) to linear
+     * sRGB (Rec. 709 primaries, D65 white): the XYZ values, then the standard matrix.
+     *
+     * <p>{@code out} may be the same array that held the xyY values. A zero {@code y} gives black.
+     *
+     * @param x the x component
+     * @param y the y component
+     * @param luminance the luminance
+     * @param out receives the result in {@code [0, 3)}
      */
     public static void xyYToLinearSrgb(double x, double y, double luminance, double[] out) {
         if (!(y > 0)) {
