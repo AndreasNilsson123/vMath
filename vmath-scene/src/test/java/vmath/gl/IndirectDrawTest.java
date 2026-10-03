@@ -246,4 +246,49 @@ class IndirectDrawTest {
         Mat4f unused = Mat4f.IDENTITY;
         assertEquals(unused, Mat4f.IDENTITY);
     }
+
+    @Test
+    void boxInstancesMapTheUnitCubeOntoTheBounds() {
+        int n = 300;
+        vmath.bulk.BoundsArray bounds = new vmath.bulk.BoundsArray(n);
+        vmath.bulk.VisibilitySet visible = new vmath.bulk.VisibilitySet(n);
+        for (int i = 0; i < n; i++) {
+            Vec3f lo = rnd.nextVec3f(), size = new Vec3f((float) rnd.range(0.1, 5), (float) rnd.range(0.1, 5), (float) rnd.range(0.1, 5));
+            bounds.add(lo.x(), lo.y(), lo.z(), lo.x() + size.x(), lo.y() + size.y(), lo.z() + size.z());
+            if (i % 3 != 0) {
+                visible.set(i);
+            }
+        }
+        MemorySegment a = MemorySegment.ofArray(new byte[(int) InstanceWriter.STRIDE * (n + 2)]);
+        int written = InstanceWriter.writeVisibleBoxes(a, 2, visible, bounds);
+        assertEquals(visible.count(), written);
+        long k = 2;
+        for (int i = 0; i < n; i++) {
+            if (!visible.get(i)) {
+                continue;
+            }
+            long base = k * InstanceWriter.STRIDE;
+            float sx = bounds.maxX(i) - bounds.minX(i), sy = bounds.maxY(i) - bounds.minY(i), sz = bounds.maxZ(i) - bounds.minZ(i);
+            Vec3f center = new Vec3f((bounds.minX(i) + bounds.maxX(i)) * 0.5f, (bounds.minY(i) + bounds.maxY(i)) * 0.5f, (bounds.minZ(i) + bounds.maxZ(i)) * 0.5f);
+            // the shader's rule: world = (dot(row0, p), dot(row1, p), dot(row2, p)) with p = (position, 1); check the corners of the unit cube
+            for (int c = 0; c < 8; c++) {
+                float px = (c & 1) == 0 ? -0.5f : 0.5f, py = (c & 2) == 0 ? -0.5f : 0.5f, pz = (c & 4) == 0 ? -0.5f : 0.5f;
+                float wx = GpuWriter.getFloat(a, base) * px + GpuWriter.getFloat(a, base + 4) * py + GpuWriter.getFloat(a, base + 8) * pz + GpuWriter.getFloat(a, base + 12);
+                float wy = GpuWriter.getFloat(a, base + 16) * px + GpuWriter.getFloat(a, base + 20) * py + GpuWriter.getFloat(a, base + 24) * pz + GpuWriter.getFloat(a, base + 28);
+                float wz = GpuWriter.getFloat(a, base + 32) * px + GpuWriter.getFloat(a, base + 36) * py + GpuWriter.getFloat(a, base + 40) * pz + GpuWriter.getFloat(a, base + 44);
+                assertEquals(center.x() + px * sx, wx, 1e-5f);
+                assertEquals(center.y() + py * sy, wy, 1e-5f);
+                assertEquals(center.z() + pz * sz, wz, 1e-5f);
+            }
+            assertEquals(i, word(a, base + InstanceWriter.OFFSET_USER_DATA), "the user data is the object index");
+            k++;
+        }
+        assertEquals(0, GpuWriter.getInt(a, 0), "the first two instances are untouched");
+        assertEquals(0, InstanceWriter.writeVisibleBoxes(a, 0, new vmath.bulk.VisibilitySet(n), bounds), "nothing visible writes nothing");
+        // one box written directly
+        InstanceWriter.writeBox(a, 0, 1f, 2f, 3f, 4f, 5f, 6f, 77);
+        assertEquals(4f, GpuWriter.getFloat(a, 0), 0f);
+        assertEquals(3f, GpuWriter.getFloat(a, 44), 0f);
+        assertEquals(77, word(a, InstanceWriter.OFFSET_USER_DATA));
+    }
 }

@@ -149,11 +149,21 @@ Requires JDK 25 (the baseline moves to the newest JDK; there is no LTS constrain
 
 Allocation findings and the performance contract are in [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
 
+A sample that draws a city of a million boxes with OpenGL (LWJGL), using the culling, the instance writer, the buffer ring and the indirect draw of the library, is in the separate module
+`vmath-samples`, which is part of the build only with `-Psamples` because Gradle downloads LWJGL for it:
+
+```
+./gradlew -Psamples :vmath-samples:run                           # interactive
+./gradlew -Psamples :vmath-samples:run --args="--frames 600"     # a scripted flight, the timings, then exit
+```
+
+See [docs/SAMPLES.md](docs/SAMPLES.md).
+
 ## Next steps
 
 Versioning and the `@Experimental` marker: [docs/VERSIONING.md](docs/VERSIONING.md); changes: [CHANGELOG.md](CHANGELOG.md). The backlog is [docs/ROADMAP.md](docs/ROADMAP.md) and the known weaknesses are in
 [docs/technical-debt.md](docs/technical-debt.md); design notes and measurements are in `docs/` (CODEGEN, CULLING, GPU, CAMERA, FORMATS, TEXTURES, GLTF, ROBUSTNESS, PERFORMANCE, API-COMPAT, BULK, MEMORY, COLOR, COOKBOOK, EQUALITY, COVERAGE,
-PUBLISHING, FASTMATH, GEOMETRY, UTIL, CURVES, PHYSICS, LARGE_WORLDS, API; the first review of the code is kept in `docs/history.md`).
+PUBLISHING, FASTMATH, GEOMETRY, UTIL, CURVES, PHYSICS, LARGE_WORLDS, SAMPLES, IDE, API; the first review of the code is kept in `docs/history.md`).
 
 The largest open items: temporal occlusion culling, and running the GPU layer
 against a real graphics API (the shader text and the upload ring are only tested against Java references so far).

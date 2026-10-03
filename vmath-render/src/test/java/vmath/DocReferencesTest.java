@@ -37,7 +37,7 @@ class DocReferencesTest {
     private static Set<String> sourceWords(Path root) throws IOException {
         Set<String> words = new TreeSet<>();
         for (String dir : List.of("vmath-core/src", "vmath-geo/src", "vmath-scene/src", "vmath-render/src", "vmath-annotations/src", "vmath-codegen/src",
-                "vmath-validator/src", "vmath-simd/src", "vmath-bench/src")) {
+                "vmath-validator/src", "vmath-simd/src", "vmath-bench/src", "vmath-samples/src")) {
             Path d = root.resolve(dir);
             if (!Files.isDirectory(d)) {
                 continue;

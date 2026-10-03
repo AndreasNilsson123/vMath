@@ -22,6 +22,12 @@ version = "0.2.0-SNAPSHOT"
 val parts = listOf(":vmath-core", ":vmath-geo", ":vmath-scene", ":vmath-render")
 parts.forEach { evaluationDependsOn(it) }
 
+// Inside IntelliJ (it sets these properties for the Gradle it starts) the project also gets what the IDE needs: gradle/idea.gradle.kts runs the generator after each sync.
+// The command line never reads that script, so it never needs the plugin it uses.
+if (providers.systemProperty("idea.active").isPresent || providers.systemProperty("idea.sync.active").isPresent) {
+    apply(from = "gradle/idea.gradle.kts")
+}
+
 val valhalla = providers.gradleProperty("valhalla").isPresent
 val baselineJdk = property("vmath.jdk").toString().toInt()
 val valhallaJdk = property("vmath.valhallaJdk").toString().toInt()

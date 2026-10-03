@@ -1,0 +1,24 @@
+# Editor settings, read by IntelliJ and most editors (docs/IDE.md).
+root = true
+
+[*]
+charset = utf-8
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.md]
+trim_trailing_whitespace = false
+
+# Java and the Gradle scripts: four spaces. The code goes up to about 230 columns, so 100 would make the formatter rewrite thousands of lines: the 100-column wrap
+# is the rule for the prose of Javadoc comments and is kept by the documentation standard, not by the formatter.
+[*.{java,kts,gradle}]
+indent_style = space
+indent_size = 4
+max_line_length = 160
+
+[*.{xml,yml,yaml,json,toml}]
+indent_style = space
+indent_size = 2
+
+[*.bat]
+end_of_line = crlf

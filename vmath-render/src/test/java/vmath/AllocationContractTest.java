@@ -480,6 +480,7 @@ class AllocationContractTest {
         vmath.core.Mat4x3f transform = vmath.core.Mat4x3f.translation(1f, 2f, 3f);
         assertNoAllocation("InstanceWriter.write", WARM, CALLS, () -> vmath.gl.InstanceWriter.write(seg, n[0]++ & 511, transform, 7));
         assertNoAllocation("InstanceWriter.writeTranslation", WARM, CALLS, () -> vmath.gl.InstanceWriter.writeTranslation(seg, n[0]++ & 511, 1f, 2f, 3f, 7));
+        assertNoAllocation("InstanceWriter.writeBox", WARM, CALLS, () -> vmath.gl.InstanceWriter.writeBox(seg, n[0]++ & 511, 1f, 2f, 3f, 4f, 5f, 6f, 7));
         vmath.bulk.BoundsArray bounds = new vmath.bulk.BoundsArray(256);
         vmath.bulk.VisibilitySet visible = new vmath.bulk.VisibilitySet(256);
         for (int i = 0; i < 256; i++) {
@@ -489,6 +490,7 @@ class AllocationContractTest {
             }
         }
         assertNoAllocation("InstanceWriter.writeVisibleTranslations", WARM_BIG, CALLS_BIG, () -> vmath.gl.InstanceWriter.writeVisibleTranslations(seg, 0, visible, bounds));
+        assertNoAllocation("InstanceWriter.writeVisibleBoxes", WARM_BIG, CALLS_BIG, () -> vmath.gl.InstanceWriter.writeVisibleBoxes(seg, 0, visible, bounds));
     }
 
     // ------------------------------------------------------------ animation

@@ -357,8 +357,9 @@ can be chained and composed, and they run on SoA bounds.
 - [x] **DOC-3 (P2, S)** ~~JOML adapter module~~ *Dropped on purpose: it would be double bookkeeping; the README migration table is the bridge.*
 - [x] **DOC-4 (P2, S)** Changelog + semver policy; mark experimental APIs (`@Experimental` annotation, also in the framework).  
       *Done: `CHANGELOG.md`, `docs/VERSIONING.md`, `vmath.annotations.Experimental` (class retention, excluded from japicmp). The framework side does not exist yet.*
-- [ ] **DOC-5 (P3, M)** Sample app (LWJGL) that renders and culls 1M instances; doubles as an end-to-end benchmark.  
+- [x] **DOC-5 (P3, M)** Sample app (LWJGL) that renders and culls 1M instances; doubles as an end-to-end benchmark.  
       *Partial: headless `CullAndDrawSample` (cull 1M, write instance buffer + indirect draw, numbers in `docs/GPU.md`); an LWJGL window that actually draws is open; `FrameBench` compares serial/parallel/BVH frames; `InstanceWriteBench` tuned the instance write (word-wise set walk, about 25% faster; packed centres and staged bulk copy rejected, numbers in `docs/GPU.md`).*
+      *Done: `vmath-samples` (a separate module, part of the build only with `-Psamples`) with `MillionInstances`: a city of a million boxes drawn with OpenGL 4.5 through LWJGL 3.3.6, using the frustum culling (SIMD and parallel), `InstanceWriter.writeVisibleBoxes`, the `PersistentBufferRing` with real fences, `DrawCommandBuffer` and the vertex layout; interactive, or a scripted flight with `--frames N` that prints the time of each stage. About 9.4 ms per frame (106 fps) with half the boxes visible on an RTX 3060 Laptop GPU, 14.9 ms with culling off. Run on one NVIDIA GPU only. See `docs/SAMPLES.md`.*
 
 ---
 

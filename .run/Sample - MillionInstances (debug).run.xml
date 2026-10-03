@@ -1,0 +1,10 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Sample - MillionInstances (debug)" type="Application" factoryName="Application" folderName="Samples">
+    <option name="MAIN_CLASS_NAME" value="vmath.samples.MillionInstances" />
+    <module name="vmath.vmath-samples.main" />
+    <option name="VM_PARAMETERS" value="--add-modules=jdk.incubator.vector --enable-native-access=ALL-UNNAMED -Xmx2g" />
+    <method v="2">
+      <option name="Make" enabled="true" />
+    </method>
+  </configuration>
+</component>

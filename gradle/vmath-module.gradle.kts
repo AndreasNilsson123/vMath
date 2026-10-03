@@ -138,6 +138,15 @@ extensions.configure<SourceSetContainer> {
     }
 }
 
+// IntelliJ: the generated roots are marked as generated (not edited by hand, left out of the version control views); the IDE itself runs generateSources after each sync (gradle/idea.gradle.kts)
+apply(plugin = "idea")
+extensions.configure<org.gradle.plugins.ide.idea.model.IdeaModel> {
+    module {
+        generatedSourceDirs.add(generatedMain.get().asFile)
+        generatedSourceDirs.add(generatedTest.get().asFile)
+    }
+}
+
 // ---------------------------------------------------------------- tests
 
 apply(plugin = "jacoco")

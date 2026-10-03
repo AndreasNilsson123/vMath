@@ -112,6 +112,70 @@ public final class InstanceWriter {
     }
 
     /**
+     * Writes instance number {@code index} as the box {@code center +- size / 2}: a scale along the
+     * axes and a translation, which maps a unit cube centred on the origin (the cube of
+     * {@code Primitives.box(0.5f, 0.5f, 0.5f)}) onto the box.
+     *
+     * @param dst receives the result; must not be {@code null}
+     * @param index the index
+     * @param cx the x coordinate of the centre of the box
+     * @param cy the y coordinate of the centre of the box
+     * @param cz the z coordinate of the centre of the box
+     * @param sx the size of the box along x
+     * @param sy the size of the box along y
+     * @param sz the size of the box along z
+     * @param userData the user data of the object
+     */
+    public static void writeBox(MemorySegment dst, long index, float cx, float cy, float cz, float sx, float sy, float sz, int userData) {
+        long base = index * STRIDE;
+        GpuWriter.putFloat(dst, base, sx);
+        GpuWriter.putFloat(dst, base + 4, 0f);
+        GpuWriter.putFloat(dst, base + 8, 0f);
+        GpuWriter.putFloat(dst, base + 12, cx);
+        GpuWriter.putFloat(dst, base + 16, 0f);
+        GpuWriter.putFloat(dst, base + 20, sy);
+        GpuWriter.putFloat(dst, base + 24, 0f);
+        GpuWriter.putFloat(dst, base + 28, cy);
+        GpuWriter.putFloat(dst, base + 32, 0f);
+        GpuWriter.putFloat(dst, base + 36, 0f);
+        GpuWriter.putFloat(dst, base + 40, sz);
+        GpuWriter.putFloat(dst, base + 44, cz);
+        GpuWriter.putInt(dst, base + OFFSET_USER_DATA, userData);
+    }
+
+    /**
+     * Writes one box instance per visible object, in ascending object order, starting at instance
+     * {@code firstInstance}: the transform maps a unit cube centred on the origin onto the object's
+     * bounding box (see {@link #writeBox}) and the user data is the object's index. Drawing the
+     * instances of one unit cube mesh then draws every bounding box exactly, which is what a
+     * culling demonstration or a debug view wants.
+     *
+     * <p>Returns the number written, which is the instance count for the draw command. It walks the
+     * set a word at a time like {@link #writeVisibleTranslations}.
+     *
+     * @param dst receives the result; must not be {@code null}
+     * @param firstInstance the first instance
+     * @param visible the visibility set; must not be {@code null}
+     * @param bounds the bounds; must not be {@code null}
+     * @return the number written, which is the instance count for the draw command
+     */
+    public static int writeVisibleBoxes(MemorySegment dst, long firstInstance, VisibilitySet visible, BoundsArray bounds) {
+        long[] words = visible.words();
+        long k = firstInstance;
+        for (int wi = 0; wi < words.length; wi++) {
+            long w = words[wi];
+            while (w != 0L) {
+                int i = (wi << 6) + Long.numberOfTrailingZeros(w);
+                w &= w - 1L;
+                float x0 = bounds.minX(i), y0 = bounds.minY(i), z0 = bounds.minZ(i);
+                float x1 = bounds.maxX(i), y1 = bounds.maxY(i), z1 = bounds.maxZ(i);
+                writeBox(dst, k++, (x0 + x1) * 0.5f, (y0 + y1) * 0.5f, (z0 + z1) * 0.5f, x1 - x0, y1 - y0, z1 - z0, i);
+            }
+        }
+        return (int) (k - firstInstance);
+    }
+
+    /**
      * Writes one translation-only instance per visible object, in ascending object order, starting
      * at instance {@code firstInstance}: the translation is the centre of the object's box and the
      * user data is the object's index (so a shader can look up anything else about it).
