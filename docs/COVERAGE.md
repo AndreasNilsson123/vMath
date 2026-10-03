@@ -18,13 +18,14 @@ Measured on the full test suite (JDK 25, generated float and double types includ
 |---|---|---|
 | `vmath.core` | 100.0% (2006 of 2006) | 98.1% |
 | `vmath.camera` | 100.0% | 92.4% |
-| `vmath.geo` | 98.2% | 93.2% |
+| `vmath.geo` | 96.7% | 90.5% |
 | `vmath.tex` | 98.1% | 88.1% |
 | `vmath.mesh` | 97.9% | 92.8% |
 | `vmath.occlusion` | 97.8% | 88.6% |
 | `vmath.color` | 97.4% | 89.3% |
 | `vmath.gltf` | 97.1% | 91.1% |
-| `vmath.anim` | 97.0% | 94.3% |
+| `vmath.anim` | 98.2% | 93.0% |
+| `vmath.util` | 99.6% | 97.0% |
 | `vmath.gpucull` | 96.5% | 92.7% |
 | `vmath.pack` | 96.4% | 93.1% |
 | `vmath.spatial` | 95.3% | 85.5% |

@@ -6,6 +6,9 @@ Nothing has been released yet; the baseline for the compatibility check is the t
 ## Unreleased
 
 ### Added
+- New package `vmath.util` (experimental): `Rng` (xoshiro256++ with sphere, disk and hemisphere sampling), `Sequences` (Halton, Sobol, R2, Hammersley, Poisson disk), `Noise` (value, Perlin, simplex, Worley, curl, fBm, warping, batch fill), `Spring`, `Smoothing`, `Easing`; `docs/UTIL.md`.
+- Curves (experimental): `Curves` (Bezier, Hermite, Catmull-Rom, B-spline) and `ArcLengthTable`; `docs/CURVES.md`.
+- `GeometryBench` and `UtilBench`: measured speeds in `docs/GEOMETRY.md`, `docs/ANIMATION.md`, `docs/UTIL.md` and `docs/CURVES.md`.
 - Geometry (experimental): `Polygons` (area, winding, containment, simplicity, ear-clipping triangulation with holes, 3D polygons, Sutherland-Hodgman clipping), `ConvexHull` (exact quickhull), `ConvexPolytope`, `Sat`, `Gjk` (distance, intersection, EPA penetration), `ConvexShape`/`ConvexShapes`; `docs/GEOMETRY.md`.
 - Animation (experimental): `IkSolver` (two-bone with pole, FABRIK, CCD, look-at with up axis).
 - Quality tooling: JaCoCo coverage with per-package floors in `check`, PIT mutation testing (`mutationTest`), `docs/COVERAGE.md`.

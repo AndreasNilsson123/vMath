@@ -831,6 +831,122 @@ class AllocationContractTest {
                 "writeVertices allocates per vertex: " + perCallSmall + " B per call for " + small.vertexCount() + " vertices, " + perCallLarge + " B for " + large.vertexCount());
     }
 
+    // ------------------------------------------------------------ random numbers, noise, springs, curves
+
+    @Test
+    void randomNumbersAndSequences() {
+        vmath.util.Rng rng = new vmath.util.Rng(3);
+        float[] p = new float[3];
+        assertNoAllocation("Rng", WARM, CALLS, () -> {
+            rng.nextLong();
+            rng.nextInt(100);
+            rng.nextDouble();
+            rng.nextFloat();
+            rng.nextGaussian();
+            rng.onUnitCircle(p, 0);
+            rng.inUnitDisk(p, 0);
+            rng.onUnitSphere(p, 0);
+            rng.inUnitBall(p, 0);
+            rng.onHemisphere(0f, 0f, 1f, p, 0);
+            rng.cosineHemisphere(0.6f, 0f, 0.8f, p, 0);
+        });
+        int[] items = new int[16];
+        assertNoAllocation("Rng.shuffle", WARM, CALLS, () -> rng.shuffle(items, 16));
+        long[] index = {0};
+        assertNoAllocation("Sequences", WARM, CALLS, () -> {
+            long i = index[0]++ & 0xFFFFF;
+            vmath.util.Sequences.halton(i, 3);
+            vmath.util.Sequences.sobol2(i, p, 0);
+            vmath.util.Sequences.r2(i, p, 0);
+            vmath.util.Sequences.hammersley((int) (i & 0xFF), 256, p, 0);
+        });
+    }
+
+    @Test
+    void noiseFunctions() {
+        double[] d = new double[3];
+        double[] x = {0.37};
+        float[] grid = new float[64];
+        assertNoAllocation("Noise", WARM, CALLS, () -> {
+            x[0] += 0.173;
+            double v = x[0];
+            vmath.util.Noise.value2(v, 1.5, 1);
+            vmath.util.Noise.value3(v, 1.5, 2.5, 1);
+            vmath.util.Noise.perlin2(v, 1.5, 1);
+            vmath.util.Noise.perlin3(v, 1.5, 2.5, 1);
+            vmath.util.Noise.perlin4(v, 1.5, 2.5, 3.5, 1);
+            vmath.util.Noise.simplex2(v, 1.5, 1);
+            vmath.util.Noise.simplex3(v, 1.5, 2.5, 1);
+            vmath.util.Noise.worley2(v, 1.5, 1, 1.0, d);
+            vmath.util.Noise.worley3(v, 1.5, 2.5, 1, 1.0, d);
+            vmath.util.Noise.curl2(v, 1.5, 1, d);
+            vmath.util.Noise.curl3(v, 1.5, 2.5, 1, d);
+            vmath.util.Noise.fbm2(vmath.util.Noise.Kind.SIMPLEX, v, 1.5, 1, 4, 2.0, 0.5);
+            vmath.util.Noise.fbm3(vmath.util.Noise.Kind.PERLIN, v, 1.5, 2.5, 1, 4, 2.0, 0.5);
+            vmath.util.Noise.warpedFbm2(vmath.util.Noise.Kind.VALUE, v, 1.5, 1, 3, 2.0, 0.5, 1.0);
+        });
+        assertNoAllocation("Noise.fill2", WARM, CALLS, () -> vmath.util.Noise.fill2(vmath.util.Noise.Kind.PERLIN, grid, 8, 8, 0, 0, 0.1, 0.1, 1, 2, 2.0, 0.5));
+    }
+
+    @Test
+    void springsSmoothingAndEasing() {
+        vmath.util.Spring spring = new vmath.util.Spring();
+        double[] out = new double[2];
+        float[] pos = new float[3], vel = new float[3], target = {1f, 2f, 3f};
+        double[] t = {0.0};
+        assertNoAllocation("Spring", WARM, CALLS, () -> {
+            t[0] += 0.001;
+            spring.update(1.0, 10.0, 0.3 + (t[0] % 1.0) * 2, 0.016);
+            vmath.util.Spring.step(0.5, 1.0, 2.0, 8.0, 1.0, 0.016, out);
+            vmath.util.Spring.step(pos, vel, 0, 3, target, 0, 6.0, 0.8, 0.016);
+        });
+        assertNoAllocation("Smoothing", WARM, CALLS, () -> {
+            vmath.util.Smoothing.towards(0.0, 1.0, 5.0, 0.016);
+            vmath.util.Smoothing.towardsHalfLife(0.0, 1.0, 0.2, 0.016);
+            vmath.util.Smoothing.towards(pos, 0, target, 0, 3, 5.0, 0.016);
+            vmath.util.Smoothing.angleDelta(0.1, 3.0);
+            vmath.util.Smoothing.smootherstep(0, 1, 0.3);
+        });
+        vmath.util.Easing[] curves = vmath.util.Easing.values(); // values() clones its array on every call, which is not what is measured here
+        assertNoAllocation("Easing", WARM, CALLS, () -> {
+            for (vmath.util.Easing e : curves) {
+                e.apply(0.37);
+            }
+        });
+    }
+
+    @Test
+    void curveEvaluation() {
+        float[] cp = new float[3 * 8];
+        for (int i = 0; i < cp.length; i++) {
+            cp[i] = (float) Math.sin(i * 1.7) * 3;
+        }
+        float[] out = new float[3], left = new float[3 * 4], right = new float[3 * 4];
+        double[] u = {0.0};
+        assertNoAllocation("Curves", WARM, CALLS, () -> {
+            u[0] = (u[0] + 0.0137) % 1.0;
+            vmath.geo.Curves.bezier(cp, 0, 8, 3, u[0], out, 0);
+            vmath.geo.Curves.bezierTangent(cp, 0, 4, 3, u[0], out, 0);
+            vmath.geo.Curves.bezierSplit(cp, 0, 4, 3, u[0], left, 0, right, 0);
+            vmath.geo.Curves.hermite(cp, 0, 3, u[0], out, 0);
+            vmath.geo.Curves.hermiteTangent(cp, 0, 3, u[0], out, 0);
+            vmath.geo.Curves.catmullRom(cp, 0, 8, 3, false, 0.5, u[0] * 7, out, 0);
+            vmath.geo.Curves.catmullRom(cp, 0, 8, 3, true, 0.5, u[0] * 8, out, 0);
+            vmath.geo.Curves.bSpline(cp, 0, 8, 3, false, u[0] * 5, out, 0);
+            vmath.geo.Curves.bSplineTangent(cp, 0, 8, 3, true, u[0] * 8, out, 0);
+        });
+        var table = new vmath.geo.ArcLengthTable((v, o) -> {
+            o[0] = v;
+            o[1] = v * v;
+        }, 2, 0, 1, 256);
+        assertNoAllocation("ArcLengthTable queries", WARM, CALLS, () -> {
+            u[0] = (u[0] + 0.0137) % 1.0;
+            table.parameterAt(u[0]);
+            table.lengthAt(u[0]);
+            table.parameterAtFraction(u[0]);
+        });
+    }
+
     // ------------------------------------------------------------ inverse kinematics
 
     @Test

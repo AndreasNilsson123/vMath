@@ -229,8 +229,8 @@ Value records for single shapes; SoA storage in `vmath-bulk` for large sets.
       *Done: watertight ray-triangle.*
 - [ ] **GEO-4 (P2, M)** Bounding-volume fitting: min sphere (Welzl), PCA OBB, k-DOP, bounding-volume from transformed AABB
       (Arvo, exact for affine).
-- [x] **GEO-5 (P2, M)** Convex hull (3D quickhull), convex polytope intersection, GJK/EPA distance + penetration, SAT helpers. `ConvexHull`, `ConvexPolytope`, `Sat`, `Gjk`; see `docs/GEOMETRY.md` (not benchmarked yet).
-- [ ] **GEO-6 (P2, M)** Curves and interpolation: Bézier, Hermite, Catmull-Rom, B-spline, arc-length parameterization, easing.
+- [x] **GEO-5 (P2, M)** Convex hull (3D quickhull), convex polytope intersection, GJK/EPA distance + penetration, SAT helpers. `ConvexHull`, `ConvexPolytope`, `Sat`, `Gjk`; see `docs/GEOMETRY.md` (with measured speeds).
+- [x] **GEO-6 (P2, M)** Curves and interpolation: Bézier, Hermite, Catmull-Rom, B-spline, arc-length parameterization, easing. `Curves`, `ArcLengthTable` (`docs/CURVES.md`); easing is `vmath.util.Easing`. No NURBS.
 - [x] **GEO-7 (P2, M)** Polygon utilities: 2D/3D triangulation (ear clipping), polygon clip (Sutherland–Hodgman), winding. `Polygons`; see `docs/GEOMETRY.md`.
 - [ ] **GEO-8 (P3, L)** Signed distance function primitives and CSG combinators (CPU-side, for picking and mesh generation).
 
@@ -333,10 +333,10 @@ can be chained and composed, and they run on SoA bounds.
 
 ### Phase L. Utilities (P2/P3)
 
-- [ ] **UTIL-1 (P2, M)** Random: PCG/xoshiro (fast, seedable, splittable), sampling on sphere/hemisphere/disk, cosine-weighted,
+- [x] **UTIL-1 (P2, M)** *(done except blue-noise tables and scrambled or higher-dimensional Sobol: `Rng` xoshiro256++, `Sequences`; see `docs/UTIL.md`)* Random: PCG/xoshiro (fast, seedable, splittable), sampling on sphere/hemisphere/disk, cosine-weighted,
       Poisson-disk, low-discrepancy (Halton, Sobol, R2), blue-noise tables.
-- [ ] **UTIL-2 (P2, M)** Noise: value/Perlin/simplex/Worley/curl, fBm, domain warping, 2D/3D/4D, batch fill APIs into `float[]`.
-- [ ] **UTIL-3 (P2, S)** Interpolators and smoothing: critically-damped spring, exponential smoothing (frame-rate independent), easing set.
+- [x] **UTIL-2 (P2, M)** *(done, simplex only in 2D and 3D: `Noise`, `docs/UTIL.md`)* Noise: value/Perlin/simplex/Worley/curl, fBm, domain warping, 2D/3D/4D, batch fill APIs into `float[]`.
+- [x] **UTIL-3 (P2, S)** *(done: `Spring`, `Smoothing`, `Easing`)* Interpolators and smoothing: critically-damped spring, exponential smoothing (frame-rate independent), easing set.
 - [ ] **UTIL-4 (P3, M)** Frame-timing/statistics helpers (rolling percentiles) for the bench/diagnostic layer.
 - [ ] **UTIL-5 (P3, M)** SH (spherical harmonics) L1/L2 projection/evaluation, IBL prefilter math, BRDF LUT generator.
 - [ ] **UTIL-6 (P3, M)** Debug draw geometry generators (lines for frustum/AABB/OBB/skeleton) into `float[]`.
