@@ -1,5 +1,6 @@
 package vmath.bulk;
 
+import vmath.annotations.Experimental;
 import vmath.core.Mat4f;
 
 /**
@@ -105,6 +106,7 @@ public final class Mat4fArray extends FloatElements {
      * @param kernel the kernel; must not be {@code null}
      * @throws IllegalArgumentException if the arrays differ in size
      */
+    @Experimental("the SPI may change")
     public static void multiply(Mat4fArray a, Mat4fArray b, Mat4fArray out, MatrixKernel kernel) {
         if (a.size != b.size) {
             throw new IllegalArgumentException("sizes differ: " + a.size + " and " + b.size);
@@ -112,13 +114,6 @@ public final class Mat4fArray extends FloatElements {
         out.ensureCapacity(a.size);
         kernel.multiply(a.data, 0, b.data, 0, out.data, 0, a.size);
         out.size = a.size;
-    }
-
-    /**
-     * The kernel chosen once at startup by {@link MatrixKernels#best()}.
-     */
-    private static final class DefaultKernel {
-        static final MatrixKernel INSTANCE = MatrixKernels.best();
     }
 
     /**
@@ -131,21 +126,21 @@ public final class Mat4fArray extends FloatElements {
      * @param out receives the result; must not be {@code null}
      */
     public void premultiply(Mat4f m, Mat4fArray out) {
+        premultiply(m, out, DefaultKernel.INSTANCE);
+    }
+
+    /**
+     * As {@link #premultiply(Mat4f, Mat4fArray)} with an explicit kernel.
+     *
+     * @param m the matrix; must not be {@code null}
+     * @param out receives the result; must not be {@code null}
+     * @param kernel the kernel; must not be {@code null}
+     */
+    @Experimental("the SPI may change")
+    public void premultiply(Mat4f m, Mat4fArray out, MatrixKernel kernel) {
         out.ensureCapacity(size);
-        float[] src = data, dst = out.data;
-        float m00 = m.m00(), m01 = m.m01(), m02 = m.m02(), m03 = m.m03();
-        float m10 = m.m10(), m11 = m.m11(), m12 = m.m12(), m13 = m.m13();
-        float m20 = m.m20(), m21 = m.m21(), m22 = m.m22(), m23 = m.m23();
-        float m30 = m.m30(), m31 = m.m31(), m32 = m.m32(), m33 = m.m33();
-        for (int i = 0, o = 0; i < size; i++, o += STRIDE) {
-            for (int c = 0; c < 16; c += 4) {
-                float x = src[o + c], y = src[o + c + 1], z = src[o + c + 2], w = src[o + c + 3];
-                dst[o + c] = m00 * x + m10 * y + m20 * z + m30 * w;
-                dst[o + c + 1] = m01 * x + m11 * y + m21 * z + m31 * w;
-                dst[o + c + 2] = m02 * x + m12 * y + m22 * z + m32 * w;
-                dst[o + c + 3] = m03 * x + m13 * y + m23 * z + m33 * w;
-            }
-        }
+        // every column of every matrix is a four-component vector: the product is a batch vector transform
+        kernel.transformVec4(DefaultKernel.matrix(m), 0, data, 0, out.data, 0, size * 4);
         out.size = size;
     }
 

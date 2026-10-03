@@ -73,10 +73,27 @@ data alone). Measured, 100 000 transforms: through a heap `Mat4fArray` and a cop
 
 **Matrix and quaternion kernels.** `Mat4fArray.multiply(a, b, out)` (element-wise product, `out` may alias an input) and `premultiply(Mat4f, out)` (a parent matrix on every element); `QuatArray.nlerp`
 (shortest-arc normalized lerp). Tested against `Mat4f.mul` and `Quatf.nlerp`, including aliasing. Measured for 100 000 elements: `nlerp` 596 us against `slerp` 7 799 us (13 times faster; use it when the
-rotations are close). `multiply` runs through a `MatrixKernel` chosen at startup by `MatrixKernels.best()`: the scalar one, or, when the `vmath-simd` module and `--add-modules jdk.incubator.vector` are present,
-a Vector API kernel (one 128-bit vector per matrix column, fused multiply-add; results can differ from the scalar kernel in the last bit). Measured (JMH, 2 forks of 10 iterations): scalar 2 008 us
-(+-58), SIMD 914 us (+-117) for 100 000 products, so 2.2 times faster (20 ns against 9 ns per matrix). `-Dvmath.matrixKernel=scalar` forces the scalar one. The other kernels (transform of positions, slerp, ...) have no Vector
-API variant: they work on interleaved data where the gain has not been shown, and none was written.
+rotations are close). The batch kernels run through a `MatrixKernel` chosen at startup by `MatrixKernels.best()`: the scalar one (`ScalarMatrixKernel`, the reference), or, when the `vmath-simd` module and
+`--add-modules jdk.incubator.vector` are present, a Vector API kernel (one 128-bit vector per matrix column or per vector, fused multiply-add; results can differ from the scalar kernel in the last bit).
+`-Dvmath.matrixKernel=scalar` forces the scalar one, and every container method has an overload that takes the kernel explicitly (`Mat4fArray.multiply(a, b, out, kernel)`, `premultiply(m, out, kernel)`,
+`Vec3fArray.transformPositions(m, out, kernel)`, `transformDirections`, `Vec4fArray.transform(m, out, kernel)`, `QuatArray.normalizeAll(kernel)`). The kernel interface has `multiply`, `transformVec4`,
+`transformPositions`, `transformDirections` and `normalizeQuaternions`; all but `multiply` have a default that calls the scalar kernel, so a provider can speed up only the ones that win. The three-component
+transforms store four floats per element (one more than the element has; the next element overwrites it, and the last one is stored by components) and read the next element before the store, so the output may be
+the input. `premultiply` is the vector transform over the four columns of every matrix.
+
+Measured (JMH `MatrixKernelBench`, 2 forks of 8 iterations, 100 000 elements, JDK 25, one machine):
+
+| Kernel | Scalar | Vector API | Speed-up |
+| --- | --- | --- | --- |
+| `Mat4fArray.multiply` | 2 100 us (+-245) | 1 161 us (+-244) | 1.8 |
+| `Mat4fArray.premultiply` | 1 318 us (+-56) | 548 us (+-30) | 2.4 |
+| `Vec3fArray.transformPositions` | 214 us (+-10) | 102 us (+-3) | 2.1 |
+| `Vec4fArray.transform` | 309 us (+-9) | 116 us (+-1) | 2.7 |
+| `QuatArray.normalizeAll` | 350 us (+-19) | 274 us (+-2) | 1.3 |
+
+**Tried and dropped.** `BoundsArray.transformFrom` with eight boxes per vector (the matrix entries gathered with a stride of 16 floats): 973 us (+-524) against 825 us (+-38) scalar, so it is not
+faster, and nothing was kept. `slerp`, `toMatrices`, `QuatArray.multiply` and the blend have no Vector API variant and were not tried: slerp branches on the shortest arc and on nearly parallel inputs, and `TransformArray` stores ten floats
+per element, so a vector version needs shuffles per element where the kernels above keep one matrix in registers. The expected gain is unmeasured.
 
 ## Incremental GPU upload: `DirtyRanges`
 

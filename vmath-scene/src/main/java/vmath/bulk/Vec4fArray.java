@@ -172,19 +172,19 @@ public final class Vec4fArray extends FloatElements {
      * @param out receives the result; must not be {@code null}
      */
     public void transform(Mat4f m, Vec4fArray out) {
+        transform(m, out, DefaultKernel.INSTANCE);
+    }
+
+    /**
+     * As {@link #transform(Mat4f, Vec4fArray)} with an explicit kernel.
+     *
+     * @param m the matrix; must not be {@code null}
+     * @param out receives the result; must not be {@code null}
+     * @param kernel the kernel; must not be {@code null}
+     */
+    public void transform(Mat4f m, Vec4fArray out, MatrixKernel kernel) {
         out.ensureCapacity(size);
-        float m00 = m.m00(), m01 = m.m01(), m02 = m.m02(), m03 = m.m03();
-        float m10 = m.m10(), m11 = m.m11(), m12 = m.m12(), m13 = m.m13();
-        float m20 = m.m20(), m21 = m.m21(), m22 = m.m22(), m23 = m.m23();
-        float m30 = m.m30(), m31 = m.m31(), m32 = m.m32(), m33 = m.m33();
-        float[] src = data, dst = out.data;
-        for (int i = 0, o = 0; i < size; i++, o += STRIDE) {
-            float x = src[o], y = src[o + 1], z = src[o + 2], w = src[o + 3];
-            dst[o] = m00 * x + m10 * y + m20 * z + m30 * w;
-            dst[o + 1] = m01 * x + m11 * y + m21 * z + m31 * w;
-            dst[o + 2] = m02 * x + m12 * y + m22 * z + m32 * w;
-            dst[o + 3] = m03 * x + m13 * y + m23 * z + m33 * w;
-        }
+        kernel.transformVec4(DefaultKernel.matrix(m), 0, data, 0, out.data, 0, size);
         out.size = size;
     }
 

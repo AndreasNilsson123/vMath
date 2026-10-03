@@ -3,6 +3,7 @@ package vmath.occlusion;
 import java.util.Arrays;
 import vmath.core.Mat4f;
 import vmath.geo.Aabbf;
+import vmath.geo.DepthRange;
 
 /**
  * A small software depth buffer for occlusion culling: rasterize a few big occluders, then ask
@@ -30,10 +31,17 @@ import vmath.geo.Aabbf;
  * handful of texels instead of the whole rectangle. Anything that reaches the near plane, or has a
  * non-finite corner, is reported visible.
  *
- * <p><b>Limits.</b> Perspective projections only: the {@code w} used for depth is the distance
- * along the view axis, and near clipping is done against a plane {@code w >= nearW}. Occluders are
- * treated as opaque and two-sided; boxes must be solid. Use an occluder only if it really is opaque
- * (a wall, a terrain chunk, a building), never a tree or a window.
+ * <p><b>Projections.</b> {@link #begin} is for perspective projections: the {@code w} used for
+ * depth is the distance along the view axis, and near clipping is done against a plane
+ * {@code w >= nearW}. {@link #beginOrthographic} is for orthographic ones (a shadow cascade, a
+ * top-down or isometric view): there the depth is the position between the near and the far plane
+ * that the matrix itself defines, and the buffer stores one minus that fraction, which is also
+ * linear on the screen.
+ *
+ * <p><b>Limits.</b> Occluders are treated as opaque and two-sided; boxes must be solid. Use an
+ * occluder only if it really is opaque (a wall, a terrain chunk, a building), never a tree or a
+ * window. Anything beyond the far plane of an orthographic view covers nothing (it could not hide
+ * what is inside the view).
  *
  * <p><b>Threads.</b> Building (begin, add..., finish) is single-threaded. After {@link #finish()}
  * the buffer is read-only and {@link #isHidden} can be called from any number of threads. All work
@@ -75,14 +83,21 @@ public final class DepthBuffer {
     private final double[] rowX = new double[4];
     private final double[] rowY = new double[4];
     private final double[] rowW = new double[4];
+    private final double[] rowZ = new double[4];
     private double nearW;
+    // orthographic views: nearness = depthScale * ndcZ + depthBias, 1 at the near plane and 0 at the far plane
+    private boolean ortho;
+    private double depthScale;
+    private double depthBias;
     private boolean begun;
     private boolean mipsValid;
 
-    // scratch (one more vertex than a polygon may have, for the near-plane clip): clip-space x, y, w per vertex
+    // scratch (one more vertex than a polygon may have, for the near-plane clip): clip-space x, y, w and the near-plane coordinate s per vertex
+    // (s is w for a perspective view, where the plane is w = nearW, and the fraction of the way to the far plane for an orthographic one, where it is s = 0)
     private static final int SCRATCH = MAX_POLYGON_VERTICES + 1;
-    private final double[] clipIn = new double[3 * SCRATCH];
-    private final double[] clipOut = new double[3 * SCRATCH];
+    private static final int VERTEX = 4;
+    private final double[] clipIn = new double[VERTEX * SCRATCH];
+    private final double[] clipOut = new double[VERTEX * SCRATCH];
     // screen-space vertices (x, y, 1/w) and per-edge setup
     private final double[] sx = new double[SCRATCH];
     private final double[] sy = new double[SCRATCH];
@@ -167,9 +182,71 @@ public final class DepthBuffer {
         row(rowY, m.m01(), m.m11(), m.m21(), m.m31());
         row(rowW, m.m03(), m.m13(), m.m23(), m.m33());
         this.nearW = nearW;
+        ortho = false;
         Arrays.fill(level[0], 0f);
         begun = true;
         mipsValid = false;
+    }
+
+    /**
+     * Starts a frame for an orthographic view: empties the buffer and sets the camera.
+     *
+     * <p>The matrix must be a view-projection of an orthographic projection (its bottom row is
+     * {@code 0 0 0 w} with {@code w > 0}, as {@link Mat4f#ortho} builds it) in the given depth
+     * convention. The near plane is the one the matrix defines; occluders are clipped against it,
+     * and an object that reaches it is reported visible.
+     *
+     * @param viewProjection the view projection; must not be {@code null}
+     * @param depth how the matrix maps depth; must not be {@code null}
+     * @throws IllegalArgumentException if the bottom row of the matrix is not {@code 0 0 0 w} with
+     *     {@code w > 0}
+     */
+    public void beginOrthographic(Mat4f viewProjection, DepthRange depth) {
+        Mat4f m = viewProjection;
+        if (!(m.m03() == 0f && m.m13() == 0f && m.m23() == 0f && m.m33() > 0f)) {
+            throw new IllegalArgumentException("not an orthographic view-projection (the bottom row must be 0 0 0 w with w > 0)");
+        }
+        row(rowX, m.m00(), m.m10(), m.m20(), m.m30());
+        row(rowY, m.m01(), m.m11(), m.m21(), m.m31());
+        row(rowW, m.m03(), m.m13(), m.m23(), m.m33());
+        row(rowZ, m.m02(), m.m12(), m.m22(), m.m32());
+        switch (depth) {
+            case NEGATIVE_ONE_TO_ONE -> {
+                depthScale = -0.5;
+                depthBias = 0.5;
+            }
+            case ZERO_TO_ONE -> {
+                depthScale = -1.0;
+                depthBias = 1.0;
+            }
+            case REVERSED_ZERO_TO_ONE -> {
+                depthScale = 1.0;
+                depthBias = 0.0;
+            }
+        }
+        ortho = true;
+        nearW = 0.0;
+        Arrays.fill(level[0], 0f);
+        begun = true;
+        mipsValid = false;
+    }
+
+    /**
+     * Computes how near a point is in an orthographic view from the depth that the matrix gives
+     * it.
+     *
+     * <p>Internal helper of the orthographic mode.
+     *
+     * @param x the x coordinate of the point
+     * @param y the y coordinate of the point
+     * @param z the z coordinate of the point
+     * @param w the clip-space w of the point, which is constant for an orthographic projection
+     * @return the nearness: 1 at the near plane and 0 at the far plane, outside that range for
+     *     points beyond them
+     */
+    private double nearness(float x, float y, float z, double w) {
+        double ndcZ = (rowZ[0] * x + rowZ[1] * y + rowZ[2] * z + rowZ[3]) / w;
+        return depthScale * ndcZ + depthBias;
     }
 
     private static void row(double[] r, float a, float b, float c, float d) {
@@ -288,26 +365,29 @@ public final class DepthBuffer {
         double[] in = clipIn;
         for (int i = 0; i < count; i++) {
             float x = positions[i * 3], y = positions[i * 3 + 1], z = positions[i * 3 + 2];
-            in[i * 3] = rowX[0] * x + rowX[1] * y + rowX[2] * z + rowX[3];
-            in[i * 3 + 1] = rowY[0] * x + rowY[1] * y + rowY[2] * z + rowY[3];
-            in[i * 3 + 2] = rowW[0] * x + rowW[1] * y + rowW[2] * z + rowW[3];
+            double w = rowW[0] * x + rowW[1] * y + rowW[2] * z + rowW[3];
+            in[i * VERTEX] = rowX[0] * x + rowX[1] * y + rowX[2] * z + rowX[3];
+            in[i * VERTEX + 1] = rowY[0] * x + rowY[1] * y + rowY[2] * z + rowY[3];
+            in[i * VERTEX + 2] = w;
+            in[i * VERTEX + 3] = ortho ? 1.0 - nearness(x, y, z, w) : w;
         }
-        // clip against w >= nearW (Sutherland-Hodgman with one plane)
+        // clip against s >= nearW (Sutherland-Hodgman with one plane): s is w, or the fraction of the way to the far plane
         double[] out = clipOut;
         int n = 0;
         for (int i = 0; i < count; i++) {
             int j = (i + 1) % count;
-            double wi = in[i * 3 + 2], wj = in[j * 3 + 2];
-            boolean insideI = wi >= nearW, insideJ = wj >= nearW;
+            double si = in[i * VERTEX + 3], sj = in[j * VERTEX + 3];
+            boolean insideI = si >= nearW, insideJ = sj >= nearW;
             if (insideI) {
-                System.arraycopy(in, i * 3, out, n * 3, 3);
+                System.arraycopy(in, i * VERTEX, out, n * VERTEX, VERTEX);
                 n++;
             }
             if (insideI != insideJ) {
-                double t = (nearW - wi) / (wj - wi);
-                out[n * 3] = in[i * 3] + t * (in[j * 3] - in[i * 3]);
-                out[n * 3 + 1] = in[i * 3 + 1] + t * (in[j * 3 + 1] - in[i * 3 + 1]);
-                out[n * 3 + 2] = nearW;
+                double t = (nearW - si) / (sj - si);
+                out[n * VERTEX] = in[i * VERTEX] + t * (in[j * VERTEX] - in[i * VERTEX]);
+                out[n * VERTEX + 1] = in[i * VERTEX + 1] + t * (in[j * VERTEX + 1] - in[i * VERTEX + 1]);
+                out[n * VERTEX + 2] = ortho ? in[i * VERTEX + 2] + t * (in[j * VERTEX + 2] - in[i * VERTEX + 2]) : nearW;
+                out[n * VERTEX + 3] = nearW;
                 n++;
             }
         }
@@ -317,14 +397,15 @@ public final class DepthBuffer {
     }
 
     /**
-     * Rasterizes a convex polygon of {@code m} vertices (each: clip x, clip y, clip w).
+     * Rasterizes a convex polygon of {@code m} vertices (each: clip x, clip y, clip w and the
+     * near-plane coordinate).
      */
     private void rasterize(double[] v, int m) {
         for (int i = 0; i < m; i++) {
-            double w = v[i * 3 + 2];
-            sx[i] = (v[i * 3] / w * 0.5 + 0.5) * width;
-            sy[i] = (v[i * 3 + 1] / w * 0.5 + 0.5) * height;
-            siw[i] = 1.0 / w;
+            double w = v[i * VERTEX + 2];
+            sx[i] = (v[i * VERTEX] / w * 0.5 + 0.5) * width;
+            sy[i] = (v[i * VERTEX + 1] / w * 0.5 + 0.5) * height;
+            siw[i] = ortho ? 1.0 - v[i * VERTEX + 3] : 1.0 / w; // the stored quantity: 1 / w, or the nearness
             if (!(Double.isFinite(sx[i]) && Double.isFinite(sy[i]) && Double.isFinite(siw[i]))) {
                 return;
             }
@@ -524,8 +605,17 @@ public final class DepthBuffer {
         for (int i = 0; i < 8; i++) {
             float x = (i & 1) == 0 ? x0 : x1, y = (i & 2) == 0 ? y0 : y1, z = (i & 4) == 0 ? z0 : z1;
             double w = rowW[0] * x + rowW[1] * y + rowW[2] * z + rowW[3];
-            if (!(w >= nearW)) {
-                return false; // reaches the near plane (or NaN)
+            double key; // the stored quantity of the corner: 1 / w, or the nearness
+            if (ortho) {
+                key = nearness(x, y, z, w);
+                if (!(key <= 1.0)) {
+                    return false; // reaches the near plane (or NaN)
+                }
+            } else {
+                if (!(w >= nearW)) {
+                    return false; // reaches the near plane (or NaN)
+                }
+                key = 1.0 / w;
             }
             double cx = rowX[0] * x + rowX[1] * y + rowX[2] * z + rowX[3];
             double cy = rowY[0] * x + rowY[1] * y + rowY[2] * z + rowY[3];
@@ -534,7 +624,7 @@ public final class DepthBuffer {
             maxSx = Math.max(maxSx, px);
             minSy = Math.min(minSy, py);
             maxSy = Math.max(maxSy, py);
-            nearest = Math.max(nearest, 1.0 / w);
+            nearest = Math.max(nearest, key);
         }
         double needed = nearest * (1.0 + QUERY_SAFETY);
         if (!(needed > 0.0) || !Double.isFinite(needed) || !Double.isFinite(minSx) || !Double.isFinite(maxSx)

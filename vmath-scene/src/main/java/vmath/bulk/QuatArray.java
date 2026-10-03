@@ -1,5 +1,6 @@
 package vmath.bulk;
 
+import vmath.annotations.Experimental;
 import vmath.core.Quatf;
 
 /**
@@ -108,22 +109,17 @@ public final class QuatArray extends FloatElements {
      * the identity.
      */
     public void normalizeAll() {
-        for (int i = 0, o = 0; i < size; i++, o += STRIDE) {
-            float x = data[o], y = data[o + 1], z = data[o + 2], w = data[o + 3];
-            float len = (float) Math.sqrt(x * x + y * y + z * z + w * w);
-            if (len > 1e-20f && len < Float.POSITIVE_INFINITY) {
-                float inv = 1f / len;
-                data[o] = x * inv;
-                data[o + 1] = y * inv;
-                data[o + 2] = z * inv;
-                data[o + 3] = w * inv;
-            } else {
-                data[o] = 0f;
-                data[o + 1] = 0f;
-                data[o + 2] = 0f;
-                data[o + 3] = 1f;
-            }
-        }
+        normalizeAll(DefaultKernel.INSTANCE);
+    }
+
+    /**
+     * As {@link #normalizeAll()} with an explicit kernel.
+     *
+     * @param kernel the kernel; must not be {@code null}
+     */
+    @Experimental("the SPI may change")
+    public void normalizeAll(MatrixKernel kernel) {
+        kernel.normalizeQuaternions(data, 0, size);
     }
 
     /**

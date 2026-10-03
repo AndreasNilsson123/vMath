@@ -3,6 +3,7 @@ package vmath.geo;
 import vmath.annotations.Eps;
 import vmath.annotations.GenerateDouble;
 import vmath.core.Mat3f;
+import vmath.core.Quatf;
 import vmath.core.Vec3f;
 
 /**
@@ -685,6 +686,413 @@ public final class Intersectionf {
         }
         float t = (-dv - (float) Math.sqrt(disc)) / vv;
         return t <= tMax ? t : Float.POSITIVE_INFINITY;
+    }
+
+    // ---------------------------------------------------------------- swept tests
+    //
+    // A sweep moves the first shape by va and the second by vb per unit time; only the relative velocity va - vb matters. The result is
+    // the time of the first contact in [0, tMax], 0 when the shapes already touch, and +Infinity when they do not meet in time. The
+    // sphere sweeps, the capsule-capsule sweep and the box sweep are exact: they cast a ray through the Minkowski sum of the two shapes.
+    // The capsule sweeps against boxes and triangles use conservative advancement (see sweepCapsuleAabb).
+
+    @Eps(d = 1e-10)
+    private static final float ADVANCE_TOLERANCE = 1e-5f;
+
+    private static final int ADVANCE_ITERATIONS = 128;
+
+    /**
+     * Measures the distance from a segment to a fixed shape, which is what conservative
+     * advancement needs to know at each step.
+     *
+     * <p>Internal: implemented by lambdas inside this class only. Stateless implementations may be
+     * called from any thread.
+     */
+    private interface SegmentDistance {
+
+        /**
+         * Measures the squared distance from a segment to the shape.
+         *
+         * @param seg the segment; must not be {@code null}
+         * @return the squared distance, 0 when they touch
+         */
+        float squared(Segmentf seg);
+    }
+
+    /**
+     * Finds the first time a moving sphere touches a moving capsule by casting a ray from the
+     * sphere's centre through the capsule inflated by the sphere's radius.
+     *
+     * @param s the sphere; must not be {@code null}
+     * @param vs the velocity of the sphere; must not be {@code null}
+     * @param c the capsule; must not be {@code null}
+     * @param vc the velocity of the capsule; must not be {@code null}
+     * @param tMax the largest time to test
+     * @return the time of first contact in {@code [0, tMax]} (in units of the velocities), 0 when
+     *     they already touch, and {@code +Infinity} when they do not meet in time; exact
+     */
+    public static float sweepSphereCapsule(Spheref s, Vec3f vs, Capsulef c, Vec3f vc, float tMax) {
+        if (sphereCapsule(s, c)) {
+            return 0f;
+        }
+        Vec3f v = vs.sub(vc);
+        if (!(v.lengthSquared() > 0f)) {
+            return Float.POSITIVE_INFINITY;
+        }
+        return rayCapsule(Rayf.of(s.center(), v), Capsulef.of(c.segment(), c.radius() + s.radius()), tMax);
+    }
+
+    /**
+     * Finds the first time a moving capsule touches a moving sphere; the same as
+     * {@link #sweepSphereCapsule} with the arguments in the other order.
+     *
+     * @param c the capsule; must not be {@code null}
+     * @param vc the velocity of the capsule; must not be {@code null}
+     * @param s the sphere; must not be {@code null}
+     * @param vs the velocity of the sphere; must not be {@code null}
+     * @param tMax the largest time to test
+     * @return the time of first contact in {@code [0, tMax]}, 0 when they already touch, and
+     *     {@code +Infinity} when they do not meet in time; exact
+     */
+    public static float sweepCapsuleSphere(Capsulef c, Vec3f vc, Spheref s, Vec3f vs, float tMax) {
+        return sweepSphereCapsule(s, vs, c, vc, tMax);
+    }
+
+    /**
+     * Finds the first time a moving sphere touches a moving box by casting a ray from the sphere's
+     * centre through the box inflated by the radius: the slab test finds the entry into the
+     * enlarged box, and when that point lies in the rounded edge or corner zone the capsule around
+     * the edge (or the three edges of the corner) decides instead (Ericson, Real-Time Collision
+     * Detection 5.5.7).
+     *
+     * @param s the sphere; must not be {@code null}
+     * @param vs the velocity of the sphere; must not be {@code null}
+     * @param box the box; must not be {@code null}
+     * @param vb the velocity of the box; must not be {@code null}
+     * @param tMax the largest time to test
+     * @return the time of first contact in {@code [0, tMax]}, 0 when they already touch, and
+     *     {@code +Infinity} when they do not meet in time; exact
+     */
+    public static float sweepSphereAabb(Spheref s, Vec3f vs, Aabbf box, Vec3f vb, float tMax) {
+        if (box.distanceSquared(s.center()) <= s.radius() * s.radius()) {
+            return 0f;
+        }
+        Vec3f v = vs.sub(vb);
+        if (!(v.lengthSquared() > 0f)) {
+            return Float.POSITIVE_INFINITY;
+        }
+        float r = s.radius();
+        Rayf ray = Rayf.of(s.center(), v);
+        Aabbf grown = Aabbf.of(new Vec3f(box.minX() - r, box.minY() - r, box.minZ() - r),
+                new Vec3f(box.maxX() + r, box.maxY() + r, box.maxZ() + r));
+        float t = rayAabb(ray, grown, tMax);
+        if (t == Float.POSITIVE_INFINITY) {
+            return t;
+        }
+        float px = s.cx() + v.x() * t, py = s.cy() + v.y() * t, pz = s.cz() + v.z() * t;
+        boolean outX = px < box.minX() || px > box.maxX();
+        boolean outY = py < box.minY() || py > box.maxY();
+        boolean outZ = pz < box.minZ() || pz > box.maxZ();
+        int outside = (outX ? 1 : 0) + (outY ? 1 : 0) + (outZ ? 1 : 0);
+        if (outside <= 1) {
+            return t; // the entry point lies on a flat face of the rounded box
+        }
+        // the corner nearest to the entry point, and its edges
+        float cx = px < 0.5f * (box.minX() + box.maxX()) ? box.minX() : box.maxX();
+        float cy = py < 0.5f * (box.minY() + box.maxY()) ? box.minY() : box.maxY();
+        float cz = pz < 0.5f * (box.minZ() + box.maxZ()) ? box.minZ() : box.maxZ();
+        Vec3f corner = new Vec3f(cx, cy, cz);
+        float best = Float.POSITIVE_INFINITY;
+        if (!outX || outside == 3) {
+            best = Math.min(best, rayCapsule(ray, Capsulef.of(corner, new Vec3f(cx == box.minX() ? box.maxX() : box.minX(), cy, cz), r), tMax));
+        }
+        if (!outY || outside == 3) {
+            best = Math.min(best, rayCapsule(ray, Capsulef.of(corner, new Vec3f(cx, cy == box.minY() ? box.maxY() : box.minY(), cz), r), tMax));
+        }
+        if (!outZ || outside == 3) {
+            best = Math.min(best, rayCapsule(ray, Capsulef.of(corner, new Vec3f(cx, cy, cz == box.minZ() ? box.maxZ() : box.minZ()), r), tMax));
+        }
+        return best;
+    }
+
+    /**
+     * Finds the first time a moving sphere touches a moving oriented box by moving the sweep into
+     * the box's own frame, where the box is axis-aligned, and using {@link #sweepSphereAabb}.
+     *
+     * @param s the sphere; must not be {@code null}
+     * @param vs the velocity of the sphere; must not be {@code null}
+     * @param box the oriented box; must not be {@code null}
+     * @param vb the velocity of the box; must not be {@code null}
+     * @param tMax the largest time to test
+     * @return the time of first contact in {@code [0, tMax]}, 0 when they already touch, and
+     *     {@code +Infinity} when they do not meet in time; exact
+     */
+    public static float sweepSphereObb(Spheref s, Vec3f vs, Obbf box, Vec3f vb, float tMax) {
+        Quatf inverse = box.rotation().conjugate();
+        Spheref local = Spheref.of(box.toLocal(s.center()), s.radius());
+        Aabbf boxLocal = Aabbf.of(box.halfExtents().negate(), box.halfExtents());
+        return sweepSphereAabb(local, inverse.transform(vs.sub(vb)), boxLocal, Vec3f.ZERO, tMax);
+    }
+
+    /**
+     * Finds the first time a moving sphere touches a moving triangle. The sphere's centre travels
+     * as a ray through the triangle inflated by the radius, which is the union of two offset
+     * copies of the triangle, three edge capsules and (inside those) the corner spheres.
+     *
+     * @param s the sphere; must not be {@code null}
+     * @param vs the velocity of the sphere; must not be {@code null}
+     * @param tri the triangle; must not be {@code null}
+     * @param vt the velocity of the triangle; must not be {@code null}
+     * @param tMax the largest time to test
+     * @return the time of first contact in {@code [0, tMax]}, 0 when they already touch, and
+     *     {@code +Infinity} when they do not meet in time; exact. The triangle is two-sided
+     */
+    public static float sweepSphereTriangle(Spheref s, Vec3f vs, Trianglef tri, Vec3f vt, float tMax) {
+        if (sphereTriangle(s, tri)) {
+            return 0f;
+        }
+        Vec3f v = vs.sub(vt);
+        if (!(v.lengthSquared() > 0f)) {
+            return Float.POSITIVE_INFINITY;
+        }
+        float r = s.radius();
+        Rayf ray = Rayf.of(s.center(), v);
+        float best = Math.min(rayCapsule(ray, Capsulef.of(tri.a(), tri.b(), r), tMax),
+                Math.min(rayCapsule(ray, Capsulef.of(tri.b(), tri.c(), r), tMax), rayCapsule(ray, Capsulef.of(tri.c(), tri.a(), r), tMax)));
+        return Math.min(best, sweepPointFlat(s.center(), v, tri.a(), tri.b().sub(tri.a()), tri.c().sub(tri.a()), true, r, tMax));
+    }
+
+    /**
+     * Finds the first time two moving capsules touch. The relative motion of one axis against the
+     * other sweeps a parallelogram (the Minkowski difference of the two segments), so the
+     * capsules touch when a point moving along the relative velocity gets within the sum of the
+     * radii of that parallelogram: two offset faces and four edge capsules decide it.
+     *
+     * @param a the first capsule; must not be {@code null}
+     * @param va the velocity of the first capsule; must not be {@code null}
+     * @param b the second capsule; must not be {@code null}
+     * @param vb the velocity of the second capsule; must not be {@code null}
+     * @param tMax the largest time to test
+     * @return the time of first contact in {@code [0, tMax]}, 0 when they already touch, and
+     *     {@code +Infinity} when they do not meet in time; exact (a nearly parallel pair, whose
+     *     parallelogram is thinner than about a millionth of its length, is treated as parallel)
+     */
+    public static float sweepCapsuleCapsule(Capsulef a, Vec3f va, Capsulef b, Vec3f vb, float tMax) {
+        if (capsuleCapsule(a, b)) {
+            return 0f;
+        }
+        Vec3f v = va.sub(vb);
+        if (!(v.lengthSquared() > 0f)) {
+            return Float.POSITIVE_INFINITY;
+        }
+        float r = a.radius() + b.radius();
+        Rayf ray = Rayf.of(Vec3f.ZERO, v);
+        Vec3f q0 = b.a().sub(a.a());
+        Vec3f e1 = b.b().sub(b.a());
+        Vec3f e2 = a.a().sub(a.b());
+        Vec3f q1 = q0.add(e1), q2 = q1.add(e2), q3 = q0.add(e2);
+        float best = Math.min(Math.min(rayCapsule(ray, Capsulef.of(q0, q1, r), tMax), rayCapsule(ray, Capsulef.of(q1, q2, r), tMax)),
+                Math.min(rayCapsule(ray, Capsulef.of(q2, q3, r), tMax), rayCapsule(ray, Capsulef.of(q3, q0, r), tMax)));
+        return Math.min(best, sweepPointFlat(Vec3f.ZERO, v, q0, e1, e2, false, r, tMax));
+    }
+
+    /**
+     * Finds the first time a moving capsule touches a moving box by conservative advancement: the
+     * capsule is moved forward by the largest step that cannot yet reach the box (the gap between
+     * them divided by the relative speed), until the gap is within a small tolerance of the
+     * radius.
+     *
+     * <p>The distance between two convex shapes that translate is a convex function of time, so
+     * the iteration never skips a contact, and a distance that starts to grow means the shapes
+     * pass by. The result is a lower bound of the true time that is within a small tolerance of
+     * it; when the iteration limit is reached (a grazing pass) the lower bound reached so far is
+     * returned, so a very close miss can be reported as a contact, never the other way round.
+     *
+     * @param c the capsule; must not be {@code null}
+     * @param vc the velocity of the capsule; must not be {@code null}
+     * @param box the box; must not be {@code null}
+     * @param vb the velocity of the box; must not be {@code null}
+     * @param tMax the largest time to test
+     * @return the time of first contact in {@code [0, tMax]}, 0 when they already touch, and
+     *     {@code +Infinity} when they do not meet in time; conservative (never later than the true
+     *     time)
+     */
+    public static float sweepCapsuleAabb(Capsulef c, Vec3f vc, Aabbf box, Vec3f vb, float tMax) {
+        float scale = c.radius() + c.segment().length() + box.size().length();
+        return advance(c.segment(), vc.sub(vb), c.radius(), tMax, scale, seg -> segmentAabbDistanceSquared(seg, box));
+    }
+
+    /**
+     * Finds the first time a moving capsule touches a moving oriented box by moving the sweep into
+     * the box's own frame and using {@link #sweepCapsuleAabb}.
+     *
+     * @param c the capsule; must not be {@code null}
+     * @param vc the velocity of the capsule; must not be {@code null}
+     * @param box the oriented box; must not be {@code null}
+     * @param vb the velocity of the box; must not be {@code null}
+     * @param tMax the largest time to test
+     * @return the time of first contact in {@code [0, tMax]}, 0 when they already touch, and
+     *     {@code +Infinity} when they do not meet in time; conservative, as for
+     *     {@link #sweepCapsuleAabb}
+     */
+    public static float sweepCapsuleObb(Capsulef c, Vec3f vc, Obbf box, Vec3f vb, float tMax) {
+        Quatf inverse = box.rotation().conjugate();
+        Capsulef local = Capsulef.of(box.toLocal(c.a()), box.toLocal(c.b()), c.radius());
+        Aabbf boxLocal = Aabbf.of(box.halfExtents().negate(), box.halfExtents());
+        return sweepCapsuleAabb(local, inverse.transform(vc.sub(vb)), boxLocal, Vec3f.ZERO, tMax);
+    }
+
+    /**
+     * Finds the first time a moving capsule touches a moving triangle by conservative advancement,
+     * with the guarantees described for {@link #sweepCapsuleAabb}.
+     *
+     * @param c the capsule; must not be {@code null}
+     * @param vc the velocity of the capsule; must not be {@code null}
+     * @param tri the triangle; must not be {@code null}
+     * @param vt the velocity of the triangle; must not be {@code null}
+     * @param tMax the largest time to test
+     * @return the time of first contact in {@code [0, tMax]}, 0 when they already touch, and
+     *     {@code +Infinity} when they do not meet in time; conservative (never later than the true
+     *     time). The triangle is two-sided
+     */
+    public static float sweepCapsuleTriangle(Capsulef c, Vec3f vc, Trianglef tri, Vec3f vt, float tMax) {
+        float scale = c.radius() + c.segment().length() + tri.b().sub(tri.a()).length() + tri.c().sub(tri.a()).length();
+        return advance(c.segment(), vc.sub(vt), c.radius(), tMax, scale, seg -> segmentTriangleDistanceSquared(seg, tri));
+    }
+
+    /**
+     * Finds the first time two moving boxes touch by casting a ray from the first box's centre
+     * through the second box grown by the first one's half extents (their Minkowski sum).
+     *
+     * @param a the first box; must not be {@code null}
+     * @param va the velocity of the first box; must not be {@code null}
+     * @param b the second box; must not be {@code null}
+     * @param vb the velocity of the second box; must not be {@code null}
+     * @param tMax the largest time to test
+     * @return the time of first contact in {@code [0, tMax]}, 0 when they already touch, and
+     *     {@code +Infinity} when they do not meet in time; exact
+     */
+    public static float sweepAabbAabb(Aabbf a, Vec3f va, Aabbf b, Vec3f vb, float tMax) {
+        if (a.overlaps(b)) {
+            return 0f;
+        }
+        Vec3f v = va.sub(vb);
+        if (!(v.lengthSquared() > 0f)) {
+            return Float.POSITIVE_INFINITY;
+        }
+        Vec3f h = a.halfSize();
+        Aabbf grown = Aabbf.of(new Vec3f(b.minX() - h.x(), b.minY() - h.y(), b.minZ() - h.z()),
+                new Vec3f(b.maxX() + h.x(), b.maxY() + h.y(), b.maxZ() + h.z()));
+        return rayAabb(Rayf.of(a.center(), v), grown, tMax);
+    }
+
+    /**
+     * Measures the squared distance between a segment and a triangle: zero when the segment pierces
+     * the triangle, otherwise the smallest of the distances from the end points to the triangle
+     * and from the segment to the three edges.
+     *
+     * @param seg the segment; must not be {@code null}
+     * @param tri the triangle; must not be {@code null}
+     * @return the squared distance between the segment and the triangle (0 when they touch)
+     */
+    public static float segmentTriangleDistanceSquared(Segmentf seg, Trianglef tri) {
+        Vec3f n = tri.normal();
+        if (n.lengthSquared() > 0f) {
+            float da = seg.a().sub(tri.a()).dot(n), db = seg.b().sub(tri.a()).dot(n);
+            if ((da <= 0f && db >= 0f) || (da >= 0f && db <= 0f)) {
+                float denom = da - db;
+                Vec3f p = denom == 0f ? seg.a() : seg.a().add(seg.b().sub(seg.a()).mul(da / denom));
+                if (insideTriangle(p, tri, n)) {
+                    return 0f;
+                }
+            }
+        }
+        float best = Math.min(pointTriangleDistanceSquared(seg.a(), tri), pointTriangleDistanceSquared(seg.b(), tri));
+        best = Math.min(best, segmentSegmentDistanceSquared(seg, Segmentf.of(tri.a(), tri.b())));
+        best = Math.min(best, segmentSegmentDistanceSquared(seg, Segmentf.of(tri.b(), tri.c())));
+        return Math.min(best, segmentSegmentDistanceSquared(seg, Segmentf.of(tri.c(), tri.a())));
+    }
+
+    private static boolean insideTriangle(Vec3f p, Trianglef tri, Vec3f n) {
+        return tri.b().sub(tri.a()).cross(p.sub(tri.a())).dot(n) >= 0f
+                && tri.c().sub(tri.b()).cross(p.sub(tri.b())).dot(n) >= 0f
+                && tri.a().sub(tri.c()).cross(p.sub(tri.c())).dot(n) >= 0f;
+    }
+
+    /**
+     * Finds the first time a ball moving along a ray touches the flat face of a triangle or a
+     * parallelogram, which are the two faces at the distance of the radius from its plane, with the
+     * touching point inside the shape; the edges and corners are covered by capsules elsewhere.
+     *
+     * <p>Internal helper of the sweeps. A degenerate shape (area below about a millionth of its
+     * edge lengths) has no face and gives {@code +Infinity}.
+     *
+     * @param o the start of the ray, the centre of the ball; must not be {@code null}
+     * @param v the velocity of the ball; must not be {@code null}
+     * @param q0 the corner the shape's edges start from; must not be {@code null}
+     * @param e1 the first edge vector; must not be {@code null}
+     * @param e2 the second edge vector; must not be {@code null}
+     * @param triangle {@code true} for the triangle {@code q0, q0 + e1, q0 + e2}, {@code false} for
+     *     the parallelogram spanned by the two edges
+     * @param r the radius of the ball
+     * @param tMax the largest time to test
+     * @return the time of contact with a face in {@code [0, tMax]}, or {@code +Infinity}
+     */
+    private static float sweepPointFlat(Vec3f o, Vec3f v, Vec3f q0, Vec3f e1, Vec3f e2, boolean triangle, float r, float tMax) {
+        Vec3f n = e1.cross(e2);
+        float nn = n.dot(n);
+        if (!(nn > 0f) || !(nn > 1e-12f * e1.lengthSquared() * e2.lengthSquared())) {
+            return Float.POSITIVE_INFINITY; // degenerate: the edge capsules cover the whole shape
+        }
+        Vec3f u = n.mul(1f / (float) Math.sqrt(nn));
+        float side = o.sub(q0).dot(u);
+        float vn = v.dot(u);
+        float offset;
+        if (side > r && vn < 0f) {
+            offset = r;
+        } else if (side < -r && vn > 0f) {
+            offset = -r;
+        } else {
+            return Float.POSITIVE_INFINITY;
+        }
+        float t = (offset - side) / vn;
+        if (!(t >= 0f && t <= tMax)) {
+            return Float.POSITIVE_INFINITY;
+        }
+        Vec3f h = o.add(v.mul(t)).sub(u.mul(offset)).sub(q0); // the touching point on the shape's plane, relative to q0
+        float s = h.cross(e2).dot(n) / nn;
+        float w = e1.cross(h).dot(n) / nn;
+        boolean inside = triangle ? s >= 0f && w >= 0f && s + w <= 1f : s >= 0f && s <= 1f && w >= 0f && w <= 1f;
+        return inside ? t : Float.POSITIVE_INFINITY;
+    }
+
+    private static float advance(Segmentf axis, Vec3f v, float r, float tMax, float scale, SegmentDistance distance) {
+        float d = (float) Math.sqrt(distance.squared(axis));
+        if (d <= r) {
+            return 0f;
+        }
+        float speed = v.length();
+        if (!(speed > 0f)) {
+            return Float.POSITIVE_INFINITY;
+        }
+        float tolerance = ADVANCE_TOLERANCE * scale;
+        float t = 0f;
+        for (int i = 0; i < ADVANCE_ITERATIONS; i++) {
+            float gap = d - r;
+            if (gap <= tolerance) {
+                return t;
+            }
+            t += gap / speed;
+            if (!(t <= tMax)) {
+                return Float.POSITIVE_INFINITY;
+            }
+            Vec3f shift = v.mul(t);
+            float next = (float) Math.sqrt(distance.squared(Segmentf.of(axis.a().add(shift), axis.b().add(shift))));
+            if (next > d) {
+                return Float.POSITIVE_INFINITY; // the distance is convex in t: once it grows the shapes are passing by
+            }
+            d = next;
+        }
+        return t;
     }
 
     private static float[] sub(float[] a, float[] b) {

@@ -19,6 +19,9 @@ Nothing has been released yet; the baseline for the compatibility check is the t
 - Geometry: `BoundingVolumes` (minimum enclosing sphere, PCA box, boxes and spheres of transformed boxes) and `KDop` (6, 14, 18 and 26 directions).
 - Camera: `PhysicalCamera` (exposure value, field of view, depth of field), `SolarPosition`, `Atmosphere`, `PreethamSky`.
 - Utilities: `SphericalHarmonics` (two bands: projection, evaluation, irradiance, rotation), `Ibl` (GGX terms, importance sampling, split-sum table and prefiltering), `DebugLines`.
+- Geometry (GEO-2): swept tests in `Intersectionf`: sphere against capsule, box, oriented box and triangle, capsule against capsule (exact), capsule against box, oriented box and triangle (conservative advancement), and box against box (exact); `segmentTriangleDistanceSquared`. Triangles are two-sided; `t` is in units of the velocities.
+- Bulk (MEM-2): the `MatrixKernel` SPI also covers `transformVec4`, `transformPositions`, `transformDirections` and `normalizeQuaternions`, with Vector API versions in `vmath-simd` (2.1 to 2.7 times faster for the transforms, 1.3 for the normalisation, measured) and an overload with an explicit kernel on `Mat4fArray.premultiply`, `Vec3fArray.transformPositions`/`transformDirections`, `Vec4fArray.transform` and `QuatArray.normalizeAll` (marked `@Experimental`). `Mat4fArray.premultiply` now runs through the kernel (2.4 times faster with SIMD).
+- Occlusion (CULL-7): `DepthBuffer.beginOrthographic(viewProjection, depthRange)` for orthographic views in all three depth conventions.
 - `RoadmapBench` and the measured speeds in `docs/API.md`, `docs/GEOMETRY.md`, `docs/CAMERA.md` and `docs/UTIL.md`.
 
 ### Fixed

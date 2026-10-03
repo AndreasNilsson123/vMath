@@ -1,5 +1,6 @@
 package vmath.bulk;
 
+import vmath.annotations.Experimental;
 import vmath.core.Mat4f;
 import vmath.core.Vec3f;
 import vmath.geo.Aabbf;
@@ -161,7 +162,21 @@ public final class Vec3fArray extends FloatElements {
      * @param out receives the result; must not be {@code null}
      */
     public void transformPositions(Mat4f m, Vec3fArray out) {
-        transform(m, out, true);
+        transformPositions(m, out, DefaultKernel.INSTANCE);
+    }
+
+    /**
+     * As {@link #transformPositions(Mat4f, Vec3fArray)} with an explicit kernel.
+     *
+     * @param m the matrix; must not be {@code null}
+     * @param out receives the result; must not be {@code null}
+     * @param kernel the kernel; must not be {@code null}
+     */
+    @Experimental("the SPI may change")
+    public void transformPositions(Mat4f m, Vec3fArray out, MatrixKernel kernel) {
+        out.ensureCapacity(size);
+        kernel.transformPositions(DefaultKernel.matrix(m), 0, data, 0, out.data, 0, size);
+        out.size = size;
     }
 
     /**
@@ -174,22 +189,20 @@ public final class Vec3fArray extends FloatElements {
      * @param out receives the result; must not be {@code null}
      */
     public void transformDirections(Mat4f m, Vec3fArray out) {
-        transform(m, out, false);
+        transformDirections(m, out, DefaultKernel.INSTANCE);
     }
 
-    private void transform(Mat4f m, Vec3fArray out, boolean position) {
+    /**
+     * As {@link #transformDirections(Mat4f, Vec3fArray)} with an explicit kernel.
+     *
+     * @param m the matrix; must not be {@code null}
+     * @param out receives the result; must not be {@code null}
+     * @param kernel the kernel; must not be {@code null}
+     */
+    @Experimental("the SPI may change")
+    public void transformDirections(Mat4f m, Vec3fArray out, MatrixKernel kernel) {
         out.ensureCapacity(size);
-        float m00 = m.m00(), m01 = m.m01(), m02 = m.m02();
-        float m10 = m.m10(), m11 = m.m11(), m12 = m.m12();
-        float m20 = m.m20(), m21 = m.m21(), m22 = m.m22();
-        float tx = position ? m.m30() : 0f, ty = position ? m.m31() : 0f, tz = position ? m.m32() : 0f;
-        float[] src = data, dst = out.data;
-        for (int i = 0, o = 0; i < size; i++, o += STRIDE) {
-            float x = src[o], y = src[o + 1], z = src[o + 2];
-            dst[o] = m00 * x + m10 * y + m20 * z + tx;
-            dst[o + 1] = m01 * x + m11 * y + m21 * z + ty;
-            dst[o + 2] = m02 * x + m12 * y + m22 * z + tz;
-        }
+        kernel.transformDirections(DefaultKernel.matrix(m), 0, data, 0, out.data, 0, size);
         out.size = size;
     }
 

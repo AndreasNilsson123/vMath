@@ -33,19 +33,7 @@ import vmath.annotations.Experimental;
 @Experimental("the SPI may change")
 public final class MatrixKernels {
 
-    private static final MatrixKernel SCALAR = new MatrixKernel() {
-        @Override
-        public String name() {
-            return "scalar";
-        }
-
-        @Override
-        public void multiply(float[] a, int ao, float[] b, int bo, float[] out, int oo, int count) {
-            for (int i = 0, k = 0; i < count; i++, k += Mat4fArray.STRIDE) {
-                Mat4fArray.multiply(a, ao + k, b, bo + k, out, oo + k);
-            }
-        }
-    };
+    private static final MatrixKernel SCALAR = ScalarMatrixKernel.INSTANCE;
 
     private MatrixKernels() {
     }

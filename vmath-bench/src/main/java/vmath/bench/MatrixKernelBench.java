@@ -18,8 +18,11 @@ import org.openjdk.jmh.annotations.TearDown;
 import org.openjdk.jmh.annotations.Warmup;
 import vmath.bulk.Mat4fArray;
 import vmath.bulk.MatrixKernels;
+import vmath.bulk.MatrixKernel;
 import vmath.bulk.QuatArray;
 import vmath.bulk.TransformArray;
+import vmath.bulk.Vec3fArray;
+import vmath.bulk.Vec4fArray;
 import vmath.core.Mat4f;
 import vmath.core.Quatf;
 import vmath.core.Transformf;
@@ -46,6 +49,11 @@ public class MatrixKernelBench {
     private Mat4fArray heapMatrices;
     private Arena arena;
     private MemorySegment upload;
+    private Vec3fArray points, pointsOut;
+    private Vec4fArray vectors, vectorsOut;
+    private Mat4f common;
+    private final MatrixKernel scalarKernel = MatrixKernels.scalar();
+    private final MatrixKernel bestKernel = MatrixKernels.best();
 
     @Setup
     public void setup() {
@@ -67,6 +75,15 @@ public class MatrixKernelBench {
             qb.add(q2);
             transforms.add(new Transformf(new Vec3f((float) r.nextDouble(), (float) r.nextDouble(), (float) r.nextDouble()), q1, Vec3f.ONE));
         }
+        points = new Vec3fArray(N);
+        pointsOut = new Vec3fArray(N);
+        vectors = new Vec4fArray(N);
+        vectorsOut = new Vec4fArray(N);
+        for (int i = 0; i < N; i++) {
+            points.add((float) r.nextDouble(), (float) r.nextDouble(), (float) r.nextDouble());
+            vectors.add((float) r.nextDouble(), (float) r.nextDouble(), (float) r.nextDouble(), 1f);
+        }
+        common = Mat4f.translation(1f, 2f, 3f).mul(Mat4f.rotationY(0.7f)).mul(Mat4f.scaling(1f, 2f, 3f));
         arena = Arena.ofConfined();
         upload = arena.allocate((long) N * 64, 16);
     }
@@ -111,5 +128,53 @@ public class MatrixKernelBench {
     public long uploadDirect() {
         transforms.toMatrices(upload, 0, 64);
         return upload.byteSize();
+    }
+
+    @Benchmark
+    public int positionsScalar() {
+        points.transformPositions(common, pointsOut, scalarKernel);
+        return pointsOut.size();
+    }
+
+    @Benchmark
+    public int positionsBest() {
+        points.transformPositions(common, pointsOut, bestKernel);
+        return pointsOut.size();
+    }
+
+    @Benchmark
+    public int vec4Scalar() {
+        vectors.transform(common, vectorsOut, scalarKernel);
+        return vectorsOut.size();
+    }
+
+    @Benchmark
+    public int vec4Best() {
+        vectors.transform(common, vectorsOut, bestKernel);
+        return vectorsOut.size();
+    }
+
+    @Benchmark
+    public int premultiplyScalar() {
+        a.premultiply(common, out, scalarKernel);
+        return out.size();
+    }
+
+    @Benchmark
+    public int premultiplyBest() {
+        a.premultiply(common, out, bestKernel);
+        return out.size();
+    }
+
+    @Benchmark
+    public int normalizeScalar() {
+        qa.normalizeAll(scalarKernel);
+        return qa.size();
+    }
+
+    @Benchmark
+    public int normalizeBest() {
+        qa.normalizeAll(bestKernel);
+        return qa.size();
     }
 }

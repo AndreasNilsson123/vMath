@@ -162,13 +162,13 @@ Consistency first, then features. All new features are written once in float and
 - [x] **MEM-1 (P1, L)** `vmath-bulk` SoA containers (`Vec3fArray`, `Vec4fArray`, `QuatArray`, `Mat4fArray`, `TransformArray`)  
       *Done (experimental additions): `Vec4fArray`, `SegmentFloatArray` (off-heap twin with typed accessors and `AutoCloseable` growth), `removeSwap` and `compact(VisibilitySet)` on every container, kernels that write straight into a `MemorySegment`. Containers over `float[]` keep their own classes (`docs/BULK.md`).*
       over `float[]` (heap) and `MemorySegment` (off-heap) with one interface-free API pair. Growth policy, capacity, compaction.
-- [ ] **MEM-2 (P1, L)** Kernels: batch transform points/normals, matrix multiply, TRS compose, quaternion normalize/slerp,  
-      *Partial: scalar kernels for transform of positions and directions, normalize, quaternion multiply, slerp, nlerp, toMatrices, blend, AABB transform, `Mat4fArray.multiply`/`premultiply`, `Vec4fArray.transform`. The Vector API is used for the batch matrix product only (`MatrixKernel` SPI, `vmath-simd`, selected at startup, 2.2 times faster measured); the other kernels have no SIMD variant. See `docs/BULK.md`.*
+- [x] **MEM-2 (P1, L)** Kernels: batch transform points/normals, matrix multiply, TRS compose, quaternion normalize/slerp,  
+      *Done: scalar kernels for transform of positions, directions and four-component vectors, normalize, quaternion multiply, slerp, nlerp, toMatrices, blend, AABB transform, `Mat4fArray.multiply`/`premultiply`. Vector API variants (`vmath-simd`, selected at startup through the `MatrixKernel` SPI) where they won, measured: matrix product 1.8 times faster, premultiply 2.4, position transform 2.1, vec4 transform 2.7, quaternion normalize 1.3. A gather-based AABB transform was slower than scalar (973 us against 825 us) and was dropped; slerp, toMatrices and quaternion multiply were not vectorised. See `docs/BULK.md`.*
       AABB transform. Scalar versions first, then Vector API (incubator) variants selected at startup. → MEM-1, INF-1
 - [ ] **MEM-3 (P1, M)** Generate the SoA container and scalar loops from the scalar ops via `@Kernel`/`@Bulk`, so
       new ops don't need hand-written loops. → AF-2
-- [ ] **MEM-4 (P1, M)** `writeTo`/`readFrom` for `ByteBuffer` (with `ByteOrder`), `MemorySegment`, and strided/interleaved variants.  
-      *Partial: `FloatBuffer` writers on the containers; `MemorySegment` and `ByteBuffer` strided/byte-order writers and readers (`Strided`, container `writeTo`/`readFrom`) done; named interleaved vertex-layout writers open (`MeshExport` covers the common mesh case).*
+- [x] **MEM-4 (P1, M)** `writeTo`/`readFrom` for `ByteBuffer` (with `ByteOrder`), `MemorySegment`, and strided/interleaved variants.  
+      *Done: `FloatBuffer` writers on the containers; `MemorySegment` and `ByteBuffer` strided and byte-order writers and readers (`Strided`, container `writeTo`/`readFrom`); interleaving is a stride and an offset per container, so a vertex or instance buffer is filled attribute by attribute (`docs/BULK.md`); `MeshExport` writes named vertex layouts for meshes.*
       Interleaved vertex writers for common layouts.
 - [x] **MEM-5 (P1, M)** Allocators: arena, slab/pool, free-list and ring allocators over `MemorySegment`; persistent-mapped
       buffer ring (N frames in flight) with fence tracking hooks.
@@ -224,9 +224,8 @@ Value records for single shapes; SoA storage in `vmath-bulk` for large sets.
 - [x] **GEO-1 (P1, M)** `Aabb`, `Sphere`, `Plane`, `Ray`, `Segment`, `Triangle`, `Capsule`, `Obb`, `Frustum` (six planes, 96 B),  
       *Done: all nine shapes (`Segment`, `Capsule` added with closest point, bounds, transform; capsule radius scales by the largest axis scale).*
       with construct/merge/expand/transform/contain/closest-point.
-- [ ] **GEO-2 (P1, L)** Intersection matrix, all pairs: ray×{aabb, sphere, plane, tri, obb, capsule}, aabb×{aabb, sphere, plane,  
-      *Partial: ray x {aabb, sphere, plane, triangle}, plane x {aabb, sphere}, sphere x {aabb, sphere, triangle} done; segment-segment, segment-aabb, sphere/capsule/aabb x capsule, capsule x capsule, ray-capsule, OBB-OBB (15-axis SAT) and aabb-triangle (13-axis SAT) done; ray-OBB, sphere-OBB, plane-OBB, plane-triangle and sphere-sphere sweep done; sweeps against boxes and triangles, and capsule sweeps, open.*
-      tri, obb}, sphere×{sphere, plane, tri}, sweep tests, and distance queries. Each with conservative/exact variants documented.
+- [x] **GEO-2 (P1, L)** Intersection matrix, all pairs: ray x {aabb, sphere, plane, tri, obb, capsule}, aabb x {aabb, sphere, plane, tri, obb}, sphere x {sphere, plane, tri}, sweep tests, and distance queries. Each with conservative/exact variants documented.
+      *Done: every pair above, plus segment-segment, segment-aabb, segment-triangle, capsule pairs, OBB-OBB (15-axis SAT) and aabb-triangle (13-axis SAT). Sweeps: sphere x {sphere, aabb, obb, triangle, capsule}, capsule x {capsule, aabb, obb, triangle}, aabb x aabb; the sphere, capsule-capsule and box sweeps are exact, the capsule sweeps against boxes and triangles use conservative advancement. See `docs/CULLING.md`.*
 - [x] **GEO-3 (P1, M)** Robust ray-triangle (watertight, Woop et al.), slab test with correct NaN/0-direction handling.  
       *Done: watertight ray-triangle.*
 - [x] **GEO-4 (P2, M)** *(done: `BoundingVolumes`, `KDop`; see `docs/GEOMETRY.md`)* Bounding-volume fitting: min sphere (Welzl), PCA OBB, k-DOP, bounding-volume from transformed AABB
@@ -259,9 +258,9 @@ can be chained and composed, and they run on SoA bounds.
       *Done: `DynamicAabbTree` with stable handles, fat boxes, SAH insertion, rotations, `optimize()` (depth-first renumbering), fuzz-tested; about 4x slower than `StaticBvh` for frustum queries, see `docs/CULLING.md`.*
 - [x] **CULL-6 (P1, M)** Uniform grid / spatial hash and loose octree; pick per use case with a comparison benchmark.  
       *Done: `UniformGrid` (hash of cells, oversize list) and `LooseOctree`, fuzz-tested against brute force; guidance and numbers in `docs/CULLING.md`. An octree `optimize()` (node renumbering) is the obvious follow-up.*
-- [ ] **CULL-7 (P1, L)** Occlusion culling: software Hi-Z rasterizer on the CPU (SIMD depth tile test), plus the data structures
+- [x] **CULL-7 (P1, L)** Occlusion culling: software Hi-Z rasterizer on the CPU (SIMD depth tile test), plus the data structures
       for GPU Hi-Z (mip-chain sizing, two-phase culling contract).  
-      *Partial: `vmath.occlusion` with `DepthBuffer` (inner-conservative polygon rasterizer, farthest-depth storage, min pyramid, near-plane clipping), `OcclusionStage`, and `HiZ` (pyramid sizing, two-phase contract); property-tested against a ray-versus-box oracle. The SIMD tile test is not built (about 70 ns per tested object today); perspective projections only.*
+      *Done: `vmath.occlusion` with `DepthBuffer` (inner-conservative polygon rasterizer, farthest-depth storage, min pyramid, near-plane clipping, perspective and orthographic views in all three depth conventions), `OcclusionStage`, and `HiZ` (pyramid sizing, two-phase contract); property-tested against a ray-versus-box oracle. A four-objects-per-vector Vector API test was built and dropped: 1.23 times faster (5.25 ms against 6.47 ms for 100k objects), not worth a kernel interface. See `docs/CULLING.md`.*
 - [x] **CULL-8 (P2, M)** LOD selection: distance/screen-space-error metrics, hysteresis, cross-fade factors, output to the visibility set.
       *Done: `LodSelector` (bounding-sphere screen size, descending thresholds, hysteresis, cross-fade, cull-below, bias; history in a caller-owned `byte[]`). Per-object thresholds are not built.*
 - [x] **CULL-9 (P2, M)** Small-feature / contribution culling, backface cluster cone culling (meshlet cone test).

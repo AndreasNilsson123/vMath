@@ -11,10 +11,12 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import vmath.bulk.BoundsArray;
 import vmath.bulk.VisibilitySet;
+import vmath.core.ClipSpace;
 import vmath.core.Mat4f;
 import vmath.core.Rnd;
 import vmath.core.Vec3f;
 import vmath.geo.Aabbf;
+import vmath.geo.DepthRange;
 import vmath.spatial.CullPipeline;
 
 class OcclusionTest {
@@ -380,5 +382,139 @@ class OcclusionTest {
         int left = CullPipeline.of(new OcclusionStage(d)).run(null, b, out);
         assertEquals(2, left);
         assertTrue(out.get(1) && out.get(2) && !out.get(0) && !out.get(3));
+    }
+
+    // ------------------------------------------------------------ orthographic views
+
+    private static final float ORTHO_NEAR = 0.1f;
+    private static final float ORTHO_FAR = 100f;
+
+    /** The view-projection of an orthographic camera, 20 wide and 10 high, in one of the three depth conventions. */
+    private static Mat4f orthographic(Vec3f eye, Vec3f target, DepthRange depth) {
+        Vec3f dir = target.sub(eye).normalize();
+        Vec3f up = Math.abs(dir.y()) > 0.95f ? Vec3f.UNIT_X : Vec3f.UNIT_Y;
+        Mat4f view = Mat4f.lookAt(eye, target, up);
+        Mat4f projection = switch (depth) {
+            case NEGATIVE_ONE_TO_ONE -> Mat4f.ortho(-10f, 10f, -5f, 5f, ORTHO_NEAR, ORTHO_FAR, ClipSpace.OPENGL);
+            case ZERO_TO_ONE -> Mat4f.ortho(-10f, 10f, -5f, 5f, ORTHO_NEAR, ORTHO_FAR, ClipSpace.D3D);
+            case REVERSED_ZERO_TO_ONE -> Mat4f.orthoReversedZ(-10f, 10f, -5f, 5f, ORTHO_NEAR, ORTHO_FAR, ClipSpace.D3D);
+        };
+        return projection.mul(view);
+    }
+
+    private static DepthBuffer orthographicBuffer(Mat4f vp, DepthRange depth, Aabbf... occluders) {
+        DepthBuffer d = new DepthBuffer(128, 64);
+        d.beginOrthographic(vp, depth);
+        for (Aabbf o : occluders) {
+            d.addBox(o);
+        }
+        d.finish();
+        return d;
+    }
+
+    @Test
+    void anOrthographicWallHidesWhatIsBehindItInEveryDepthConvention() {
+        for (DepthRange depth : DepthRange.values()) {
+            Mat4f vp = orthographic(Vec3f.ZERO, new Vec3f(0f, 0f, -1f), depth);
+            DepthBuffer d = orthographicBuffer(vp, depth, box(0f, 0f, -20f, 4f, 4f, 0.5f));
+            assertTrue(d.isHidden(box(0f, 0f, -40f, 1f, 1f, 1f)), depth + ": directly behind the wall");
+            assertTrue(d.isHidden(box(3f, -2f, -45f, 0.5f, 0.5f, 1f)), depth + ": behind, inside its shadow");
+            assertFalse(d.isHidden(box(0f, 0f, -10f, 1f, 1f, 1f)), depth + ": in front of the wall");
+            assertFalse(d.isHidden(box(6f, 0f, -40f, 1f, 1f, 1f)), depth + ": behind but beside it (the wall is 8 wide)");
+            assertFalse(d.isHidden(box(3.5f, 0f, -40f, 1f, 1f, 1f)), depth + ": straddles the edge of the wall");
+            assertFalse(d.isHidden(box(0f, 0f, -20f, 1f, 1f, 5f)), depth + ": reaches through the wall");
+            assertFalse(d.isHidden(box(0f, 0f, -0.05f, 1f, 1f, 1f)), depth + ": reaches the near plane");
+        }
+    }
+
+    @Test
+    void anOrthographicBufferStoresTheNearnessAndClipsAtTheNearPlane() {
+        for (DepthRange depth : DepthRange.values()) {
+            Mat4f vp = orthographic(Vec3f.ZERO, new Vec3f(0f, 0f, -1f), depth);
+            DepthBuffer d = new DepthBuffer(64, 32);
+            d.beginOrthographic(vp, depth);
+            d.addPolygon(new float[] {-4f, -2f, -10f, 4f, -2f, -10f, 4f, 2f, -10f, -4f, 2f, -10f}, 4);
+            float expected = 1f - (10f - ORTHO_NEAR) / (ORTHO_FAR - ORTHO_NEAR);
+            assertEquals(expected, d.invDepth(32, 16), expected * 1e-4f, depth + ": a plane at distance 10 stores one minus the fraction of the way to the far plane");
+            assertTrue(d.coveredPixels() > 100, depth.toString());
+            // a plane behind the far plane covers nothing; one crossing the near plane keeps the part in front of it
+            d.beginOrthographic(vp, depth);
+            d.addPolygon(new float[] {-4f, -2f, -200f, 4f, -2f, -200f, 4f, 2f, -200f, -4f, 2f, -200f}, 4);
+            assertEquals(0, d.coveredPixels(), depth + ": beyond the far plane");
+            d.beginOrthographic(vp, depth);
+            d.addPolygon(new float[] {-4f, -2f, 5f, 4f, -2f, 5f, 4f, 2f, -50f, -4f, 2f, -50f}, 4);
+            assertTrue(d.coveredPixels() > 0, depth + ": the part in front of the near plane is kept");
+            assertEquals(0f, d.invDepth(32, 0), depth + ": and the part behind the camera is not");
+        }
+    }
+
+    @Test
+    void beginOrthographicRejectsAPerspectiveMatrix() {
+        DepthBuffer d = new DepthBuffer(16, 8);
+        Mat4f perspective = Mat4f.perspective(FOVY, ASPECT, NEAR, 100f, ClipSpace.OPENGL);
+        assertThrows(IllegalArgumentException.class, () -> d.beginOrthographic(perspective, DepthRange.NEGATIVE_ONE_TO_ONE));
+        // and begin() after an orthographic frame goes back to perspective
+        Mat4f vp = orthographic(Vec3f.ZERO, new Vec3f(0f, 0f, -1f), DepthRange.ZERO_TO_ONE);
+        d.beginOrthographic(vp, DepthRange.ZERO_TO_ONE);
+        d.begin(viewProjection(Vec3f.ZERO, new Vec3f(0f, 0f, -1f)), NEAR);
+        d.addBox(box(0f, 0f, -20f, 6f, 6f, 0.5f));
+        assertTrue(d.isHidden(box(0f, 0f, -40f, 1f, 1f, 1f)));
+    }
+
+    @Test
+    void anOrthographicBufferNeverHidesAnObjectWithAPointThatCanBeSeen() {
+        int hidden = 0, tested = 0;
+        for (DepthRange depth : DepthRange.values()) {
+            for (int trial = 0; trial < 60; trial++) {
+                Vec3f eye = rnd.nextVec3f().mul(5f);
+                Vec3f forward = rnd.nextVec3f().normalize();
+                Mat4f vp = orthographic(eye, eye.add(forward), depth);
+                List<Aabbf> occluders = new ArrayList<>();
+                int count = 1 + (int) rnd.range(0, 5);
+                for (int i = 0; i < count; i++) {
+                    Vec3f centre = eye.add(forward.mul((float) rnd.range(5, 40))).add(rnd.nextVec3f().mul(1.2f));
+                    occluders.add(Aabbf.fromCenterHalfExtent(centre, new Vec3f((float) rnd.range(1, 6), (float) rnd.range(1, 6), (float) rnd.range(0.3, 4))));
+                }
+                DepthBuffer d = new DepthBuffer(128, 64);
+                d.beginOrthographic(vp, depth);
+                for (Aabbf o : occluders) {
+                    d.addBox(o);
+                }
+                d.finish();
+                for (int k = 0; k < 200; k++) {
+                    Aabbf o = occluders.get((int) rnd.range(0, occluders.size()));
+                    Vec3f where = o.center().add(forward.mul((float) rnd.range(2, 40))).add(rnd.nextVec3f().mul(o.halfSize().length() * 0.25f));
+                    Aabbf c = Aabbf.fromCenterHalfExtent(where, new Vec3f((float) rnd.range(0.1, 1.2), (float) rnd.range(0.1, 1.2), (float) rnd.range(0.1, 1.2)));
+                    tested++;
+                    if (!d.isHidden(c)) {
+                        continue;
+                    }
+                    hidden++;
+                    for (int s = 0; s < 40; s++) {
+                        Vec3f p = s < 8 ? new Vec3f((s & 1) == 0 ? c.minX() : c.maxX(), (s & 2) == 0 ? c.minY() : c.maxY(), (s & 4) == 0 ? c.minZ() : c.maxZ())
+                                : new Vec3f((float) rnd.range(c.minX(), c.maxX()), (float) rnd.range(c.minY(), c.maxY()), (float) rnd.range(c.minZ(), c.maxZ()));
+                        var clip = vp.transform(new vmath.core.Vec4f(p.x(), p.y(), p.z(), 1f));
+                        double sx = (clip.x() / clip.w() * 0.5 + 0.5) * 128, sy = (clip.y() / clip.w() * 0.5 + 0.5) * 64;
+                        if (sx <= 0 || sx >= 128 || sy <= 0 || sy >= 64) {
+                            continue;
+                        }
+                        float inFront = p.sub(eye).dot(forward) - ORTHO_NEAR; // the distance from p back to the near plane
+                        if (!(inFront > 0f)) {
+                            continue;
+                        }
+                        Vec3f start = p.sub(forward.mul(inFront)); // the viewer end of the ray: parallel rays, no single eye
+                        boolean isBlocked = false;
+                        for (Aabbf occluder : occluders) {
+                            if (blocked(start.x(), start.y(), start.z(), p.x(), p.y(), p.z(), occluder)) {
+                                isBlocked = true;
+                                break;
+                            }
+                        }
+                        assertTrue(isBlocked, depth + ": the buffer hid a box but point " + p + " is visible (trial " + trial + ", box " + c + ")");
+                    }
+                }
+            }
+        }
+        assertTrue(hidden > 100, "the test must hide something to mean anything, hid " + hidden + " of " + tested);
     }
 }

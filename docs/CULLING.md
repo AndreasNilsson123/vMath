@@ -190,7 +190,8 @@ then ask whether an object's box is hidden behind them. `DepthBuffer` does the w
 
 ```
 DepthBuffer d = new DepthBuffer(256, 128);
-d.begin(viewProjection, nearDistance);     // clears, sets the camera (perspective only)
+d.begin(viewProjection, nearDistance);     // clears, sets a perspective camera
+// d.beginOrthographic(viewProjection, depthRange);   // or an orthographic one (shadow cascade, top-down view)
 d.addBox(building); d.addPolygon(...);     // occluders, world space, two-sided
 d.finish();                                // builds the min pyramid (read-only after this: queries are thread-safe)
 CullPipeline.of(new CullStages.Frustum(), new OcclusionStage(d)).run(ctx, bounds, visible);
@@ -222,8 +223,19 @@ scene, where the buildings cover 99% of the screen, so read the cost figures rat
 | objects removed among those in the frustum | 99.6% | 99.6% |
 
 The test costs about 70 ns per object (eight double-precision corner projections and a few reads), several times the frustum
-kernel's per-object cost, so run it after the frustum stage and only when there is real occlusion to exploit. A SIMD tile test
-behind a kernel interface of its own (like `FrustumKernel`) is not built; it is the obvious speed-up.
+kernel's per-object cost, so run it after the frustum stage and only when there is real occlusion to exploit.
+
+**Orthographic views.** `beginOrthographic(viewProjection, depthRange)` takes an orthographic view-projection (bottom row `0 0 0 w`, checked) and the depth convention it
+was built with (`NEGATIVE_ONE_TO_ONE`, `ZERO_TO_ONE` or `REVERSED_ZERO_TO_ONE`). There is no `1 / w` to store, since `w` is constant, so the buffer stores the
+*nearness*, one minus the fraction of the way from the near plane to the far plane, which is linear on the screen like `1 / w` and so goes through the same plane fit,
+farthest-in-the-pixel rule and pyramid. The near plane is the one the matrix defines: occluders are clipped against it and an object that reaches it is reported visible;
+an occluder beyond the far plane covers nothing. The property test of the perspective buffer (hidden implies every sampled point is blocked, here by parallel rays that
+end at the near plane) runs for all three conventions.
+
+**A SIMD occlusion test was tried and dropped.** Four objects per vector (double lanes, the eight corner projections done for four objects at once, the rectangle and the
+pyramid reads still scalar per object) gave the same answers as the scalar stage on the benchmark scene and took 5.25 ms against 6.47 ms for the 100k objects (+-0.26 and
++-0.07), 1.23 times faster. That does not pay for a kernel interface and for exposing the buffer's internals to a second module, so the stage stays scalar; the cost is in the
+divisions and the rectangle logic per object, not in something wider vectors remove.
 
 **GPU side.** `HiZ` gives the pyramid sizing (`mipCount`, `mipSize`, `levelFor`) and documents the two-phase contract for
 GPU-driven occlusion culling (test against last frame's pyramid, draw, rebuild the pyramid, test what failed against the new
@@ -341,6 +353,14 @@ conservatively otherwise (radius times the largest axis scale). `Intersectionf` 
 | ray-OBB, sphere-OBB | `rayObb`, `sphereObb` | ray is moved into the box frame (rigid, so `t` is unchanged) and uses the slab test |
 | plane-OBB, plane-triangle | `planeObb`, `planeTriangle` | same `Containment` result as `planeAabb` (INSIDE = in front) |
 | sphere sweep | `sweepSphereSphere` | earliest time of contact of two moving spheres, `0` when already overlapping, `+Infinity` for a miss |
+| sweeps, exact | `sweepSphereCapsule`, `sweepCapsuleSphere`, `sweepSphereAabb`, `sweepSphereObb`, `sweepSphereTriangle`, `sweepCapsuleCapsule`, `sweepAabbAabb` | a ray from the first shape's centre (or, for two capsules, a point) through the Minkowski sum of the two shapes: slab test on the enlarged box, then the edge capsules where the entry lies in a rounded edge or corner zone (Ericson 5.5.7); triangle and capsule-capsule use two offset faces plus edge capsules |
+| sweeps, conservative | `sweepCapsuleAabb`, `sweepCapsuleObb`, `sweepCapsuleTriangle` | conservative advancement: step by (gap - radius) / speed until the gap is within `1e-5` times the combined size of the shapes; distance between translating convex shapes is convex in time, so a growing distance means a miss. Never later than the true time; a grazing pass that exhausts the 128 iterations reports the lower bound reached |
+| segment-triangle | `segmentTriangleDistanceSquared` | 0 when the segment pierces the triangle, otherwise the end points and the three edges |
+
+Sweeps take both velocities (`va`, `vb`); only `va - vb` matters, and `t` is in units of the velocities. They return the first time in `[0, tMax]`, `0` when the shapes already touch,
+`+Infinity` otherwise. The exact sweeps are tested against dense sampling of the gap (2000 steps over `[0, 4]`, with random velocities for both shapes, aimed at the target
+and at box corners and edges, and with parallel capsule axes); the conservative ones against the same sampling with the check that they are never late and are within
+`5e-3` of the sampled time in all but 2% of the grazing cases. Triangles are two-sided.
 
 All overlap predicates are written as "not separated", so a NaN input reports an overlap (conservative). `obbObb` and `aabbTriangle` are tested against a
 vertex-projection SAT with generic axes, skipping pairs within a touching margin where the two may legitimately differ by the epsilon.
