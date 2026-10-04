@@ -12,7 +12,9 @@ import vmath.samples.demos.physics.PileDemo;
 import vmath.samples.demos.portals.PortalsDemo;
 import vmath.samples.demos.sculpt.SculptDemo;
 import vmath.samples.demos.skinning.SkinningDemo;
+import vmath.samples.demos.shadows.ShadowDemo;
 import vmath.samples.demos.sky.SkyDemo;
+import vmath.samples.demos.streaming.StreamingDemo;
 import vmath.samples.demos.terrain.TerrainDemo;
 import vmath.samples.framework.DemoEntry;
 
@@ -46,6 +48,8 @@ public final class Demos {
                 new DemoEntry(LightsDemo.INFO, LightsDemo::new),
                 new DemoEntry(ClusterLodDemo.INFO, ClusterLodDemo::new),
                 new DemoEntry(GpuCullDemo.INFO, GpuCullDemo::new),
-                new DemoEntry(GlobeDemo.INFO, GlobeDemo::new));
+                new DemoEntry(GlobeDemo.INFO, GlobeDemo::new),
+                new DemoEntry(ShadowDemo.INFO, ShadowDemo::new),
+                new DemoEntry(StreamingDemo.INFO, StreamingDemo::new));
     }
 }

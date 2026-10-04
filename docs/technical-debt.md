@@ -16,9 +16,9 @@ Scope uses the roadmap's sizes: S ≈ hours, M ≈ days, L ≈ 1–2 weeks, XL =
 | Critical | 0 | No known wrong result, no unsafe memory access, no open security finding. See section 2 for what was checked to say that. |
 | High | 4 | The GPU-facing layer has never met a GPU; the release identity (group, version, licence holder) is unsettled; 35% of the public API has no documentation; thread-safety contracts are mostly unwritten and two hazards are untested. |
 | Medium | 19 | Experimental surface, test strength outside `vmath.core`, duplicated container and traversal code, oversized classes, package layering, stale README/ROADMAP text, dependency lag, loaders without fuzzing. |
-| Low | 10 | Warnings, dead code, error-signalling style, suppressed lints, small gaps. |
+| Low | 11 | Warnings, dead code, error-signalling style, suppressed lints, small gaps. |
 
-**Progress, 2026-10-02:** 24 of 33 items are ticked (TD-29 to TD-33 were added on 2026-10-04 by the occlusion, rigid-pile, sdf-sculpt, terrain and gpu-culling demos). The 9 open ones: four are only partly done, and each says exactly what is left in its **Status** line: TD-01, TD-06, TD-11, TD-22 (TD-01 needs a GPU, TD-11 needs a decision about modules, TD-22 needs a pinned early-access JDK build, TD-06 is open-ended). The numbers in the table above and the Explanation paragraphs are those of the audit and are not rewritten.
+**Progress, 2026-10-02:** 24 of 34 items are ticked (TD-29 to TD-34 were added on 2026-10-04 by the occlusion, rigid-pile, sdf-sculpt, terrain, gpu-culling and cascaded-shadows demos). The 10 open ones: four are only partly done, and each says exactly what is left in its **Status** line: TD-01, TD-06, TD-11, TD-22 (TD-01 needs a GPU, TD-11 needs a decision about modules, TD-22 needs a pinned early-access JDK build, TD-06 is open-ended). The numbers in the table above and the Explanation paragraphs are those of the audit and are not rewritten.
 
 Index (tick when fixed):
 
@@ -50,6 +50,7 @@ Index (tick when fixed):
 - [x] **TD-26** Low: live backing arrays exposed by the containers and `Mesh`
 - [x] **TD-27** Low: suppressed lints and unchecked casts
 - [x] **TD-28** Low: known functional gaps recorded in prose only
+- [ ] **TD-34** Low: `CascadeCasters` costs more CPU time than the shadow-pass time it saves on cheap geometry (found by the cascaded-shadows demo)
 - [ ] **TD-33** Low: the Hi-Z pyramid of the GPU culling shader needs a power-of-two base and normalised device depth on OpenGL, which no document says (found by the gpu-culling demo)
 - [ ] **TD-32** Medium: the SIMD frustum kernel is slower than the scalar one and allocates on a few hundred boxes (found by the terrain demo)
 - [ ] **TD-30** Medium: the box-box narrow phase costs 10 us per pair and allocates about 9 kB per body per frame (found by the rigid-pile demo)
@@ -499,6 +500,17 @@ None found. The closest calls are listed as High (TD-01, TD-04) with the reason 
 - **Testing required:** none beyond the demo, which is the executable example (`docs/DEMOS.md` C6).
 - **Depends on:** none.
 - **Status:** Open. Found 2026-10-04 by the gpu-culling demo.
+
+### TD-34 — The caster footprint test costs more than the drawing it saves on cheap geometry
+
+- **Severity:** Low. The test is correct (the demo checked that it never culls a box that shadows the slice) and the library says nothing about its cost; a user could expect it to pay for itself.
+- **Affected files:** `camera/CascadeCasters.java` (`cull`, a scalar loop with one light-space box test per box).
+- **Explanation:** With 49,601 boxes and four cascades, the footprint test took 1.3 ms of CPU time per frame (the CPU time of fitting and culling went from 0.89 ms without it to 2.21 ms with it, the frustum kernel being the SIMD one) and removed 19,100 of 49,400 draws from the shadow maps (30,290 casters instead of 49,393), which saved 0.13 ms of GPU time (0.73 ms against 0.87 ms for the four passes). The frame went from 2.16 ms to 3.46 ms. A shadow pass of cubes is cheap; the same test on expensive casters, or at a smaller cost per box, would pay. This is the same shape as TD-29, on the CPU side of a different test.
+- **Recommended fix:** a kernel for the footprint test in the style of `FrustumKernel` (planar float arrays, the Vector API where `vmath-simd` is present), or a hierarchical form (test the nodes of a BVH or grid instead of every box); and a sentence in the Javadoc of `CascadeCasters` that says what it costs per box and that it pays only when the caster is expensive.
+- **Estimated scope:** M.
+- **Testing required:** the kernel against the scalar loop on random boxes and cascades; `cascaded-shadows` as the benchmark (`--no-footprint` is the comparison).
+- **Depends on:** none.
+- **Status:** Open. Found 2026-10-04 by the cascaded-shadows demo.
 
 ---
 

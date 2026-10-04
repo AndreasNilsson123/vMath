@@ -10,11 +10,11 @@ library build.
 
 ## 1. Where we are
 
-The framework (phase F) and thirteen demos are done: `city`, `culling-lab`, `interior-portals`, `occlusion`, `dq-vs-lbs`, `rigid-pile`, `sdf-sculpt`, `terrain`, `sky-sun`, `cluster-lod`, `gpu-culling`, `clustered-lights` and `globe`. Everything else in section 4 is the backlog. A card has numbers only for a demo that has run.
+The framework (phase F) and fifteen demos are done: `city`, `culling-lab`, `interior-portals`, `occlusion`, `dq-vs-lbs`, `rigid-pile`, `sdf-sculpt`, `terrain`, `sky-sun`, `cluster-lod`, `gpu-culling`, `clustered-lights`, `globe`, `cascaded-shadows` and `streaming-ring`. Everything else in section 4 is the backlog. A card has numbers only for a demo that has run.
 
 | | |
 |---|---|
-| Demos | 13 of 25 (`city`, `culling-lab`, `interior-portals`, `occlusion`, `dq-vs-lbs`, `rigid-pile`, `sdf-sculpt`, `terrain`, `sky-sun`, `cluster-lod`, `gpu-culling`, `clustered-lights`, `globe`) |
+| Demos | 15 of 25 (`city`, `culling-lab`, `interior-portals`, `occlusion`, `dq-vs-lbs`, `rigid-pile`, `sdf-sculpt`, `terrain`, `sky-sun`, `cluster-lod`, `gpu-culling`, `clustered-lights`, `globe`, `cascaded-shadows`, `streaming-ring`) |
 | Framework | launcher with a menu, runner, HUD, camera, instance stream, box renderer, debug lines, depth-buffer inset, shared scenes, warm-up, statistics and report, screenshot, smoke check |
 | Verified on | NVIDIA GeForce RTX 3060 Laptop GPU, driver 546.30, OpenGL 4.5, Windows 11, JDK 25 (one machine; other vendors and systems are unchecked) |
 
@@ -64,6 +64,7 @@ vmath-samples/tools/make_run_configs.py   writes .run/Demo_<id>*.run.xml
 | `GpuTimer` | `GL_TIME_ELAPSED` read a few frames late; a demo may make more than one | |
 | `SceneTarget` | an offscreen frame with colour and a sampleable, readable depth texture, blitted to the window | |
 | `ReadbackRing` | reads a GPU counter back two or three frames late through a fenced copy, without stalling | |
+| `GlFences` | the fence operations of `PersistentBufferRing` for OpenGL (`glFenceSync`, `glClientWaitSync`, `glDeleteSync`) | |
 | `BoxRenderer` | the unit cube, its program, and the instanced draw of an `InstanceStream` | `Primitives.box`, `MeshOptimizer`, `VertexLayout` |
 | `Scenes` | the shared procedural scenes: `city` (noise heights) and `blocks` (buildings with props in the streets) | `BoundsArray`, `Noise`, `Rng` |
 | `OrbitCamera` | orbit around a point with the left mouse button, zoom with the wheel, a scripted turn | `Cameraf` |
@@ -178,23 +179,24 @@ Does not prove: what the demo cannot tell you.
       *Done: sliders for the hour, the day, the latitude, the turbidity, the focal length, the aperture, the sensitivity and the shutter time or exposure compensation, an automatic shutter, six curves; the sun, sky, atmosphere and exposure numbers are on the screen, and the shader's curves are checked against `ToneMap` and `Srgb` (`--verify`).*
 - [x] **R2 (P1, L)** `globe`: the whole Earth as a WGS-84 ellipsoid (`Wgs84`, `Geodetic`), a flight from orbit to street level with a `FloatingOrigin`; a key turns camera-relative rendering off and shows the jitter that it removes (`Rebase`, `FrameTransformf`). Shows: large worlds in single-precision rendering. Measures the vertex error with and without rebasing.
       *Done, and extended with map tiles: a Web Mercator pyramid of height and image tiles on the ellipsoid, chosen by the screen size of their meshes, streamed in on worker threads and drawn camera-relative, from 20,000 km to 2 m. It needed new library classes (`WebMercator`, `TileId`, `TileBounds`, `HorizonCuller`, `Ellipsoids`, `TerrainRgb`, `TileSelector`; `docs/LARGE_WORLDS.md`). The tiles are procedural, because the demos download nothing.*
-- [ ] **R3 (P2, L)** `cascaded-shadows`: `Cascades` fit and `CascadeCasters` culling per slice, four shadow maps, the splits and the casters drawn. Shows: shadow-cascade math and caster culling. → F12
+- [x] **R3 (P2, L)** `cascaded-shadows`: `Cascades` fit and `CascadeCasters` culling per slice, four shadow maps, the splits and the casters drawn. Shows: shadow-cascade math and caster culling.
+      *Done: four cascades of 2,048 by 2,048 texels fitted by `Cascades.fitAll`, the casters of each by `Cascade.frustum()` and `CascadeCasters`, one layer of a depth array texture per cascade read through a shadow sampler, `Cascade.textureMatrix()` used by the shader as it is; `--verify` checks the culling and the lookup against brute force. It found TD-34.*
 - [ ] **R4 (P2, M)** `ibl-spheres`: a grid of material spheres lit by `SphericalHarmonics` irradiance and `Ibl` GGX prefiltering of the procedural sky. Shows: image-based lighting. → F12, R1
 - [ ] **R5 (P3, M)** `mirrors-stereo`: a planar reflection and a portal view (`PlanarViews`) and a side-by-side stereo pair (`Stereo`). Shows: the view-matrix constructions. → F12
 - [ ] **R6 (P3, S)** `color-lab`: colour spaces and tone maps side by side (`ColorSpaces`, `Srgb`, `ToneMap`). Shows: the colour math.
 
 ### Phase T: tour and capture
 
-- [ ] **T1 (P2, M)** `streaming-ring`: `PersistentBufferRing` and the allocators under a synthetic streaming load, region occupancy and stalls shown. Shows: the memory layer.
+- [x] **T1 (P2, M)** `streaming-ring`: `PersistentBufferRing` and the allocators under a synthetic streaming load, region occupancy and stalls shown. Shows: the memory layer.
+      *Done: chunks of points streamed through a persistently mapped ring into a pool that `FreeListAllocator` (first fit or best fit) or `SlabAllocator` manages, 200,000 particles written into the ring every frame and drawn from it, teleports, a GPU load that the keys set; the pool is read back and compared with the chunks (`--verify`).*
 - [ ] **T2 (P2, M)** `tour`: runs a chosen sequence of demos on their scripted paths and writes the screenshots and the combined markdown report (the material for a README gallery and release notes). Mostly `--sequence` with `--screenshot` and `--report`, which exist; this is the script and the page.
 - [ ] **T3 (P3, S)** `valhalla-allocation`: the HUD allocation counter of a demo on the plain build against the `-Pvalhalla` build (needs JDK 28).
 
 ### Order
 
-1. Done: F1-F14, C1-C7, A2, P1, P2, P4, R1, R2: the five that show the widest range, the terrain, the three GPU demos and the globe.
+1. Done: F1-F14, C1-C7, A2, P1, P2, P4, R1, R2, R3, T1: the five that show the widest range, the terrain, the GPU demos, the globe, the shadows and the memory layer.
 3. **A1** `crowd`, the other one that looks like a product.
-4. **R3** `cascaded-shadows`, the last of the GPU demos (the other three closed most of TD-01).
-5. The rest by interest.
+4. The rest by interest.
 
 ---
 
@@ -654,3 +656,80 @@ Far from the surface the gain disappears (the HUD showed 1.17 m for the naive pi
 **Findings.** (1) With the selection by screen size the horizon test removes almost nothing (1.6 nodes per frame): the tiles behind the horizon are far away and so are coarse, the frustum has already removed most of the rest, and the few big tiles that straddle the horizon cannot be culled by a test that has to be conservative. It is cheap (40 ns a node) and correct, but on a descent like this one it saves one tile in 320. (2) The balance splits 59 tiles per frame on average, and tiles one level apart do occur next to each other (the library's test sees them), so the skirts have work to do. (3) Camera-relative rendering takes the position error near the camera from 0.05 to 0.27 m down to under a millimetre; far from the surface it gains nothing, and does not need to. (4) A descent from orbit needs 2,500 tiles of this size and a free flight much more, so the cache and its eviction are part of the demo, not an extra: `--pixels 3` shows what happens when the working set exceeds the slots. (5) The image arrays are limited to 2,048 layers by the driver, which is why there are four of 1,024.
 
 **Does not prove.** That the maths is right for the real Earth's data (the tiles are noise on an exact geometry), a download or a decode path for real tiles (the codecs are exercised, a network and a PNG decoder are not), geoid heights (the heights are above the ellipsoid), an atmosphere (a haze and a rim glow only), depth precision from orbit to the ground in one depth buffer (the near and far planes follow the height, but there is no logarithmic depth), shadows, water, and anything about other GPUs or the speed of the workers while flying (a scripted run waits for the tiles).
+
+### cascaded-shadows: Cascaded shadow maps with caster culling
+
+**Claim.** A moving sun lights a city of 49,601 boxes through four cascaded shadow maps that the library fits, each drawn from only the boxes that can shadow its slice; the culling never removed a box that shadows a point of a slice (0 of 11,127 shadowing boxes), the maps drawn from the casters are texel for texel the maps drawn from every box, and a lookup with `Cascade.textureMatrix()` agrees with a ray to the sun at all but 16 of 8,930 surface points, none of which a ray within two texels contradicts.
+
+**Uses.** `Cascades.fitAll` (the splits, the stabilised and texel-snapped light-space projections), `Cascade.frustum()` and `CascadeCasters` (the two culling stages of each map), `Cascade.textureMatrix()` and `texelSize()` (the shader's lookup), `CullPipeline` with the SIMD frustum kernel, `Cameraf`, `Intersectionf.rayAabb` (the brute-force ground truth), `InstanceWriter.writeBox`, `DebugLines.frustum`, `GpuTimer`.
+
+**Controls.** `G` free camera (`W A S D`, `Space`, `Shift`, mouse), `C` tints the scene by cascade, `L` switches the footprint test of `CascadeCasters` off, `X` freezes the camera that the cascades are fitted to and draws the volumes of the cascades and of that camera's frustum (fly away with `G`), `P` stops the sun.
+
+**Options.** `--blocks N` (40: 1,600 buildings), `--props N` (30), `--cascades N` (4, up to 8), `--map N` (2048), `--lambda L` (0.8), `--distance D` (400 m), `--no-stabilize`, `--no-footprint`, `--tint`, `--show`, `--verify`.
+
+**How it works.** Each frame the camera's range is split and a cascade is fitted to each slice. The boxes of the city sit in one storage buffer; each pass reads its own list of box indices (the view, and one list per cascade) and draws the cubes with one instanced call. A shadow pass renders the casters of a cascade into one layer of a depth array texture (polygon offset, no culling); the scene pass selects the cascade by the clip-space `w`, moves the position along the normal by one and a half texels, transforms it by the cascade's `textureMatrix()` and reads 3 by 3 taps of a hardware-comparing sampler.
+
+**Measured.** JDK 25, NVIDIA GeForce RTX 3060 Laptop GPU, window 1600 x 900, vsync off, no HUD, 800 frames after 100 of warm-up, a slow circle above the roofs of 49,601 boxes (a sun that turns once in 120 s), four cascades of 2,048 x 2,048 texels, shadow distance 400 m, the splits 0.5, 22.2, 51.4, 120.2 and 400 m with texels of 0.026, 0.058, 0.135 and 0.456 m.
+
+| | footprint test on (default) | `--no-footprint` |
+|---|---|---|
+| boxes in the view frustum | 21,446 | 21,446 |
+| casters in all four maps | 30,290 (2, 72, 2,044 and 28,171) | 49,393 (4, 376, 4,702 and 44,311) |
+| of them outside the view | 10,667 | 26,378 |
+| fit and cull on the CPU | 2.206 ms | 0.891 ms |
+| GPU: the four shadow passes | 0.732 ms | 0.865 ms |
+| GPU: the scene | 0.343 ms | 0.300 ms |
+| frame | 3.456 ms | 2.160 ms |
+| allocated on the render thread | 8,036 B per frame (smoke budget 16,384 B) | 7,325 B |
+
+With a 1,024-texel map the shadow passes took 0.427 ms and the texels doubled (0.053, 0.115, 0.270 and 0.912 m). With one cascade the fit and cull was 1.573 ms, the shadow pass 0.408 ms and the frame 2.512 ms; with eight, 3.268 ms, 1.084 ms and 4.185 ms (the four-cascade default: 2.206, 0.732 and 3.456).
+
+**Verification.** `--verify` runs at three views (frames 0, 400 and 900 of the flight, with the sun at three places): (1) points of each slice (3,000 per cascade and view) are traced to the sun against all 49,601 boxes, and every box that shadows one of them (11,127 points were in shadow) must be a caster: 0 were culled; (2) the four maps from the casters are compared with the maps from every box, texel by texel inside the slice's footprint in the map up to the depth of its farthest corner (what lies deeper can never shadow it): 0 of 1.8 to 2.1 million texels per cascade differ; outside the footprint, in the extra that the fitted sphere adds, 0.2 to 1.6 million texels per cascade do differ, which is what `CascadeCasters` promises (it keeps the boxes that can shadow the slice, not everything that the map could see); (3) 6,000 rays through random pixels per view find the surface point, and the verdict of a nearest-texel read of the map with the library's texture matrix is compared with a ray from the point to the sun: 8,930 points, 16 disagreeing (0.18%), 0 of which no ray within two texels agrees with (the mismatches are on shadow edges). `ShadowSceneTest` repeats (1) on the CPU for six cameras and sun positions.
+
+**Findings.** (1) The first run of `Cascade.textureMatrix()` and its depth convention on a GPU: with `DepthRange.NEGATIVE_ONE_TO_ONE` the matrix gives the depth that OpenGL stores with the default depth range, and the shader uses it unchanged. (2) The footprint test costs more than it saves here: 1.3 ms of CPU time to remove 19,100 draws that cost 0.13 ms of GPU time (TD-34). (3) 35% of the casters (10,667 of 30,290) are outside the view frustum: a culling of the casters by the view alone would leave their shadows out. The far cascade carries almost all the casters (28,171 of 30,290) because its slice is 280 m deep. (4) A `CullStages.Frustum` owns the scratch memory of its kernel (about 29 KB), so creating one for each pass of a frame allocated 124 KB per frame; one stage for all the passes brought it to 8 KB, the documented use ("give each thread its own stage"). (5) The first run of `--verify` failed on the maps because it ran in `create()`, before the runner has set the state of a frame: with the depth test off nothing is written to a depth buffer; the demo now sets what it needs.
+
+**Does not prove.** A scene of more than boxes (no alpha casters, no skinned or instanced meshes), blending between cascades (the edge of a cascade is visible when tinted), filtering beyond hardware 3 by 3 percentage-closer, a bias that is right for other scenes (the normal offset and the depth bias were chosen for this one), and other GPUs.
+
+### streaming-ring: Streaming through a ring and a pool
+
+**Claim.** Chunks of points stream through a persistently mapped ring into a pool in GPU memory under teleports and a GPU that lags the CPU, and the numbers say what the ring's regions and the pool's allocator cost: one region halves the frame rate of this load (15.4 ms against 8.6 ms), four never waited, a first-fit pool that is 15% larger than its working set ends up 61% fragmented, and every chunk that was read back from the pool equals its content (5,790 chunks).
+
+**Uses.** `PersistentBufferRing` (`beginFrame`, `allocate`, `endFrame`, `stalls`, `highWaterMark`, `used`, `drain`; `GlFences` supplies the fences), `FreeListAllocator` (first fit and best fit, `largestFree`, `freeBytes`, `blockCount`, `allocatedBytes`, `validate`), `SlabAllocator`, `DrawCommandBuffer` (`addArrays`), `glMultiDrawArraysIndirect`, `GpuTimer`.
+
+**Controls.** `F` changes the number of regions of the ring (1 to 4), `P` changes the allocator of the pool (and empties it), `[` and `]` halve and double the GPU load, `T` jumps to a new place now, `B` stops the camera. The display shows the regions with their use, the pool with its reserved share, the numbers of the frame and a map of the neighbourhood (green resident, red wanted and missing, grey resident and no longer wanted).
+
+**Options.** `--world N` (160 cells of 32 m), `--radius N` (14: a neighbourhood of 665 cells), `--pool-mb N` (30), `--pool first-fit|best-fit|slab`, `--region-mb N` (16), `--budget-mb N` (8: the most uploaded in one frame), `--frames-in-flight N` (3), `--particles N` (200,000), `--gpu-load N` (2), `--speed S` (25 cells per second), `--teleport SECONDS` (3), `--verify`.
+
+**How it works.** The camera flies a loop over the world and jumps to a new place every three seconds, which makes the whole neighbourhood missing at once. Each frame the chunks beyond the neighbourhood and a margin of two cells are freed, then the missing cells are walked nearest first: a chunk (400 to 6,000 points of 16 bytes, unevenly distributed so that small chunks dominate: 36 KB on average) is written into the ring's region, copied into the pool at the offset that the allocator gave it with `glCopyNamedBufferSubData` and put in the draw list, until the byte budget of the frame or the region is used up. When the pool has no room the farthest chunk that is outside the wanted disc is freed and the allocation tried again. The 200,000 particles of the frame go into the same region and are drawn straight from the ring. A filler pass whose cost the GPU load sets makes the GPU the slower side.
+
+**Measured.** JDK 25, NVIDIA GeForce RTX 3060 Laptop GPU, window 1600 x 900, vsync off, no HUD, 900 frames after 100 of warm-up, the defaults above unless a row says otherwise. A frame uploads 3.77 MB: 3.2 MB of particles and 0.57 MB of chunks (15.9 chunks); the high-water mark of the region is 11.04 MB of 16 MB, which is the budget of 8 MB (a teleport frame) plus the particles.
+
+| regions | waits of the ring (of 999 frames) | time waiting, mean per frame | frame | GPU |
+|---|---|---|---|---|
+| 1 | 998 | 7.65 ms | 15.41 ms | 7.68 ms |
+| 2 | 634 | 1.18 ms | 8.90 ms | 7.99 ms |
+| 3 | 415 | 0.77 ms | 8.64 ms | 8.05 ms |
+| 4 | 0 | 0.04 ms | 8.44 ms | 7.83 ms |
+
+With no filler (`--gpu-load 0`) one region took 11.38 ms against 7.75 ms for three (no waits; the frame is then limited by the CPU, which writes the particles and the chunks), and with a filler of 8 (a GPU time of 29.3 ms) three regions waited 21.5 ms per frame in 985 of 999 frames: when the GPU is the slower side, more regions do not help. A region of 6 MB with a budget of 2 MB held the same frame time (8.64 ms) but 35.6 chunks were missing on average against 19.6, and 67 uploads were deferred against 13.
+
+The pool, with three regions and the filler of 2 (chunks resident are the mean of the run; 665 are wanted, 719 are held with the margin; the working set is about 26 MB):
+
+| pool | resident | missing | fragmentation at the end | largest free block / free bytes | failed attempts |
+|---|---|---|---|---|---|
+| first fit, 30 MB | 719 | 19.6 | 60.6% | 1.31 / 4.4 MB | 0 |
+| best fit, 30 MB | 719 | 19.6 | 37.8% | 2.62 / 4.4 MB | 0 |
+| first fit, 26 MB | 693 | 26.0 | 91.8% | 0.04 / 2.3 MB | 13,355 |
+| best fit, 26 MB | 710 | 22.1 | 88.0% | 0.07 / 2.0 MB | 4,744 |
+| first fit, 24 MB | 656 | 35.6 | 94.5% | 0.05 / 2.1 MB | 27,499 |
+| best fit, 24 MB | 671 | 31.1 | 92.5% | 0.05 / 1.6 MB | 22,022 |
+| slab, 30 MB (blocks of 96,000 B) | 326 | 346.9 | 0.6% | none free | 342,356 |
+| slab, 60 MB | 651 | 30.2 | 1.2% | none free | 22,837 |
+
+(A failed attempt is a chunk that did not fit and is tried again the next frame; the free list's blocks numbered 937 to 1,060 at the end, the slab's 327 and 655.) The render thread allocated 1,226 to 1,273 B per frame in every run (smoke 691 B, budget 16,384 B).
+
+**Verification.** `--verify` reads every resident chunk back from the pool every 120 frames and compares it byte for byte with the content that the plan generates for its cell, checks `FreeListAllocator.validate()` and that the allocator's books equal the sum of the resident chunks: 5,723 chunks in 8 rounds were right with two regions, a best-fit pool of 26 MB (4,744 failed attempts, 15,442 evictions) and waits on 768 frames, and 5,790 chunks in 8 rounds with one region of 10 MB and a budget of 6 MB (high water 9.05 MB, a wait on 998 of 999 frames); none was wrong. `StreamingTest` checks the pools against overlap and the books, the plan and the options without a window.
+
+**Findings.** (1) With one region the CPU and the GPU take turns: 15.4 ms is the CPU's own 7.7 ms (the frame with three regions and no filler) plus a wait of 7.65 ms for the GPU's 7.7 ms. Two regions recover almost all of it (8.9 ms), three or four the rest; beyond what the GPU is busy for, extra regions only add latency. (2) A region has to hold the byte budget plus whatever else the frame writes: the high water of 11.04 MB is 8 MB of chunks plus 3.2 MB of particles, and a region smaller than that makes the streamer defer uploads (the 6 MB region with a 2 MB budget had 35.6 chunks missing on average). (3) `PersistentBufferRing.stalls()` counts the waits but not how long they were; the demo times `beginFrame` itself. (4) A free list fragments quickly at the load that a streamer has: at 15% over the working set first fit left a largest free block of 1.31 MB in 4.4 MB free (60.6%), best fit 2.62 MB (37.8%), and at the working set itself both are above 88% and allocations fail in the thousands, so the demo has to evict chunks that it still wants. (5) A slab never fragments (at most 1.2%) but gives every chunk the block of the largest one: with chunks of 36 KB on average in blocks of 96 KB, 30 MB holds 326 of the 665 chunks that are wanted, and 60 MB is needed for 651. (6) The allocators and the ring needed no change; the first version of the demo had no way to tell the waiting from the working, which is why the wait is timed.
+
+**Does not prove.** The bandwidth of a real transfer (the copy is inside one GPU and 3.6 GB over 15 s is a small rate for it), a separate transfer queue or loader thread (the chunks are generated on the render thread, which is part of the CPU time of a frame), other drivers (this driver let the CPU run about three frames ahead, which is why four regions never waited), or what real asset sizes do to the pool (the sizes here are generated).
