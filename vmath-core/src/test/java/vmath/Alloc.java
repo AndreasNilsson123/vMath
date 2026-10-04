@@ -42,7 +42,7 @@ public final class Alloc {
     }
 
     private static void requireApplies() {
-        org.junit.jupiter.api.Assumptions.assumeTrue(applies(), "the allocation contract is only measured with the JIT enabled (not under -Xint, a debugger or C1-only interpretation)");
+        Environment.require(applies(), "the allocation contract is only measured with the JIT enabled (not under -Xint, a debugger or C1-only interpretation)");
     }
 
 

@@ -485,7 +485,7 @@ public final class Sdfs {
      * @return the remaining {@code |d|}
      */
     public static float project(Sdf sdf, float x, float y, float z, int maxIterations, float tolerance, float h, float[] out) {
-        float[] n = NORMAL.get();
+        float[] n = out; // the result array is scratch until the final write; x, y and z are locals
         float d = sdf.distance(x, y, z);
         for (int i = 0; i < maxIterations && Math.abs(d) > tolerance; i++) {
             if (!normal(sdf, x, y, z, h, n)) {
@@ -527,6 +527,7 @@ public final class Sdfs {
          * start.
          */
         public boolean inside;
+        private final float[] scratch = new float[3];
 
         /**
          * Creates an empty result.
@@ -581,7 +582,7 @@ public final class Sdfs {
                 hit.z = z;
                 hit.steps = step;
                 hit.inside = d < 0f && t == tMin;
-                float[] n = NORMAL.get();
+                float[] n = hit.scratch;
                 normal(sdf, x, y, z, epsilon, n);
                 hit.nx = n[0];
                 hit.ny = n[1];
@@ -597,8 +598,6 @@ public final class Sdfs {
         hit.steps = maxSteps;
         return false;
     }
-
-    private static final ThreadLocal<float[]> NORMAL = ThreadLocal.withInitial(() -> new float[3]);
 
     private static void requireFinite(float v, String what) {
         if (Float.isNaN(v) || Float.isInfinite(v)) {

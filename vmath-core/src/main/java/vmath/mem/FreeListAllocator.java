@@ -278,7 +278,7 @@ public final class FreeListAllocator {
      * @throws IllegalArgumentException if {@code size} is not positive
      */
     public long allocate(long size, long alignment) {
-        ArenaAllocator.checkAlignment(alignment);
+        Backing.checkAlignment(alignment);
         if (size < 1) {
             throw new IllegalArgumentException("size must be positive: " + size);
         }
@@ -392,7 +392,7 @@ public final class FreeListAllocator {
         if (size < 0) {
             throw new IllegalArgumentException("offset " + offset + " is not the start of an allocated block");
         }
-        return backing.asSlice(offset, size);
+        return Backing.slice(backing, offset, size);
     }
 
     /**

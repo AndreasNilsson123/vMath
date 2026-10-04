@@ -22,7 +22,7 @@ final class SimdSupport {
     static boolean vectorsAvailable() {
         try {
             return FloatVector.SPECIES_PREFERRED.length() >= 4;
-        } catch (Throwable t) {
+        } catch (LinkageError | RuntimeException e) {
             return false;
         }
     }

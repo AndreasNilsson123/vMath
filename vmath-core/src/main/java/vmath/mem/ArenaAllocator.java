@@ -67,12 +67,6 @@ public final class ArenaAllocator {
         this.backing = backing;
     }
 
-    static void checkAlignment(long alignment) {
-        if (alignment < 1 || (alignment & (alignment - 1)) != 0) {
-            throw new IllegalArgumentException("the alignment must be a power of two: " + alignment);
-        }
-    }
-
     /**
      * Reports the total size of the managed range; fixed for the lifetime of the allocator.
      *
@@ -114,7 +108,7 @@ public final class ArenaAllocator {
      * @throws IllegalArgumentException if {@code size} is negative
      */
     public long allocate(long size, long alignment) {
-        checkAlignment(alignment);
+        Backing.checkAlignment(alignment);
         if (size < 0) {
             throw new IllegalArgumentException("size must not be negative: " + size);
         }
@@ -177,9 +171,6 @@ public final class ArenaAllocator {
      * @throws IllegalStateException if this allocator has no backing segment
      */
     public MemorySegment slice(long offset, long size) {
-        if (backing == null) {
-            throw new IllegalStateException("this allocator has no backing segment");
-        }
-        return backing.asSlice(offset, size);
+        return Backing.slice(backing, offset, size);
     }
 }

@@ -125,7 +125,7 @@ public final class RingAllocator {
      * @throws IllegalArgumentException if {@code size} is negative
      */
     public long allocate(long size, long alignment) {
-        ArenaAllocator.checkAlignment(alignment);
+        Backing.checkAlignment(alignment);
         if (size < 0) {
             throw new IllegalArgumentException("size must not be negative: " + size);
         }
@@ -229,9 +229,6 @@ public final class RingAllocator {
      * @throws IllegalStateException if this allocator has no backing segment
      */
     public MemorySegment slice(long offset, long size) {
-        if (backing == null) {
-            throw new IllegalStateException("this allocator has no backing segment");
-        }
-        return backing.asSlice(offset, size);
+        return Backing.slice(backing, offset, size);
     }
 }

@@ -28,7 +28,8 @@ dependencies {
 
 tasks.withType<JavaCompile>().configureEach {
     options.encoding = "UTF-8"
-    options.compilerArgs.addAll(listOf("-Xlint:all", "--add-modules=jdk.incubator.vector"))
+    // -Werror as in the other modules; -incubating silences the notice that the incubator module itself causes
+    options.compilerArgs.addAll(listOf("-Xlint:all", "-Xlint:-exports", "-Xlint:-processing", "-Xlint:-incubating", "-Werror", "--add-modules=jdk.incubator.vector"))
     if (valhalla) {
         options.release.set(jdk)
         options.compilerArgs.add("--enable-preview")
@@ -52,6 +53,9 @@ apply(from = rootProject.file("gradle/publishing.gradle.kts"))
 tasks.javadoc {
     (options as StandardJavadocDocletOptions).apply {
         encoding = "UTF-8"
+        // as in gradle/vmath-module.gradle.kts, so broken references and malformed tags fail the build; -Xwerror is left out because javadoc cannot silence the
+        // "using incubating module(s)" notice that the incubator module causes (it has no -Xlint:-incubating), and it would turn that notice into a failure
+        addBooleanOption("Xdoclint:all,-missing", true)
         addStringOption("-add-modules", "jdk.incubator.vector")
         if (valhalla) {
             addBooleanOption("-enable-preview", true)
@@ -64,3 +68,7 @@ tasks.javadoc {
 extra["coverageLineFloor"] = "0.92"
 extra["coverageBranchFloor"] = "0.90"
 apply(from = rootProject.file("gradle/module-coverage.gradle.kts"))
+
+tasks.named("check") {
+    dependsOn(tasks.javadoc)
+}

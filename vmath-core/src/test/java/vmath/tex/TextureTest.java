@@ -138,6 +138,19 @@ class TextureTest {
     }
 
     @Test
+    void ktx2WriteHeaderChecksTheCapacityAndKeepsTheByteOrder() {
+        Ktx2.Header h = new Ktx2.Header(37, 1, 4, 4, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, new Ktx2.Level[] {new Ktx2.Level(104, 64, 64)});
+        ByteBuffer small = ByteBuffer.allocate(Ktx2.HEADER_BYTES + Ktx2.LEVEL_INDEX_ENTRY_BYTES - 1).order(ByteOrder.BIG_ENDIAN);
+        assertThrows(java.nio.BufferOverflowException.class, () -> Ktx2.writeHeader(h, small));
+        assertEquals(0, small.position(), "nothing was written");
+        assertEquals(ByteOrder.BIG_ENDIAN, small.order());
+        ByteBuffer exact = ByteBuffer.allocate(Ktx2.HEADER_BYTES + Ktx2.LEVEL_INDEX_ENTRY_BYTES).order(ByteOrder.BIG_ENDIAN);
+        Ktx2.writeHeader(h, exact);
+        assertEquals(exact.capacity(), exact.position());
+        assertEquals(ByteOrder.BIG_ENDIAN, exact.order());
+    }
+
+    @Test
     void ktx2HeaderRoundTrip() {
         TextureLayout layout = TextureLayout.texture2d(TextureFormat.BC7_UNORM, 64, 32);
         ByteBuffer b = file(TextureFormat.BC7_UNORM.vkFormat(), 64, 32, 0, 0, 1, layout.levels(), 0, layout, (int) layout.totalBytes());

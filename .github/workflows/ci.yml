@@ -28,11 +28,11 @@ jobs:
       - uses: gradle/actions/setup-gradle@v6
       - name: Build and test (fixed seed)
         if: github.event_name != 'schedule'
-        run: ./gradlew build
+        run: ./gradlew build -Dvmath.requireEnvironment=true
       - name: Build and test (nightly seed)
         if: github.event_name == 'schedule'
         shell: bash
-        run: ./gradlew build -Dvmath.seed=$(date +%s) -Dvmath.trials=20000
+        run: ./gradlew build -Dvmath.requireEnvironment=true -Dvmath.seed=$(date +%s) -Dvmath.trials=20000
 
   valhalla:
     # Early-access JDK with JEP 401 value classes. Allowed to fail until the preview stabilizes.

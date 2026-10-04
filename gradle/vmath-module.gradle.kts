@@ -156,6 +156,11 @@ extensions.configure<JacocoPluginExtension> {
 
 tasks.withType<Test>().configureEach {
     useJUnitPlatform()
+    // a skipped test (the module jars, jdeps, a glslang compiler or the JIT is missing) is listed with its reason; CI also sets -Dvmath.requireEnvironment=true (vmath.Environment)
+    testLogging {
+        events("skipped")
+        showStandardStreams = false
+    }
     // a pattern such as --tests vmath.geo.* matches in one module only: the others must not fail on it
     filter.isFailOnNoMatchingTests = false
     // JOML's Unsafe fast path segfaults on heap buffers (Matrix3d.get(int, DoubleBuffer)); the oracle doesn't need it.
@@ -168,7 +173,7 @@ tasks.withType<Test>().configureEach {
     // Extra JVM flags for the test JVM, e.g. -Pvmath.testJvmArgs="-XX:TieredStopAtLevel=1" to see which JIT settings the allocation contract tolerates.
     providers.gradleProperty("vmath.testJvmArgs").orNull?.let { jvmArgs(it.trim().split(Regex("\\s+"))) }
     // Forward -Dvmath.seed / -Dvmath.trials from the command line, e.g. a nightly job with a fresh seed.
-    listOf("vmath.seed", "vmath.trials", "vmath.writeAssets", "vmath.writeDocs", "vmath.verbose", "vmath.alloc.force", "vmath.docs.all", "vmath.glslang").forEach { key ->
+    listOf("vmath.seed", "vmath.trials", "vmath.writeAssets", "vmath.writeDocs", "vmath.verbose", "vmath.alloc.force", "vmath.docs.all", "vmath.glslang", "vmath.requireEnvironment").forEach { key ->
         System.getProperty(key)?.let { systemProperty(key, it) }
     }
     // the coverage is merged over all modules by the root project (docs/COVERAGE.md); the Valhalla class files are not read by the JaCoCo release in use

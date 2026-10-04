@@ -252,18 +252,27 @@ public final class Ktx2 {
      *
      * @param h the header; must not be {@code null}
      * @param out receives the result; must not be {@code null}
+     * @throws java.nio.BufferOverflowException if {@code out} has fewer bytes remaining than the
+     *     header and the level index need; nothing is written then
      */
     public static void writeHeader(Header h, ByteBuffer out) {
+        int needed = HEADER_BYTES + LEVEL_INDEX_ENTRY_BYTES * h.levels().length;
+        if (out.remaining() < needed) {
+            throw new java.nio.BufferOverflowException();
+        }
         ByteOrder saved = out.order();
         out.order(ByteOrder.LITTLE_ENDIAN);
-        out.put(IDENTIFIER);
-        out.putInt(h.vkFormat()).putInt(h.typeSize()).putInt(h.pixelWidth()).putInt(h.pixelHeight()).putInt(h.pixelDepth());
-        out.putInt(h.layerCount()).putInt(h.faceCount()).putInt(h.levelCount()).putInt(h.supercompressionScheme());
-        out.putInt(h.dfdByteOffset()).putInt(h.dfdByteLength()).putInt(h.kvdByteOffset()).putInt(h.kvdByteLength());
-        out.putLong(h.sgdByteOffset()).putLong(h.sgdByteLength());
-        for (Level l : h.levels()) {
-            out.putLong(l.byteOffset()).putLong(l.byteLength()).putLong(l.uncompressedByteLength());
+        try {
+            out.put(IDENTIFIER);
+            out.putInt(h.vkFormat()).putInt(h.typeSize()).putInt(h.pixelWidth()).putInt(h.pixelHeight()).putInt(h.pixelDepth());
+            out.putInt(h.layerCount()).putInt(h.faceCount()).putInt(h.levelCount()).putInt(h.supercompressionScheme());
+            out.putInt(h.dfdByteOffset()).putInt(h.dfdByteLength()).putInt(h.kvdByteOffset()).putInt(h.kvdByteLength());
+            out.putLong(h.sgdByteOffset()).putLong(h.sgdByteLength());
+            for (Level l : h.levels()) {
+                out.putLong(l.byteOffset()).putLong(l.byteLength()).putLong(l.uncompressedByteLength());
+            }
+        } finally {
+            out.order(saved);
         }
-        out.order(saved);
     }
 }

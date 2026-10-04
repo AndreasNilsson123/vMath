@@ -2,6 +2,7 @@ package vmath.spatial;
 
 import java.util.concurrent.Executor;
 import java.util.concurrent.Phaser;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 import vmath.bulk.BoundsArray;
 import vmath.bulk.VisibilitySet;
@@ -63,7 +64,7 @@ public final class ParallelFrustumKernel implements FrustumKernel {
     private final Executor executor;
     private final Part[] parts;
     private final Phaser phaser = new Phaser(1);
-    private volatile Throwable failure;
+    private final AtomicReference<Throwable> failure = new AtomicReference<>();
 
     /**
      * Creates a kernel that cuts every range into {@code parts} chunks, runs them on the executor
@@ -113,7 +114,7 @@ public final class ParallelFrustumKernel implements FrustumKernel {
         }
         int chunk = ((n + wanted - 1) / wanted + 63) & ~63;
         int used = (n + chunk - 1) / chunk;
-        failure = null;
+        failure.set(null);
         // hand chunks 1.. to the executor and keep chunk 0 for this thread
         for (int i = 1; i < used; i++) {
             Part p = parts[i];
@@ -134,9 +135,8 @@ public final class ParallelFrustumKernel implements FrustumKernel {
             throw e;
         }
         finish();
-        Throwable t = failure;
+        Throwable t = failure.getAndSet(null);
         if (t != null) {
-            failure = null;
             if (t instanceof RuntimeException re) {
                 throw re;
             }
@@ -184,8 +184,18 @@ public final class ParallelFrustumKernel implements FrustumKernel {
             try {
                 kernel.cull(frustum, bounds, from, to, visible);
             } catch (Throwable t) {
-                failure = t;
+                // the first failure is thrown to the caller and the others travel with it
+                if (!failure.compareAndSet(null, t)) {
+                    Throwable first = failure.get();
+                    if (first != t) {
+                        first.addSuppressed(t);
+                    }
+                }
             } finally {
+                // do not keep the arguments of the last call alive until the next one
+                frustum = null;
+                bounds = null;
+                visible = null;
                 phaser.arriveAndDeregister(); // registered once per hand-out, so leave again to keep the next phase clean
             }
         }

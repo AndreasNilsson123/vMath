@@ -275,7 +275,7 @@ class AllocatorsTest {
     // ---------------------------------------------------------------- persistent buffer ring
 
     /** A fake graphics API: a fence is the number of the frame it was inserted after; the "GPU" has completed all frames up to {@code completed}. */
-    private static final class FakeGpu implements PersistentBufferRing.FenceOps<Integer> {
+    private static class FakeGpu implements PersistentBufferRing.FenceOps<Integer> {
         int submitted;
         int completed;
         int inserted;
@@ -360,6 +360,35 @@ class AllocatorsTest {
         }
         assertEquals(3, gpu.released, "close() released every fence");
         assertEquals(3, gpu.waits, "and waited for each one that had not signalled");
+    }
+
+    @Test
+    void ringStaysOnThePreviousFrameWhenWaitingForAFenceFails() {
+        boolean[] fail = {false};
+        FakeGpu gpu = new FakeGpu() {
+            @Override
+            public void await(Integer fence) {
+                if (fail[0]) {
+                    throw new IllegalStateException("device lost");
+                }
+                super.await(fence);
+            }
+        };
+        MemorySegment mapped = MemorySegment.ofArray(new byte[1024]);
+        PersistentBufferRing<Integer> ring = new PersistentBufferRing<>(mapped, 2, 16, gpu);
+        ring.beginFrame();
+        ring.endFrame();
+        ring.beginFrame();
+        ring.endFrame();
+        long frame = ring.frameIndex();
+        fail[0] = true;
+        assertThrows(IllegalStateException.class, ring::beginFrame);
+        assertEquals(frame, ring.frameIndex(), "the frame counter did not move");
+        assertThrows(IllegalStateException.class, () -> ring.allocate(1, 1), "and the ring is not in a frame");
+        assertThrows(IllegalStateException.class, ring::beginFrame, "so the failing wait is repeated, not skipped");
+        fail[0] = false;
+        assertEquals(0, ring.beginFrame(), "the same region as before the failure is entered");
+        assertEquals(frame + 1, ring.frameIndex());
     }
 
     @Test

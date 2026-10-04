@@ -137,6 +137,31 @@ class ParallelFrustumKernelTest {
     }
 
     @Test
+    void severalFailingWorkersAreReportedTogether() {
+        int n = 4 * ParallelFrustumKernel.MIN_CHUNK;
+        BoundsArray b = scene(n);
+        java.util.function.Supplier<FrustumKernel> failing = () -> new FrustumKernel() {
+            @Override
+            public void cull(Frustumf frustum, BoundsArray bounds, int from, int to, VisibilitySet visible) {
+                if (from > 0) {
+                    throw new IllegalStateException("boom at " + from);
+                }
+            }
+
+            @Override
+            public String name() {
+                return "failing";
+            }
+        };
+        ParallelFrustumKernel k = new ParallelFrustumKernel(pool, 4, failing);
+        VisibilitySet vis = new VisibilitySet(n);
+        vis.setAll(n);
+        Frustumf f = randomFrustum();
+        IllegalStateException e = assertThrows(IllegalStateException.class, () -> k.cull(f, b, vis));
+        assertEquals(2, e.getSuppressed().length, "three workers failed: one is thrown, the other two are suppressed");
+    }
+
+    @Test
     void failuresInAWorkerReachTheCallerAndTheKernelRecovers() {
         int n = 4 * ParallelFrustumKernel.MIN_CHUNK;
         BoundsArray b = scene(n);

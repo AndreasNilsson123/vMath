@@ -202,9 +202,6 @@ public final class SlabAllocator {
      * @throws IllegalStateException if this allocator has no backing segment
      */
     public MemorySegment slice(long offset) {
-        if (backing == null) {
-            throw new IllegalStateException("this allocator has no backing segment");
-        }
-        return backing.asSlice(offset, blockSize);
+        return Backing.slice(backing, offset, blockSize);
     }
 }

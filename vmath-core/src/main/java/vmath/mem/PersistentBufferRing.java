@@ -104,7 +104,7 @@ public final class PersistentBufferRing<F> implements AutoCloseable {
      *     too small for the frames
      */
     public PersistentBufferRing(MemorySegment mapped, int framesInFlight, long regionAlignment, FenceOps<F> ops) {
-        ArenaAllocator.checkAlignment(regionAlignment);
+        Backing.checkAlignment(regionAlignment);
         if (framesInFlight < 1) {
             throw new IllegalArgumentException("framesInFlight must be at least 1: " + framesInFlight);
         }
@@ -192,7 +192,8 @@ public final class PersistentBufferRing<F> implements AutoCloseable {
 
     /**
      * Starts the next frame: moves to the next region, waiting first for the fence of its previous
-     * use if that has not signalled, and empties it.
+     * use if that has not signalled, and empties it. If waiting for the fence throws, the ring
+     * stays on the previous frame and the call may be repeated.
      *
      * @return the byte offset of the frame's region
      * @throws IllegalStateException if {@link #endFrame()} has not been called for the previous
@@ -202,17 +203,20 @@ public final class PersistentBufferRing<F> implements AutoCloseable {
         if (inFrame) {
             throw new IllegalStateException("endFrame() has not been called for frame " + frame);
         }
-        frame++;
-        region = (int) (frame % frames);
-        F fence = fences.get(region);
+        // nothing is committed before the wait has succeeded, so a failing fence leaves the ring on the previous frame and the call can be repeated
+        long next = frame + 1;
+        int nextRegion = (int) (next % frames);
+        F fence = fences.get(nextRegion);
         if (fence != null) {
             if (!ops.isSignaled(fence)) {
                 stalls++;
                 ops.await(fence);
             }
+            fences.set(nextRegion, null);
             ops.release(fence);
-            fences.set(region, null);
         }
+        frame = next;
+        region = nextRegion;
         used = 0;
         inFrame = true;
         return regionOffset();
@@ -234,7 +238,7 @@ public final class PersistentBufferRing<F> implements AutoCloseable {
         if (!inFrame) {
             throw new IllegalStateException("beginFrame() has not been called");
         }
-        ArenaAllocator.checkAlignment(alignment);
+        Backing.checkAlignment(alignment);
         if (size < 0) {
             throw new IllegalArgumentException("size must not be negative: " + size);
         }

@@ -684,6 +684,15 @@ public final class Gjk {
                 closest = f;
             }
         }
+        if (closest < 0) {
+            // every face was removed (a polytope that numerically has no volume): report touching along the last search direction
+            witness(r);
+            r.depth = 0;
+            r.normal[0] = 0;
+            r.normal[1] = 1;
+            r.normal[2] = 0;
+            return;
+        }
         // faces of one planar facet of the polytope tie for the smallest distance: take the one that contains the projection of the origin
         double tieLimit = fd[closest] + 1e-12 * (1 + scale);
         double bestMin = -Double.MAX_VALUE;

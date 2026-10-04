@@ -41,7 +41,7 @@ public final class SimdFrustumCuller implements FrustumKernel {
 
     @Override
     public String name() {
-        return "simd";
+        return SimdSupport.NAME;
     }
 
     @Override

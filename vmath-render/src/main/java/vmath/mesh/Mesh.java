@@ -541,18 +541,7 @@ public final class Mesh {
         if (vertexCount == 0) {
             return Aabbf.EMPTY;
         }
-        float x0 = Float.POSITIVE_INFINITY, y0 = x0, z0 = x0;
-        float x1 = Float.NEGATIVE_INFINITY, y1 = x1, z1 = x1;
-        for (int i = 0; i < vertexCount; i++) {
-            float x = positions[i * 3], y = positions[i * 3 + 1], z = positions[i * 3 + 2];
-            x0 = Math.min(x0, x);
-            y0 = Math.min(y0, y);
-            z0 = Math.min(z0, z);
-            x1 = Math.max(x1, x);
-            y1 = Math.max(y1, y);
-            z1 = Math.max(z1, z);
-        }
-        return new Aabbf(x0, y0, z0, x1, y1, z1);
+        return Aabbf.fromPoints(positions, 0, vertexCount);
     }
 
     /**

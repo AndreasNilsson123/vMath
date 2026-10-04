@@ -2,7 +2,6 @@ package vmath;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.io.PrintWriter;
 import java.io.StringWriter;
@@ -63,20 +62,20 @@ class PackageLayeringTest {
     /** The measured edges between the packages of the library: package to the set of packages it uses. */
     private static Map<String, Set<String>> measure() throws Exception {
         String property = System.getProperty("vmath.jars");
-        assumeTrue(property != null, "not launched through Gradle: the jars of the modules are not known");
+        Environment.require(property != null, "not launched through Gradle: the jars of the modules are not known");
         List<String> command = new ArrayList<>(List.of("-verbose:package", "-filter:none"));
         for (String entry : property.split(java.io.File.pathSeparator)) {
             String[] pair = entry.split("=", 2);
             if (!pair[0].equals("vmath-all")) { // the aggregate has no classes
-                assumeTrue(Files.exists(Path.of(pair[1])), "missing " + pair[1]);
+                Environment.require(Files.exists(Path.of(pair[1])), "missing " + pair[1]);
                 command.add(pair[1]);
             }
         }
         ToolProvider jdeps = ToolProvider.findFirst("jdeps").orElse(null);
-        assumeTrue(jdeps != null, "no jdeps in this runtime");
+        Environment.require(jdeps != null, "no jdeps in this runtime");
         StringWriter out = new StringWriter(), err = new StringWriter();
         int status = jdeps.run(new PrintWriter(out), new PrintWriter(err), command.toArray(String[]::new));
-        assumeTrue(status == 0, "jdeps could not read the classes (preview class files of the Valhalla build?): " + err);
+        Environment.require(status == 0, "jdeps could not read the classes (preview class files of the Valhalla build?): " + err);
         Map<String, Set<String>> edges = new TreeMap<>();
         for (String line : out.toString().split("\\R")) {
             String[] part = line.trim().split("\\s+");

@@ -28,7 +28,7 @@ final class SimdMatrixKernel implements MatrixKernel {
 
     @Override
     public String name() {
-        return "simd";
+        return SimdSupport.NAME;
     }
 
     @Override
