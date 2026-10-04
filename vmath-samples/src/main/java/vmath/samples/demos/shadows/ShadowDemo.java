@@ -81,7 +81,7 @@ import org.lwjgl.system.MemoryUtil;
 import vmath.bulk.BoundsArray;
 import vmath.bulk.VisibilitySet;
 import vmath.camera.Cameraf;
-import vmath.camera.Cascades;
+import vmath.lighting.Cascades;
 import vmath.core.Mat4f;
 import vmath.core.Vec3f;
 import vmath.geo.Aabbf;

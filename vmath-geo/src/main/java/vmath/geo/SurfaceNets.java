@@ -161,7 +161,42 @@ public final class SurfaceNets {
         if (cellVertex.length < cells) {
             cellVertex = new int[cells];
         }
-        // sample the field
+        grid.set(minX, minY, minZ, cx, cy, cz, nx, ny, nz);
+        sampleField(sdf, grid);
+        vertexCount = 0;
+        triangleCount = 0;
+        current = sdf;
+        placeVertices(grid);
+        connectCells(grid);
+        current = null;
+        return this;
+    }
+
+    /** The grid that is meshed: the corner of the box, the size of a cell and the number of cells along each axis (one instance, reused by every call). */
+    private static final class Grid {
+        float minX, minY, minZ, cx, cy, cz;
+        int nx, ny, nz;
+
+        void set(float minX, float minY, float minZ, float cx, float cy, float cz, int nx, int ny, int nz) {
+            this.minX = minX;
+            this.minY = minY;
+            this.minZ = minZ;
+            this.cx = cx;
+            this.cy = cy;
+            this.cz = cz;
+            this.nx = nx;
+            this.ny = ny;
+            this.nz = nz;
+        }
+    }
+
+    // the grid of the current call, kept so that meshing allocates nothing
+    private final Grid grid = new Grid();
+
+    // samples the field (shifted by the iso value) at every corner of the grid
+    private void sampleField(Sdf sdf, Grid g) {
+        float minX = g.minX, minY = g.minY, minZ = g.minZ, cx = g.cx, cy = g.cy, cz = g.cz;
+        int nx = g.nx, ny = g.ny, nz = g.nz;
         for (int k = 0, p = 0; k <= nz; k++) {
             float z = minZ + cz * k;
             for (int j = 0; j <= ny; j++) {
@@ -171,10 +206,12 @@ public final class SurfaceNets {
                 }
             }
         }
-        vertexCount = 0;
-        triangleCount = 0;
-        current = sdf;
-        // one vertex per cell that the surface passes through
+    }
+
+    // places one vertex in every cell that the surface passes through
+    private void placeVertices(Grid g) {
+        float minX = g.minX, minY = g.minY, minZ = g.minZ, cx = g.cx, cy = g.cy, cz = g.cz;
+        int nx = g.nx, ny = g.ny, nz = g.nz, sx = nx + 1, sy = ny + 1, sxy = sx * sy;
         for (int k = 0; k < nz; k++) {
             for (int j = 0; j < ny; j++) {
                 for (int i = 0; i < nx; i++) {
@@ -240,7 +277,11 @@ public final class SurfaceNets {
                 }
             }
         }
-        // one quad per grid edge that the surface crosses (edges on the border of the grid would need cells outside it)
+    }
+
+    // connects the vertices of the four cells around every grid edge that the surface crosses with a quad
+    private void connectCells(Grid g) {
+        int nx = g.nx, ny = g.ny, nz = g.nz, sx = nx + 1, sy = ny + 1, sxy = sx * sy;
         for (int k = 0; k <= nz; k++) {
             for (int j = 0; j <= ny; j++) {
                 for (int i = 0; i <= nx; i++) {
@@ -261,8 +302,6 @@ public final class SurfaceNets {
                 }
             }
         }
-        current = null;
-        return this;
     }
 
     private static float corner(int c, float c0, float c1, float c2, float c3, float c4, float c5, float c6, float c7) {

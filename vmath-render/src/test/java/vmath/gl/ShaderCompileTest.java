@@ -10,7 +10,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
-import vmath.camera.ClusterGrid;
+import vmath.lighting.ClusterGrid;
 import vmath.camera.DualParaboloid;
 import vmath.gpucull.GpuCullGlsl;
 

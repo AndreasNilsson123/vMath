@@ -90,41 +90,98 @@ public final class ClusterHierarchy {
         if (groupSize < 2) {
             throw new IllegalArgumentException("groupSize must be at least 2: " + groupSize);
         }
-        Mesh pool = source.copy();
-        MeshOptimizer.weld(pool, 0f, false); // merge identical vertices (same position and attributes) so neighbouring clusters share pool entries
-        int[] posId = new int[pool.vertexCount()];
-        int nextPos = assignPositionIds(pool, posId);
-        int[] posIds = posId;
+        return new Builder(source, maxVertices, maxTriangles, groupSize).run();
+    }
 
-        List<Cluster> all = new ArrayList<>();
-        List<Cluster> current = new ArrayList<>();
-        Meshlets leaves = Meshlets.build(pool, maxVertices, maxTriangles);
-        int[] tri = new int[3];
-        for (int m = 0; m < leaves.count(); m++) {
-            Cluster c = new Cluster();
-            c.indices = new int[leaves.triangleCount(m) * 3];
-            for (int t = 0; t < leaves.triangleCount(m); t++) {
-                leaves.triangle(m, t, tri);
-                System.arraycopy(tri, 0, c.indices, t * 3, 3);
-            }
-            setGeometryBounds(pool, c);
-            c.lx = c.sx;
-            c.ly = c.sy;
-            c.lz = c.sz;
-            c.lr = c.sr;
-            c.lodError = 0f;
-            current.add(c);
-            all.add(c);
+    /**
+     * One run of the build: the pool of vertices that the clusters index, the clusters made so
+     * far and the state of the level that is being merged.
+     */
+    private static final class Builder {
+        final Mesh pool;
+        final int maxVertices;
+        final int maxTriangles;
+        final int groupSize;
+        int[] posIds;                 // the id of every pool vertex by position: vertices at one position share an id
+        int nextPos;
+        final List<Cluster> all = new ArrayList<>();
+        int groupCounter;
+        int level;
+        final int[] tri = new int[3];
+
+        Builder(Mesh source, int maxVertices, int maxTriangles, int groupSize) {
+            this.maxVertices = maxVertices;
+            this.maxTriangles = maxTriangles;
+            this.groupSize = groupSize;
+            pool = source.copy();
+            MeshOptimizer.weld(pool, 0f, false); // merge identical vertices (same position and attributes) so neighbouring clusters share pool entries
+            posIds = new int[pool.vertexCount()];
+            nextPos = assignPositionIds(pool, posIds);
         }
-        int level = 0;
-        int groupCounter = 0;
-        while (current.size() > 1) {
-            int trianglesBefore = 0;
-            for (Cluster c : current) {
-                trianglesBefore += c.indices.length / 3;
+
+        ClusterHierarchy run() {
+            List<Cluster> current = leafClusters();
+            while (current.size() > 1) {
+                int trianglesBefore = triangleCount(current);
+                List<Cluster> next = mergeLevel(current, trianglesBefore);
+                boolean stalled = triangleCount(next) > trianglesBefore * 0.9 || next.size() >= current.size();
+                current = next;
+                level++;
+                if (stalled) {
+                    break;
+                }
             }
+            return new ClusterHierarchy(pool, all, level + 1);
+        }
+
+        private static int triangleCount(List<Cluster> clusters) {
+            int n = 0;
+            for (Cluster c : clusters) {
+                n += c.indices.length / 3;
+            }
+            return n;
+        }
+
+        // the meshlets of the welded mesh are the clusters of level 0
+        List<Cluster> leafClusters() {
+            List<Cluster> current = new ArrayList<>();
+            Meshlets leaves = Meshlets.build(pool, maxVertices, maxTriangles);
+            for (int m = 0; m < leaves.count(); m++) {
+                Cluster c = new Cluster();
+                c.indices = new int[leaves.triangleCount(m) * 3];
+                for (int t = 0; t < leaves.triangleCount(m); t++) {
+                    leaves.triangle(m, t, tri);
+                    System.arraycopy(tri, 0, c.indices, t * 3, 3);
+                }
+                setGeometryBounds(pool, c);
+                c.lx = c.sx;
+                c.ly = c.sy;
+                c.lz = c.sz;
+                c.lr = c.sr;
+                c.lodError = 0f;
+                current.add(c);
+                all.add(c);
+            }
+            return current;
+        }
+
+        // merges the clusters of one level into groups, simplifies every group and splits the result into the clusters of the next level
+        List<Cluster> mergeLevel(List<Cluster> current, int trianglesBefore) {
             int[][] groups = group(current, posIds, groupSize);
-            // edges shared with another group are the borders to keep
+            FastMaps.LongIntMap border = borderEdges(current, groups, trianglesBefore);
+            List<Cluster> next = new ArrayList<>();
+            for (int[] members : groups) {
+                List<Cluster> children = new ArrayList<>();
+                for (int ci : members) {
+                    children.add(current.get(ci));
+                }
+                mergeGroup(children, border, next);
+            }
+            return next;
+        }
+
+        // edges shared with another group are the borders to keep
+        FastMaps.LongIntMap borderEdges(List<Cluster> current, int[][] groups, int trianglesBefore) {
             FastMaps.LongIntMap edgeGroup = new FastMaps.LongIntMap(trianglesBefore);
             FastMaps.LongIntMap border = new FastMaps.LongIntMap(1024);
             for (int g = 0; g < groups.length; g++) {
@@ -143,126 +200,133 @@ public final class ClusterHierarchy {
                     }
                 }
             }
-            List<Cluster> next = new ArrayList<>();
-            for (int g = 0; g < groups.length; g++) {
-                List<Cluster> children = new ArrayList<>();
-                for (int ci : groups[g]) {
-                    children.add(current.get(ci));
+            return border;
+        }
+
+        /** The triangles of a group as a mesh of its own: the vertices copied from the pool, and the pool index of every local vertex. */
+        private record LocalMesh(Mesh mesh, FastMaps.LongIntMap local, int[] localToGlobal) {
+        }
+
+        LocalMesh localMesh(List<Cluster> children) {
+            FastMaps.LongIntMap local = new FastMaps.LongIntMap(512);
+            int[] localToGlobal = new int[256];
+            int localCount = 0;
+            Mesh gm = new Mesh();
+            copyStreams(pool, gm);
+            int[] groupTris = new int[768];
+            int groupTriCount = 0;
+            for (Cluster c : children) {
+                for (int v : c.indices) {
+                    int l = local.get(v);
+                    if (l < 0) {
+                        l = appendVertex(pool, v, gm);
+                        local.put(v, l);
+                        if (localCount == localToGlobal.length) {
+                            localToGlobal = Arrays.copyOf(localToGlobal, localCount * 2);
+                        }
+                        localToGlobal[localCount++] = v;
+                    }
+                    if (groupTriCount == groupTris.length) {
+                        groupTris = Arrays.copyOf(groupTris, groupTriCount * 2);
+                    }
+                    groupTris[groupTriCount++] = l;
                 }
-                // the merged triangles as a local mesh
-                FastMaps.LongIntMap local = new FastMaps.LongIntMap(512);
-                int[] localToGlobal = new int[256];
-                int localCount = 0;
-                Mesh gm = new Mesh();
-                copyStreams(pool, gm);
-                int[] groupTris = new int[768];
-                int groupTriCount = 0;
-                for (Cluster c : children) {
-                    for (int v : c.indices) {
-                        int l = local.get(v);
-                        if (l < 0) {
-                            l = appendVertex(pool, v, gm);
-                            local.put(v, l);
-                            if (localCount == localToGlobal.length) {
-                                localToGlobal = Arrays.copyOf(localToGlobal, localCount * 2);
-                            }
-                            localToGlobal[localCount++] = v;
+            }
+            for (int t = 0; t < groupTriCount; t += 3) {
+                gm.addTriangle(groupTris[t], groupTris[t + 1], groupTris[t + 2]);
+            }
+            return new LocalMesh(gm, local, localToGlobal);
+        }
+
+        // the vertices on a border of the group must not move, so that the neighbouring groups keep fitting
+        boolean[] lockedVertices(List<Cluster> children, FastMaps.LongIntMap border, LocalMesh lm) {
+            boolean[] locked = new boolean[lm.mesh().vertexCount()];
+            for (Cluster c : children) {
+                for (int t = 0; t < c.indices.length; t += 3) {
+                    for (int k = 0; k < 3; k++) {
+                        int a = c.indices[t + k], b = c.indices[t + (k + 1) % 3];
+                        if (border.containsKey(edgeKey(posIds[a], posIds[b]))) {
+                            locked[lm.local().get(a)] = true;
+                            locked[lm.local().get(b)] = true;
                         }
-                        if (groupTriCount == groupTris.length) {
-                            groupTris = Arrays.copyOf(groupTris, groupTriCount * 2);
-                        }
-                        groupTris[groupTriCount++] = l;
                     }
                 }
-                for (int t = 0; t < groupTriCount; t += 3) {
-                    gm.addTriangle(groupTris[t], groupTris[t + 1], groupTris[t + 2]);
+            }
+            return locked;
+        }
+
+        // survivors of the simplification: locked ones are the same pool entries, the others become new pool vertices; returns the pool index of every vertex of the simplified mesh
+        int[] survivors(LocalMesh lm, MeshSimplifier.Result r, boolean[] locked) {
+            Mesh gm = lm.mesh();
+            int[] globalOf = new int[gm.vertexCount()];
+            for (int s = 0; s < gm.vertexCount(); s++) {
+                int old = r.remap()[s];
+                if (locked[old]) {
+                    globalOf[s] = lm.localToGlobal()[old];
+                } else {
+                    globalOf[s] = appendVertex(gm, s, pool);
+                    if (globalOf[s] >= posIds.length) { // grow geometrically: copying the whole array per vertex was quadratic
+                        posIds = Arrays.copyOf(posIds, Math.max(posIds.length * 2, globalOf[s] + 1));
+                    }
+                    posIds[globalOf[s]] = nextPos++;
                 }
-                boolean[] locked = new boolean[gm.vertexCount()];
-                for (Cluster c : children) {
-                    for (int t = 0; t < c.indices.length; t += 3) {
+            }
+            return globalOf;
+        }
+
+        void mergeGroup(List<Cluster> children, FastMaps.LongIntMap border, List<Cluster> next) {
+            LocalMesh lm = localMesh(children);
+            Mesh gm = lm.mesh();
+            boolean[] locked = lockedVertices(children, border, lm);
+            int before = gm.triangleCount();
+            MeshSimplifier.Result r = MeshSimplifier.simplify(gm, Math.max(2, before / 2), Float.MAX_VALUE, false, locked);
+            int[] globalOf = survivors(lm, r, locked);
+            // the LOD sphere of the group encloses the children's LOD spheres and geometry
+            float[] sphere = {children.get(0).lx, children.get(0).ly, children.get(0).lz, children.get(0).lr};
+            float maxChildError = 0f;
+            for (Cluster c : children) {
+                sphere = union(sphere, new float[] {c.lx, c.ly, c.lz, c.lr});
+                sphere = union(sphere, new float[] {c.sx, c.sy, c.sz, c.sr});
+                maxChildError = Math.max(maxChildError, c.lodError);
+            }
+            List<Cluster> made = new ArrayList<>();
+            if (gm.triangleCount() > 0) {
+                Meshlets split = Meshlets.build(gm, maxVertices, maxTriangles);
+                for (int m = 0; m < split.count(); m++) {
+                    Cluster c = new Cluster();
+                    c.indices = new int[split.triangleCount(m) * 3];
+                    for (int t = 0; t < split.triangleCount(m); t++) {
+                        split.triangle(m, t, tri);
                         for (int k = 0; k < 3; k++) {
-                            int a = c.indices[t + k], b = c.indices[t + (k + 1) % 3];
-                            if (border.containsKey(edgeKey(posIds[a], posIds[b]))) {
-                                locked[local.get(a)] = true;
-                                locked[local.get(b)] = true;
-                            }
+                            c.indices[t * 3 + k] = globalOf[tri[k]];
                         }
                     }
-                }
-                int before = gm.triangleCount();
-                MeshSimplifier.Result r = MeshSimplifier.simplify(gm, Math.max(2, before / 2), Float.MAX_VALUE, false, locked);
-                // survivors: locked ones are the same pool entries, the others become new pool vertices
-                int[] globalOf = new int[gm.vertexCount()];
-                for (int s = 0; s < gm.vertexCount(); s++) {
-                    int old = r.remap()[s];
-                    if (locked[old]) {
-                        globalOf[s] = localToGlobal[old];
-                    } else {
-                        globalOf[s] = appendVertex(gm, s, pool);
-                        if (globalOf[s] >= posIds.length) { // grow geometrically: copying the whole array per vertex was quadratic
-                            posIds = Arrays.copyOf(posIds, Math.max(posIds.length * 2, globalOf[s] + 1));
-                        }
-                        posIds[globalOf[s]] = nextPos++;
-                    }
-                }
-                // the LOD sphere of the group encloses the children's LOD spheres and geometry
-                float[] sphere = {children.get(0).lx, children.get(0).ly, children.get(0).lz, children.get(0).lr};
-                float maxChildError = 0f;
-                for (Cluster c : children) {
-                    sphere = union(sphere, new float[] {c.lx, c.ly, c.lz, c.lr});
+                    setGeometryBounds(pool, c);
+                    made.add(c);
                     sphere = union(sphere, new float[] {c.sx, c.sy, c.sz, c.sr});
-                    maxChildError = Math.max(maxChildError, c.lodError);
-                }
-                List<Cluster> made = new ArrayList<>();
-                if (gm.triangleCount() > 0) {
-                    Meshlets split = Meshlets.build(gm, maxVertices, maxTriangles);
-                    for (int m = 0; m < split.count(); m++) {
-                        Cluster c = new Cluster();
-                        c.indices = new int[split.triangleCount(m) * 3];
-                        for (int t = 0; t < split.triangleCount(m); t++) {
-                            split.triangle(m, t, tri);
-                            for (int k = 0; k < 3; k++) {
-                                c.indices[t * 3 + k] = globalOf[tri[k]];
-                            }
-                        }
-                        setGeometryBounds(pool, c);
-                        made.add(c);
-                        sphere = union(sphere, new float[] {c.sx, c.sy, c.sz, c.sr});
-                    }
-                }
-                float error = maxChildError + r.error();
-                int groupId = groupCounter++;
-                for (Cluster c : children) {
-                    c.parentGroup = groupId;
-                    c.px = sphere[0];
-                    c.py = sphere[1];
-                    c.pz = sphere[2];
-                    c.pr = sphere[3];
-                    c.parentError = error;
-                }
-                for (Cluster c : made) {
-                    c.lx = sphere[0];
-                    c.ly = sphere[1];
-                    c.lz = sphere[2];
-                    c.lr = sphere[3];
-                    c.lodError = error;
-                    c.level = level + 1;
-                    next.add(c);
-                    all.add(c);
                 }
             }
-            int trianglesAfter = 0;
-            for (Cluster c : next) {
-                trianglesAfter += c.indices.length / 3;
+            float error = maxChildError + r.error();
+            int groupId = groupCounter++;
+            for (Cluster c : children) {
+                c.parentGroup = groupId;
+                c.px = sphere[0];
+                c.py = sphere[1];
+                c.pz = sphere[2];
+                c.pr = sphere[3];
+                c.parentError = error;
             }
-            boolean stalled = trianglesAfter > trianglesBefore * 0.9 || next.size() >= current.size();
-            current = next;
-            level++;
-            if (stalled) {
-                break;
+            for (Cluster c : made) {
+                c.lx = sphere[0];
+                c.ly = sphere[1];
+                c.lz = sphere[2];
+                c.lr = sphere[3];
+                c.lodError = error;
+                c.level = level + 1;
+                next.add(c);
+                all.add(c);
             }
         }
-        return new ClusterHierarchy(pool, all, level + 1);
     }
 
     // ---------------------------------------------------------------- build helpers

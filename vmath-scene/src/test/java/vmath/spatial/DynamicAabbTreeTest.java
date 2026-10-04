@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import vmath.bulk.BoundsArray;
 import vmath.bulk.IntList;
 import vmath.bulk.VisibilitySet;
+import vmath.core.ClipSpace;
 import vmath.core.Mat4f;
 import vmath.core.Rnd;
 import vmath.core.Vec3f;
@@ -260,7 +261,7 @@ class DynamicAabbTreeTest {
         Vec3f eye = rnd.nextVec3f();
         Vec3f dir = rnd.nextVec3f();
         Mat4f view = Mat4f.lookAt(eye, eye.add(dir), Math.abs(dir.normalize().y()) > 0.95f ? Vec3f.UNIT_X : Vec3f.UNIT_Y);
-        return Frustumf.fromViewProjection(Mat4f.perspective(fovy, aspect, near, near * 80f, true).mul(view), DepthRange.ZERO_TO_ONE);
+        return Frustumf.fromViewProjection(Mat4f.perspective(fovy, aspect, near, near * 80f, ClipSpace.D3D).mul(view), DepthRange.ZERO_TO_ONE);
     }
 
     private static double slack(Frustumf f, Aabbf b) {

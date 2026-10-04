@@ -1,7 +1,8 @@
 /**
- * Cameras, shadow cascades, clustered lighting and sky models.
+ * Cameras and projection helpers.
  *
- * <p>The camera, projection helpers for shadow maps and stereo, clustered light assignment,
- * physical camera exposure and sun and sky models.
+ * <p>The camera, physical camera exposure, jitter for temporal anti-aliasing, stereo views, cube
+ * faces, planar views and the dual-paraboloid projection. Lights and shadow cascades are in
+ * {@code vmath.lighting}, sun and sky models in {@code vmath.sky}.
  */
 package vmath.camera;

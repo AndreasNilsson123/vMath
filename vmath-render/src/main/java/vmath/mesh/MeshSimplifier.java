@@ -65,6 +65,10 @@ public final class MeshSimplifier {
     /**
      * What {@link #simplify} did.
      *
+     * <p>The arrays are the result's own and are not copied, because they can be as large as
+     * the mesh: treat them as read-only, and note that two results are equal only if they hold
+     * the same arrays.
+     *
      * @param trianglesBefore triangles with nonzero area that went in (zero-area triangles are
      *     dropped first)
      * @param trianglesAfter triangles left
@@ -171,6 +175,113 @@ public final class MeshSimplifier {
                     + ", weight " + attributeWeight);
         }
         return new Run(mesh, lockBorder, lockedVertices, attributes, stride, attributeWeight).run(targetTriangles, (double) maxError * maxError);
+    }
+
+    /**
+     * What a simplification is asked to do, named instead of positional.
+     *
+     * <p>Start from {@link #target(int)} and add what is needed; every method returns a new
+     * object, so a configured instance can be shared. The arrays are read when the mesh is
+     * simplified and are not copied.
+     *
+     * <p><b>Thread safety.</b> Immutable, but it refers to the arrays it was given: safe to share
+     * between threads as long as nobody changes those.
+     *
+     * <p><b>Example:</b>
+     *
+     * <pre>{@code
+     * Result r = MeshSimplifier.simplify(mesh, MeshSimplifier.Options.target(500).maxError(0.01f).lockBorder(true));
+     * }</pre>
+     */
+    public static final class Options {
+        private final int targetTriangles;
+        private final float maxError;
+        private final boolean lockBorder;
+        private final boolean[] lockedVertices;
+        private final float[] attributes;
+        private final int stride;
+        private final float attributeWeight;
+
+        private Options(int targetTriangles, float maxError, boolean lockBorder, boolean[] lockedVertices, float[] attributes, int stride, float attributeWeight) {
+            this.targetTriangles = targetTriangles;
+            this.maxError = maxError;
+            this.lockBorder = lockBorder;
+            this.lockedVertices = lockedVertices;
+            this.attributes = attributes;
+            this.stride = stride;
+            this.attributeWeight = attributeWeight;
+        }
+
+        /**
+         * Asks for a mesh of at most {@code targetTriangles} triangles, with no limit on the
+         * error, free borders and no extra attributes.
+         *
+         * @param targetTriangles the number of triangles to stop at
+         * @return the options
+         */
+        public static Options target(int targetTriangles) {
+            return new Options(targetTriangles, Float.POSITIVE_INFINITY, false, null, null, 0, 0f);
+        }
+
+        /**
+         * Stops when the cheapest remaining collapse would exceed an error.
+         *
+         * @param maxError the error limit in world units
+         * @return the changed options
+         */
+        public Options maxError(float maxError) {
+            return new Options(targetTriangles, maxError, lockBorder, lockedVertices, attributes, stride, attributeWeight);
+        }
+
+        /**
+         * Keeps the border of the mesh in place.
+         *
+         * @param lockBorder whether border vertices may not move or merge
+         * @return the changed options
+         */
+        public Options lockBorder(boolean lockBorder) {
+            return new Options(targetTriangles, maxError, lockBorder, lockedVertices, attributes, stride, attributeWeight);
+        }
+
+        /**
+         * Leaves chosen vertices untouched, which is how seams between separately simplified
+         * pieces stay watertight.
+         *
+         * @param lockedVertices one flag per vertex, or {@code null} for none; not copied
+         * @return the changed options
+         */
+        public Options lockedVertices(boolean[] lockedVertices) {
+            return new Options(targetTriangles, maxError, lockBorder, lockedVertices, attributes, stride, attributeWeight);
+        }
+
+        /**
+         * Respects extra per-vertex attributes such as skinning weights; see
+         * {@link MeshSimplifier#simplify(Mesh, int, float, boolean, boolean[], float[], int, float)}.
+         *
+         * @param attributes {@code stride} values per vertex, or {@code null} for none; not copied
+         * @param stride the number of values per vertex
+         * @param attributeWeight the squared world distance that a squared unit of attribute
+         *     difference is worth
+         * @return the changed options
+         */
+        public Options attributes(float[] attributes, int stride, float attributeWeight) {
+            return new Options(targetTriangles, maxError, lockBorder, lockedVertices, attributes, stride, attributeWeight);
+        }
+    }
+
+    /**
+     * Simplifies a mesh by edge collapses as the options say.
+     *
+     * <p>The same as the overloads that take the options one by one.
+     *
+     * @param mesh the mesh; must not be {@code null}
+     * @param options what to do; must not be {@code null}
+     * @return the outcome of the simplification, never {@code null}
+     * @throws IllegalArgumentException if the locked-vertex or attribute array is too short, the
+     *     stride is below 1 or the weight is negative
+     */
+    public static Result simplify(Mesh mesh, Options options) {
+        return simplify(mesh, options.targetTriangles, options.maxError, options.lockBorder, options.lockedVertices, options.attributes, options.stride, options.attributeWeight);
     }
 
     private static final class Run {

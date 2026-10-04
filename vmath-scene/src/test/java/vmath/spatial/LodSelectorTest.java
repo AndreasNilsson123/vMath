@@ -9,6 +9,7 @@ import java.util.Arrays;
 import org.junit.jupiter.api.Test;
 import vmath.bulk.BoundsArray;
 import vmath.bulk.VisibilitySet;
+import vmath.core.ClipSpace;
 import vmath.core.Mat4f;
 import vmath.core.Vec3f;
 import vmath.geo.DepthRange;
@@ -20,7 +21,7 @@ class LodSelectorTest {
     private static final float RADIUS = (float) Math.sqrt(3.0); // a box of half-extent 1
 
     private static CullContext ctx() {
-        Frustumf f = Frustumf.fromViewProjection(Mat4f.perspective(1f, 1f, 0.1f, 1e4f, true), DepthRange.ZERO_TO_ONE);
+        Frustumf f = Frustumf.fromViewProjection(Mat4f.perspective(1f, 1f, 0.1f, 1e4f, ClipSpace.D3D), DepthRange.ZERO_TO_ONE);
         return new CullContext(f, Vec3f.ZERO, SCALE);
     }
 

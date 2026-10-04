@@ -46,10 +46,14 @@ that is not the class itself, documentation of every public member, and the evid
 | `gl`: `ShaderHeader`, `LayoutValidator`, `VertexFormat`, `VertexBufferLayout`, `ClusterLight` | the validator run against a real driver's or SPIR-V reflection; the header compiled by a shader compiler; the GL and Vulkan numbers checked against the Khronos headers |
 | `mem`: the four allocators and `PersistentBufferRing` | the ring run with real fences; a use in a real renderer; a size-class index for the free list (TD-16) if its cost matters |
 | `bulk`: `Vec4fArray`, `SegmentFloatArray`, `RadixSorter`, `PrefixSum`, `LocalityOrder`, `DirtyRanges`, `FrameDirtyRanges`, `HandleRegistry`, the matrix kernel SPI | a decision on the container base class (TD-08), which changes their internals but not the API; the SPI used by one more kernel before it is frozen |
-| `camera`: `ClusterGrid`, `ClusterLights`, `PlanarViews`, `Stereo`, `DualParaboloid` | the lighting buffers consumed by a shader; stereo and portal conventions used in a real HMD or portal renderer |
+| `lighting`: `ClusterGrid`, `ClusterLights`; `camera`: `PlanarViews`, `Stereo`, `DualParaboloid` | the lighting buffers consumed by a shader; stereo and portal conventions used in a real HMD or portal renderer |
 | `mesh`: `ClusterHierarchy`, `MeshLod`, `MeshSimplifier`, `Meshlets`, `Overdraw`, `RectPacker`, `UvAtlas` | attribute support in `ClusterHierarchy`; a second consumer of each result type (the records have changed twice already) |
 | `gltf`, `tex`: `Gltf`, `Ktx2`, `TextureFormat`, `TextureLayout`, `CubeFace` | fuzzing of the loaders (TD-19); a restructure of `Gltf` (TD-10) |
 | `pack`, `color`, `core`: the quantizers, `Quantize`, the four colour classes, `SpatialHash`, `FastMath`, `Predicates`, `DoubleDouble`, `Rng`, `Sequences`, `Noise`, `Spring`, `Smoothing`, `Easing`, `Curves`, `ArcLengthTable`, `Polygons`, `ConvexHull`, `ConvexPolytope`, `Sat`, `Gjk`, `ConvexShape`, `ConvexShapes`, `IkSolver` | a release without change; wide-gamut spaces decided in or out for `color` |
+
+## Platform risk: the incubator module and preview features
+
+`vmath-simd` needs `jdk.incubator.vector`, an incubator module: its API can change or move in any JDK release, so a new JDK can break `vmath-simd` without a change in this repository. The nightly CI job `simd-next-jdk` builds and tests it on the newest JDK (`-Pvmath.jdk=<n>`) so that this is noticed early; it may fail without failing the push build. The core library does not depend on the incubator module and does not need `--add-modules`. The Valhalla profile (`-Pvalhalla`, an early-access JDK with preview features) is likewise a separate, allowed-to-fail job.
 
 ## Compatibility checks
 

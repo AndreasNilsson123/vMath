@@ -1,4 +1,4 @@
-package vmath.camera;
+package vmath.sky;
 
 /**
  * Light through the earth's atmosphere, with the simple closed-form models used in real-time

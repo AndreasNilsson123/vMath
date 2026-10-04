@@ -1,12 +1,13 @@
-package vmath.camera;
+package vmath.lighting;
 
 import vmath.bulk.BoundsArray;
 import vmath.bulk.VisibilitySet;
-import vmath.camera.Cascades.Cascade;
+import vmath.lighting.Cascades.Cascade;
 import vmath.core.Mat4f;
 import vmath.core.Vec3f;
 import vmath.spatial.CullContext;
 import vmath.spatial.CullStage;
+import vmath.camera.Cameraf;
 
 /**
  * A {@link CullStage} that keeps only the objects that can throw a shadow onto what the camera sees

@@ -1,5 +1,6 @@
 package vmath.camera;
 
+import vmath.core.ClipSpace;
 import vmath.core.Mat4f;
 import vmath.core.Vec3f;
 import vmath.geo.DepthRange;
@@ -150,8 +151,8 @@ public final class CubeFaces {
     public static Mat4f projection(float near, float far, DepthRange depth) {
         float fovy = (float) (Math.PI / 2.0);
         return switch (depth) {
-            case NEGATIVE_ONE_TO_ONE -> Mat4f.perspective(fovy, 1f, near, far, false);
-            case ZERO_TO_ONE -> Mat4f.perspective(fovy, 1f, near, far, true);
+            case NEGATIVE_ONE_TO_ONE -> Mat4f.perspective(fovy, 1f, near, far, ClipSpace.OPENGL);
+            case ZERO_TO_ONE -> Mat4f.perspective(fovy, 1f, near, far, ClipSpace.D3D);
             case REVERSED_ZERO_TO_ONE -> Mat4f.perspectiveReversedZ(fovy, 1f, near);
         };
     }

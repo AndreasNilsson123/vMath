@@ -30,7 +30,7 @@ class OcclusionTest {
     private static Mat4f viewProjection(Vec3f eye, Vec3f target) {
         Vec3f dir = target.sub(eye).normalize();
         Vec3f up = Math.abs(dir.y()) > 0.95f ? Vec3f.UNIT_X : Vec3f.UNIT_Y;
-        return Mat4f.perspective(FOVY, ASPECT, NEAR, 1000f, true).mul(Mat4f.lookAt(eye, target, up));
+        return Mat4f.perspective(FOVY, ASPECT, NEAR, 1000f, ClipSpace.D3D).mul(Mat4f.lookAt(eye, target, up));
     }
 
     private static DepthBuffer buffer(Mat4f vp, Aabbf... occluders) {
@@ -75,7 +75,7 @@ class OcclusionTest {
     void aFlatTriangleCoversExactlyTheWholePixelsInsideIt() {
         int w = 96, h = 48;
         DepthBuffer d = new DepthBuffer(w, h);
-        Mat4f proj = Mat4f.perspective(FOVY, ASPECT, NEAR, 1000f, true);
+        Mat4f proj = Mat4f.perspective(FOVY, ASPECT, NEAR, 1000f, ClipSpace.D3D);
         d.begin(proj, NEAR);
         // a triangle in the plane z = -10, seen from the origin
         float[][] tri = {{-9f, -4f}, {11f, -3f}, {1f, 6f}};
@@ -133,7 +133,7 @@ class OcclusionTest {
     @Test
     void depthIsTheFarthestPointInThePixelAndNearerOccludersWin() {
         DepthBuffer d = new DepthBuffer(64, 32);
-        Mat4f proj = Mat4f.perspective(FOVY, ASPECT, NEAR, 1000f, true);
+        Mat4f proj = Mat4f.perspective(FOVY, ASPECT, NEAR, 1000f, ClipSpace.D3D);
         d.begin(proj, NEAR);
         // a big wall tilted in depth: z goes from -10 (left) to -30 (right)
         d.addPolygon(new float[] {-40f, -20f, -10f, 40f, -20f, -30f, 40f, 20f, -30f, -40f, 20f, -10f}, 4);

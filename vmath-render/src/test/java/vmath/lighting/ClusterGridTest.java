@@ -1,4 +1,4 @@
-package vmath.camera;
+package vmath.lighting;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -9,6 +9,7 @@ import vmath.core.Quatf;
 import vmath.core.Rnd;
 import vmath.core.Vec3f;
 import vmath.geo.DepthRange;
+import vmath.camera.Cameraf;
 
 class ClusterGridTest {
 

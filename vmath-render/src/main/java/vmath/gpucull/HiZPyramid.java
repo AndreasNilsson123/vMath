@@ -1,6 +1,7 @@
 package vmath.gpucull;
 
 import vmath.annotations.Experimental;
+import vmath.core.ClipSpace;
 import vmath.geo.DepthRange;
 import vmath.occlusion.HiZ;
 
@@ -96,6 +97,25 @@ public final class HiZPyramid {
         }
         p.reduce();
         return p;
+    }
+
+    /**
+     * Builds the pyramid from a depth image written for the clip space of a graphics API.
+     *
+     * <p>As {@link #fromDepth(float[], int, int, DepthRange, boolean)} with the depth range and
+     * the y direction of {@code space}; use that method for reversed-z, which a clip space does
+     * not describe.
+     *
+     * @param depth the depth
+     * @param width the width
+     * @param height the height
+     * @param space the clip space of the depth image; must not be {@code null}
+     * @return the pyramid, never {@code null}
+     * @throws IllegalArgumentException if the depth image does not have {@code width * height}
+     *     values
+     */
+    public static HiZPyramid fromDepth(float[] depth, int width, int height, ClipSpace space) {
+        return fromDepth(depth, width, height, DepthRange.of(space), space.yDown());
     }
 
     /**

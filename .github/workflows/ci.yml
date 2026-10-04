@@ -4,6 +4,7 @@ on:
   push:
     branches: [master, main]
   pull_request:
+  workflow_dispatch:
   schedule:
     - cron: "0 3 * * *"   # nightly: fresh random seed, many more trials
 
@@ -50,3 +51,22 @@ jobs:
             25
       - uses: gradle/actions/setup-gradle@v6
       - run: ./gradlew -Dorg.gradle.java.installations.fromEnv=JAVA_HOME_28_X64 build -Pvalhalla
+
+  simd-next-jdk:
+    # The Vector API is an incubator module, whose shape can change in any JDK release: this job builds and tests vmath-simd (and what it needs) on the newest JDK every
+    # night, so that a break shows up here before a user finds it. Allowed to fail; written without a way to run it from the repository, so the first run is its test.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: |
+            27
+            25
+      - uses: gradle/actions/setup-gradle@v6
+      - run: ./gradlew -Dorg.gradle.java.installations.fromEnv=JAVA_HOME_27_X64 -Pvmath.jdk=27 :vmath-simd:check

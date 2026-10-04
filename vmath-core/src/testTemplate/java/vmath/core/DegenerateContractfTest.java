@@ -214,12 +214,12 @@ class DegenerateContractfTest {
 
     @Test
     void projectionBuildersDoNotValidateTheirArguments() {
-        assertEquals(INF, Mat4f.perspective(1f, 0f, 0.1f, 10f, false).m00(), "aspect 0");
-        assertEquals(INF, Mat4f.perspective(1f, 1f, 1f, 1f, false).m22(), "near == far");
-        Mat4f nearZero = Mat4f.perspective(1f, 1f, 0f, 10f, false);
+        assertEquals(INF, Mat4f.perspective(1f, 0f, 0.1f, 10f, ClipSpace.OPENGL).m00(), "aspect 0");
+        assertEquals(INF, Mat4f.perspective(1f, 1f, 1f, 1f, ClipSpace.OPENGL).m22(), "near == far");
+        Mat4f nearZero = Mat4f.perspective(1f, 1f, 0f, 10f, ClipSpace.OPENGL);
         assertTrue(nearZero.isFinite(), "near 0 is finite but has no depth resolution: m32 is 0");
         assertTrue(nearZero.m32() == 0f, "m32 is zero (of either sign)");
-        assertEquals(INF, Mat4f.ortho(1f, 1f, -1f, 1f, 0f, 1f, false).m00(), "left == right");
+        assertEquals(INF, Mat4f.ortho(1f, 1f, -1f, 1f, 0f, 1f, ClipSpace.OPENGL).m00(), "left == right");
         assertTrue(Float.isNaN(Mat4f.lookAt(Vec3f.UNIT_X, Vec3f.UNIT_X, Vec3f.UNIT_Y).m00()), "eye == target");
         assertTrue(Float.isNaN(Mat4f.lookAt(Vec3f.ZERO, Vec3f.UNIT_X, Vec3f.UNIT_X).m00()), "up parallel to the view direction");
         assertTrue(Float.isNaN(Mat4f.rotationAxis(1f, Vec3f.ZERO).m00()), "a zero axis");

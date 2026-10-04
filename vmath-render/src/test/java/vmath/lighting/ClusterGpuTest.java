@@ -1,4 +1,4 @@
-package vmath.camera;
+package vmath.lighting;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;

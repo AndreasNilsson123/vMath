@@ -7,7 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import vmath.camera.Cameraf;
-import vmath.camera.Cascades;
+import vmath.lighting.Cascades;
 import vmath.core.Vec3f;
 import vmath.geo.DepthRange;
 

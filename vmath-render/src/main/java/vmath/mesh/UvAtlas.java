@@ -47,6 +47,10 @@ public final class UvAtlas {
     /**
      * What {@link #generate} did.
      *
+     * <p>The arrays are the result's own and are not copied, because they can be as large as
+     * the mesh: treat them as read-only, and note that two results are equal only if they hold
+     * the same arrays.
+     *
      * @param charts number of charts
      * @param resolution the square atlas size in texels that the UVs are normalised by
      * @param texelsPerUnit texels per unit of world length (the same for every chart)
@@ -95,6 +99,37 @@ public final class UvAtlas {
         int[] idx = mesh.indices();
 
         // welded ids by exact position, so seams between duplicated vertices do not cut charts apart
+        int[] weld = weldVertices(pos, nv);
+        Triangles tri = triangleNormals(pos, idx, tris);
+        Adjacency adjacency = adjacency(weld, idx, tris);
+        Charts charts = growCharts(tri, adjacency, tris, maxAngleDegrees);
+        Fit fit = fitCharts(pos, idx, charts, tris);
+        Packing packing = packCharts(fit, charts.count(), resolution, paddingTexels);
+        int[] remapArray = writeUvs(mesh, uvSet, pos, idx, charts, fit, packing, resolution, paddingTexels);
+        double covered = 0;
+        for (int c = 0; c < charts.count(); c++) {
+            covered += (double) packing.contentW()[c] * packing.contentH()[c];
+        }
+        return new Result(charts.count(), resolution, (float) packing.scale(), (float) (covered / ((double) resolution * resolution)), nv, mesh.vertexCount(), charts.chartOf(), remapArray);
+    }
+
+    private record Triangles(double[] nx, double[] ny, double[] nz, double[] area) {
+    }
+
+    private record Adjacency(HashMap<Long, Integer> head, int[] next, long[] slotKey) {
+    }
+
+    private record Charts(int[] chartOf, List<double[]> normals, int count) {
+    }
+
+    private record Fit(double[][] frame, double[] umin, double[] vmin, double[] cw, double[] ch, double[] theta) {
+    }
+
+    private record Packing(double scale, int[] x, int[] y, boolean[] rotated, int[] contentW, int[] contentH) {
+    }
+
+    // the id of every vertex after welding the ones at exactly the same position
+    private static int[] weldVertices(float[] pos, int nv) {
         int[] weld = new int[nv];
         HashMap<PosKey, Integer> ids = new HashMap<>();
         for (int v = 0; v < nv; v++) {
@@ -106,8 +141,11 @@ public final class UvAtlas {
             }
             weld[v] = id;
         }
+        return weld;
+    }
 
-        // triangle normals (unit) and areas
+    // the unit normals and the areas of the triangles; a degenerate triangle has area 0
+    private static Triangles triangleNormals(float[] pos, int[] idx, int tris) {
         double[] nx = new double[tris], ny = new double[tris], nz = new double[tris], area = new double[tris];
         for (int t = 0; t < tris; t++) {
             int a = idx[t * 3] * 3, b = idx[t * 3 + 1] * 3, c = idx[t * 3 + 2] * 3;
@@ -124,8 +162,11 @@ public final class UvAtlas {
                 area[t] = 0;
             }
         }
+        return new Triangles(nx, ny, nz, area);
+    }
 
-        // edge adjacency: slot = triangle * 3 + corner, chained through the welded edge key
+    // edge adjacency: slot = triangle * 3 + corner, chained through the welded edge key
+    private static Adjacency adjacency(int[] weld, int[] idx, int tris) {
         HashMap<Long, Integer> head = new HashMap<>();
         int[] next = new int[tris * 3];
         long[] slotKey = new long[tris * 3];
@@ -139,8 +180,15 @@ public final class UvAtlas {
                 next[slot] = h == null ? -1 : h;
             }
         }
+        return new Adjacency(head, next, slotKey);
+    }
 
-        // charts by flood fill
+    // charts by flood fill over triangles whose normals stay within the angle of the chart
+    private static Charts growCharts(Triangles tri, Adjacency adjacency, int tris, float maxAngleDegrees) {
+        double[] nx = tri.nx(), ny = tri.ny(), nz = tri.nz(), area = tri.area();
+        HashMap<Long, Integer> head = adjacency.head();
+        int[] next = adjacency.next();
+        long[] slotKey = adjacency.slotKey();
         int[] chartOf = new int[tris];
         Arrays.fill(chartOf, -1);
         double cosLimit = Math.cos(Math.toRadians(maxAngleDegrees));
@@ -188,21 +236,23 @@ public final class UvAtlas {
                 chartNormals.add(cn);
             }
         }
+        return new Charts(chartOf, chartNormals, charts);
+    }
 
-        // per chart: a frame, the projected vertices, the rotation giving the smallest box
+    // per chart: a frame, the projected vertices, the rotation giving the smallest box
+    private static Fit fitCharts(float[] pos, int[] idx, Charts chartSet, int tris) {
+        int[] chartOf = chartSet.chartOf();
+        List<double[]> chartNormals = chartSet.normals();
+        int charts = chartSet.count();
         double[][] frame = new double[charts][];       // t (3), b (3)
         double[] umin = new double[charts], vmin = new double[charts], cw = new double[charts], ch = new double[charts];
         double[] theta = new double[charts];
-        double[] chartArea = new double[charts];
-        int[] firstTri = new int[charts];
-        Arrays.fill(firstTri, -1);
         List<List<Integer>> chartTris = new ArrayList<>();
         for (int c = 0; c < charts; c++) {
             chartTris.add(new ArrayList<>());
         }
         for (int t = 0; t < tris; t++) {
             chartTris.get(chartOf[t]).add(t);
-            chartArea[chartOf[t]] += area[t];
         }
         for (int c = 0; c < charts; c++) {
             double[] n = chartNormals.get(c);
@@ -248,8 +298,12 @@ public final class UvAtlas {
                 }
             }
         }
+        return new Fit(frame, umin, vmin, cw, ch, theta);
+    }
 
-        // the largest texel density at which every padded chart rectangle packs into the atlas
+    // the largest texel density at which every padded chart rectangle packs into the atlas
+    private static Packing packCharts(Fit fit, int charts, int resolution, int paddingTexels) {
+        double[] cw = fit.cw(), ch = fit.ch();
         double totalArea = 0;
         for (int c = 0; c < charts; c++) {
             totalArea += cw[c] * ch[c];
@@ -289,8 +343,19 @@ public final class UvAtlas {
         if (best < 0) {
             throw new IllegalArgumentException(charts + " charts do not fit a " + resolution + " texel atlas with padding " + paddingTexels);
         }
+        return new Packing(best, bx, by, brot, bcw, bch);
+    }
 
-        // write the UVs: first use of a vertex keeps its slot, later charts copy it
+    // writes the UVs: first use of a vertex keeps its slot, later charts copy it; returns the remap of the vertices
+    private static int[] writeUvs(Mesh mesh, int uvSet, float[] pos, int[] idx, Charts chartSet, Fit fit, Packing packing, int resolution, int paddingTexels) {
+        int[] chartOf = chartSet.chartOf();
+        int tris = mesh.triangleCount();
+        int nv = mesh.vertexCount();
+        double[][] frame = fit.frame();
+        double[] theta = fit.theta(), umin = fit.umin(), vmin = fit.vmin();
+        double best = packing.scale();
+        int[] bx = packing.x(), by = packing.y(), bcw = packing.contentW(), bch = packing.contentH();
+        boolean[] brot = packing.rotated();
         boolean[] used = new boolean[nv];
         HashMap<Long, Integer> chartVertex = new HashMap<>();
         List<Integer> remap = new ArrayList<>();
@@ -338,16 +403,11 @@ public final class UvAtlas {
             }
         }
         System.arraycopy(newIdx, 0, mesh.indices(), 0, tris * 3);
-
-        double covered = 0;
-        for (int c = 0; c < charts; c++) {
-            covered += (double) bcw[c] * bch[c];
-        }
         int[] remapArray = new int[remap.size()];
         for (int i = 0; i < remapArray.length; i++) {
             remapArray[i] = remap.get(i);
         }
-        return new Result(charts, resolution, (float) best, (float) (covered / ((double) resolution * resolution)), nv, mesh.vertexCount(), chartOf, remapArray);
+        return remapArray;
     }
 
     private static int[] identity(int n) {

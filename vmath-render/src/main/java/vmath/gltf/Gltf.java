@@ -162,6 +162,59 @@ public final class Gltf {
     public record Material(String name, float[] baseColorFactor, int baseColorTexture, int baseColorTexCoord, float metallicFactor, float roughnessFactor,
                            int metallicRoughnessTexture, int normalTexture, float normalScale, int occlusionTexture, float occlusionStrength,
                            float[] emissiveFactor, int emissiveTexture, String alphaMode, float alphaCutoff, boolean doubleSided) {
+
+        /**
+         * Keeps copies of the arrays, so that the record does not share them with the caller.
+         */
+        public Material {
+            baseColorFactor = Copies.of(baseColorFactor);
+            emissiveFactor = Copies.of(emissiveFactor);
+        }
+
+        /**
+         * Exposes a copy of the {@code baseColorFactor} array, so that the record cannot be changed through it.
+         *
+         * @return a copy of the array, or {@code null} if there is none
+         */
+        @Override
+        public float[] baseColorFactor() {
+            return Copies.of(baseColorFactor);
+        }
+
+        /**
+         * Exposes a copy of the {@code emissiveFactor} array, so that the record cannot be changed through it.
+         *
+         * @return a copy of the array, or {@code null} if there is none
+         */
+        @Override
+        public float[] emissiveFactor() {
+            return Copies.of(emissiveFactor);
+        }
+
+        private Object[] parts() {
+            return new Object[] {name, baseColorFactor, baseColorTexture, baseColorTexCoord, metallicFactor, roughnessFactor, metallicRoughnessTexture, normalTexture, normalScale, occlusionTexture, occlusionStrength, emissiveFactor, emissiveTexture, alphaMode, alphaCutoff, doubleSided};
+        }
+
+        /**
+         * Compares the contents of the arrays, not their identities.
+         *
+         * @param o the object to compare with
+         * @return {@code true} if {@code o} is a {@code Material} with equal components
+         */
+        @Override
+        public boolean equals(Object o) {
+            return o instanceof Material other && java.util.Arrays.deepEquals(parts(), other.parts());
+        }
+
+        /**
+         * Hashes the contents of the arrays, not their identities.
+         *
+         * @return a hash code that agrees with {@link #equals(Object)}
+         */
+        @Override
+        public int hashCode() {
+            return java.util.Arrays.deepHashCode(parts());
+        }
     }
 
     /**
@@ -213,6 +266,92 @@ public final class Gltf {
      * @param matrix the matrix
      */
     public record Node(String name, int[] children, int mesh, int skin, float[] translation, float[] rotation, float[] scale, float[] matrix) {
+
+        /**
+         * Keeps copies of the arrays, so that the record does not share them with the caller.
+         */
+        public Node {
+            children = Copies.of(children);
+            translation = Copies.of(translation);
+            rotation = Copies.of(rotation);
+            scale = Copies.of(scale);
+            matrix = Copies.of(matrix);
+        }
+
+        /**
+         * Exposes a copy of the {@code children} array, so that the record cannot be changed through it.
+         *
+         * @return a copy of the array, or {@code null} if there is none
+         */
+        @Override
+        public int[] children() {
+            return Copies.of(children);
+        }
+
+        /**
+         * Exposes a copy of the {@code translation} array, so that the record cannot be changed through it.
+         *
+         * @return a copy of the array, or {@code null} if there is none
+         */
+        @Override
+        public float[] translation() {
+            return Copies.of(translation);
+        }
+
+        /**
+         * Exposes a copy of the {@code rotation} array, so that the record cannot be changed through it.
+         *
+         * @return a copy of the array, or {@code null} if there is none
+         */
+        @Override
+        public float[] rotation() {
+            return Copies.of(rotation);
+        }
+
+        /**
+         * Exposes a copy of the {@code scale} array, so that the record cannot be changed through it.
+         *
+         * @return a copy of the array, or {@code null} if there is none
+         */
+        @Override
+        public float[] scale() {
+            return Copies.of(scale);
+        }
+
+        /**
+         * Exposes a copy of the {@code matrix} array, so that the record cannot be changed through it.
+         *
+         * @return a copy of the array, or {@code null} if there is none
+         */
+        @Override
+        public float[] matrix() {
+            return Copies.of(matrix);
+        }
+
+        private Object[] parts() {
+            return new Object[] {name, children, mesh, skin, translation, rotation, scale, matrix};
+        }
+
+        /**
+         * Compares the contents of the arrays, not their identities.
+         *
+         * @param o the object to compare with
+         * @return {@code true} if {@code o} is a {@code Node} with equal components
+         */
+        @Override
+        public boolean equals(Object o) {
+            return o instanceof Node other && java.util.Arrays.deepEquals(parts(), other.parts());
+        }
+
+        /**
+         * Hashes the contents of the arrays, not their identities.
+         *
+         * @return a hash code that agrees with {@link #equals(Object)}
+         */
+        @Override
+        public int hashCode() {
+            return java.util.Arrays.deepHashCode(parts());
+        }
     }
 
     /**
@@ -229,6 +368,59 @@ public final class Gltf {
      * @param max the max
      */
     public record AccessorInfo(int count, int components, int componentType, boolean normalized, String type, float[] min, float[] max) {
+
+        /**
+         * Keeps copies of the arrays, so that the record does not share them with the caller.
+         */
+        public AccessorInfo {
+            min = Copies.of(min);
+            max = Copies.of(max);
+        }
+
+        /**
+         * Exposes a copy of the {@code min} array, so that the record cannot be changed through it.
+         *
+         * @return a copy of the array, or {@code null} if there is none
+         */
+        @Override
+        public float[] min() {
+            return Copies.of(min);
+        }
+
+        /**
+         * Exposes a copy of the {@code max} array, so that the record cannot be changed through it.
+         *
+         * @return a copy of the array, or {@code null} if there is none
+         */
+        @Override
+        public float[] max() {
+            return Copies.of(max);
+        }
+
+        private Object[] parts() {
+            return new Object[] {count, components, componentType, normalized, type, min, max};
+        }
+
+        /**
+         * Compares the contents of the arrays, not their identities.
+         *
+         * @param o the object to compare with
+         * @return {@code true} if {@code o} is a {@code AccessorInfo} with equal components
+         */
+        @Override
+        public boolean equals(Object o) {
+            return o instanceof AccessorInfo other && java.util.Arrays.deepEquals(parts(), other.parts());
+        }
+
+        /**
+         * Hashes the contents of the arrays, not their identities.
+         *
+         * @return a hash code that agrees with {@link #equals(Object)}
+         */
+        @Override
+        public int hashCode() {
+            return java.util.Arrays.deepHashCode(parts());
+        }
     }
 
     /**
@@ -257,6 +449,70 @@ public final class Gltf {
      * @param rootTransform the root transform; must not be {@code null}
      */
     public record SkinData(String name, Skeleton skeleton, int[] jointNodes, int[] skinToSkeleton, float[] inverseBindMatrices, Mat4f rootTransform) {
+
+        /**
+         * Keeps copies of the arrays, so that the record does not share them with the caller.
+         */
+        public SkinData {
+            jointNodes = Copies.of(jointNodes);
+            skinToSkeleton = Copies.of(skinToSkeleton);
+            inverseBindMatrices = Copies.of(inverseBindMatrices);
+        }
+
+        /**
+         * Exposes a copy of the {@code jointNodes} array, so that the record cannot be changed through it.
+         *
+         * @return a copy of the array, or {@code null} if there is none
+         */
+        @Override
+        public int[] jointNodes() {
+            return Copies.of(jointNodes);
+        }
+
+        /**
+         * Exposes a copy of the {@code skinToSkeleton} array, so that the record cannot be changed through it.
+         *
+         * @return a copy of the array, or {@code null} if there is none
+         */
+        @Override
+        public int[] skinToSkeleton() {
+            return Copies.of(skinToSkeleton);
+        }
+
+        /**
+         * Exposes a copy of the {@code inverseBindMatrices} array, so that the record cannot be changed through it.
+         *
+         * @return a copy of the array, or {@code null} if there is none
+         */
+        @Override
+        public float[] inverseBindMatrices() {
+            return Copies.of(inverseBindMatrices);
+        }
+
+        private Object[] parts() {
+            return new Object[] {name, skeleton, jointNodes, skinToSkeleton, inverseBindMatrices, rootTransform};
+        }
+
+        /**
+         * Compares the contents of the arrays, not their identities.
+         *
+         * @param o the object to compare with
+         * @return {@code true} if {@code o} is a {@code SkinData} with equal components
+         */
+        @Override
+        public boolean equals(Object o) {
+            return o instanceof SkinData other && java.util.Arrays.deepEquals(parts(), other.parts());
+        }
+
+        /**
+         * Hashes the contents of the arrays, not their identities.
+         *
+         * @return a hash code that agrees with {@link #equals(Object)}
+         */
+        @Override
+        public int hashCode() {
+            return java.util.Arrays.deepHashCode(parts());
+        }
     }
 
     /**
@@ -266,6 +522,59 @@ public final class Gltf {
      * @param weights the weights
      */
     public record VertexSkinning(int[] joints, float[] weights) {
+
+        /**
+         * Keeps copies of the arrays, so that the record does not share them with the caller.
+         */
+        public VertexSkinning {
+            joints = Copies.of(joints);
+            weights = Copies.of(weights);
+        }
+
+        /**
+         * Exposes a copy of the {@code joints} array, so that the record cannot be changed through it.
+         *
+         * @return a copy of the array, or {@code null} if there is none
+         */
+        @Override
+        public int[] joints() {
+            return Copies.of(joints);
+        }
+
+        /**
+         * Exposes a copy of the {@code weights} array, so that the record cannot be changed through it.
+         *
+         * @return a copy of the array, or {@code null} if there is none
+         */
+        @Override
+        public float[] weights() {
+            return Copies.of(weights);
+        }
+
+        private Object[] parts() {
+            return new Object[] {joints, weights};
+        }
+
+        /**
+         * Compares the contents of the arrays, not their identities.
+         *
+         * @param o the object to compare with
+         * @return {@code true} if {@code o} is a {@code VertexSkinning} with equal components
+         */
+        @Override
+        public boolean equals(Object o) {
+            return o instanceof VertexSkinning other && java.util.Arrays.deepEquals(parts(), other.parts());
+        }
+
+        /**
+         * Hashes the contents of the arrays, not their identities.
+         *
+         * @return a hash code that agrees with {@link #equals(Object)}
+         */
+        @Override
+        public int hashCode() {
+            return java.util.Arrays.deepHashCode(parts());
+        }
     }
 
     private static final Set<String> SUPPORTED_REQUIRED = Set.of("KHR_mesh_quantization");
@@ -327,22 +636,32 @@ public final class Gltf {
     public static Gltf load(Path file, long maxFileBytes) throws IOException {
         byte[] data = readLimited(file, maxFileBytes);
         Path base = file.toAbsolutePath().normalize().getParent();
+        Path realBase = base.toRealPath();
         return parse(data, uri -> {
             String decoded = URLDecoder.decode(uri.replace("+", "%2B"), StandardCharsets.UTF_8);
             Path p = base.resolve(decoded).normalize();
             if (!p.startsWith(base)) {
                 throw new IOException("the URI leaves the directory of the glTF file: " + uri);
             }
-            return readLimited(p, maxFileBytes);
+            // the check above is on the text of the path; a link inside the directory can still lead out of it, so the resolved file is checked too
+            Path real = p.toRealPath();
+            if (!real.startsWith(realBase)) {
+                throw new IOException("the URI leaves the directory of the glTF file through a link: " + uri);
+            }
+            return readLimited(real, maxFileBytes);
         });
     }
 
     private static byte[] readLimited(Path file, long maxFileBytes) throws IOException {
-        long size = Files.size(file);
-        if (size > maxFileBytes || size > Integer.MAX_VALUE - 8) {
-            throw new GltfException(file.getFileName() + " is " + size + " bytes, more than the limit of " + Math.min(maxFileBytes, Integer.MAX_VALUE - 8L) + " bytes");
+        long limit = Math.min(maxFileBytes, Integer.MAX_VALUE - 8L);
+        // one read with a limit instead of asking for the size first: a file that grows in between cannot get past the limit
+        try (java.io.InputStream in = Files.newInputStream(file)) {
+            byte[] data = in.readNBytes((int) limit + 1);
+            if (data.length > limit) {
+                throw new GltfException(file.getFileName() + " is more than the limit of " + limit + " bytes");
+            }
+            return data;
         }
-        return Files.readAllBytes(file);
     }
 
     /**

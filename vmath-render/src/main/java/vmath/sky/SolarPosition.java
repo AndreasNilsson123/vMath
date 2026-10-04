@@ -1,4 +1,4 @@
-package vmath.camera;
+package vmath.sky;
 
 /**
  * Where the sun is: its position in the sky for a place and a moment, the times of sunrise, solar

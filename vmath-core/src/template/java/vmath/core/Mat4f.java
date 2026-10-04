@@ -209,8 +209,16 @@ public record Mat4f(
      * @param zZeroToOne {@code true} for NDC depth [0, 1] (Vulkan, D3D, GL with
      *     {@code glClipControl(GL_LOWER_LEFT, GL_ZERO_TO_ONE)}), {@code false} for GL's [-1, 1]
      * @return symmetric perspective projection with finite near and far planes
+     * @deprecated Use the {@link ClipSpace} overload: {@code true} is {@link ClipSpace#D3D} and
+     *     {@code false} is {@link ClipSpace#OPENGL}.
      */
+    @Deprecated(since = "0.2.0")
     public static Mat4f perspective(float fovy, float aspect, float near, float far, boolean zZeroToOne) {
+        return perspectiveDepth(fovy, aspect, near, far, zZeroToOne);
+    }
+
+    // the boolean conventions: true is NDC depth [0, 1], false is [-1, 1]
+    private static Mat4f perspectiveDepth(float fovy, float aspect, float near, float far, boolean zZeroToOne) {
         float h = (float) Math.tan(fovy * 0.5f);
         float m22 = (zZeroToOne ? far : far + near) / (near - far);
         float m32 = (zZeroToOne ? far : far + far) * near / (near - far);
@@ -234,7 +242,7 @@ public record Mat4f(
      *     and Y direction)
      */
     public static Mat4f perspective(float fovy, float aspect, float near, float far, ClipSpace space) {
-        Mat4f m = perspective(fovy, aspect, near, far, space.zeroToOne());
+        Mat4f m = perspectiveDepth(fovy, aspect, near, far, space.zeroToOne());
         return space.yDown() ? m.flipY() : m;
     }
 
@@ -250,7 +258,7 @@ public record Mat4f(
      * @return infinite-far perspective (conventional depth) for a {@link ClipSpace}
      */
     public static Mat4f perspectiveInfinite(float fovy, float aspect, float near, ClipSpace space) {
-        Mat4f m = perspectiveInfinite(fovy, aspect, near, space.zeroToOne());
+        Mat4f m = perspectiveInfiniteDepth(fovy, aspect, near, space.zeroToOne());
         return space.yDown() ? m.flipY() : m;
     }
 
@@ -316,8 +324,17 @@ public record Mat4f(
      * @param far the distance to the far plane
      * @param zZeroToOne whether z zero to one
      * @return orthographic projection
+     * @deprecated Use the {@link ClipSpace} overload: {@code true} is {@link ClipSpace#D3D} and
+     *     {@code false} is {@link ClipSpace#OPENGL}.
      */
+    @Deprecated(since = "0.2.0")
     public static Mat4f ortho(float left, float right, float bottom, float top,
+                              float near, float far, boolean zZeroToOne) {
+        return orthoDepth(left, right, bottom, top, near, far, zZeroToOne);
+    }
+
+    // the boolean conventions: true is NDC depth [0, 1], false is [-1, 1]
+    private static Mat4f orthoDepth(float left, float right, float bottom, float top,
                               float near, float far, boolean zZeroToOne) {
         return new Mat4f(
                 2f / (right - left), 0f, 0f, 0f,
@@ -343,7 +360,7 @@ public record Mat4f(
      * @return orthographic projection for a {@link ClipSpace}
      */
     public static Mat4f ortho(float left, float right, float bottom, float top, float near, float far, ClipSpace space) {
-        Mat4f m = ortho(left, right, bottom, top, near, far, space.zeroToOne());
+        Mat4f m = orthoDepth(left, right, bottom, top, near, far, space.zeroToOne());
         return space.yDown() ? m.flipY() : m;
     }
 
@@ -395,7 +412,7 @@ public record Mat4f(
      * @return asymmetric perspective frustum for a {@link ClipSpace}
      */
     public static Mat4f frustum(float left, float right, float bottom, float top, float near, float far, ClipSpace space) {
-        Mat4f m = frustum(left, right, bottom, top, near, far, space.zeroToOne());
+        Mat4f m = frustumDepth(left, right, bottom, top, near, far, space.zeroToOne());
         return space.yDown() ? m.flipY() : m;
     }
 
@@ -497,8 +514,17 @@ public record Mat4f(
      * @param zZeroToOne whether z zero to one
      * @return asymmetric perspective frustum (off-center projection, e.g. for stereo, tiles or
      *     portals)
+     * @deprecated Use the {@link ClipSpace} overload: {@code true} is {@link ClipSpace#D3D} and
+     *     {@code false} is {@link ClipSpace#OPENGL}.
      */
+    @Deprecated(since = "0.2.0")
     public static Mat4f frustum(float left, float right, float bottom, float top,
+                                float near, float far, boolean zZeroToOne) {
+        return frustumDepth(left, right, bottom, top, near, far, zZeroToOne);
+    }
+
+    // the boolean conventions: true is NDC depth [0, 1], false is [-1, 1]
+    private static Mat4f frustumDepth(float left, float right, float bottom, float top,
                                 float near, float far, boolean zZeroToOne) {
         float m22 = (zZeroToOne ? far : far + near) / (near - far);
         float m32 = (zZeroToOne ? far : far + far) * near / (near - far);
@@ -522,8 +548,16 @@ public record Mat4f(
      * @param zZeroToOne whether z zero to one
      * @return perspective projection with the far plane at infinity and conventional (non-reversed)
      *     depth
+     * @deprecated Use the {@link ClipSpace} overload: {@code true} is {@link ClipSpace#D3D} and
+     *     {@code false} is {@link ClipSpace#OPENGL}.
      */
+    @Deprecated(since = "0.2.0")
     public static Mat4f perspectiveInfinite(float fovy, float aspect, float near, boolean zZeroToOne) {
+        return perspectiveInfiniteDepth(fovy, aspect, near, zZeroToOne);
+    }
+
+    // the boolean conventions: true is NDC depth [0, 1], false is [-1, 1]
+    private static Mat4f perspectiveInfiniteDepth(float fovy, float aspect, float near, boolean zZeroToOne) {
         float h = (float) Math.tan(fovy * 0.5f);
         return new Mat4f(
                 1f / (h * aspect), 0f, 0f, 0f,

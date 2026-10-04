@@ -1,4 +1,4 @@
-package vmath.camera;
+package vmath.sky;
 
 /**
  * The analytic clear-sky model of Preetham, Shirley and Smits ("A Practical Analytic Model for

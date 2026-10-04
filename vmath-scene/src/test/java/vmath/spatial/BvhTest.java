@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import vmath.bulk.BoundsArray;
 import vmath.bulk.IntList;
 import vmath.bulk.VisibilitySet;
+import vmath.core.ClipSpace;
 import vmath.core.Mat4f;
 import vmath.core.Rnd;
 import vmath.core.Vec3f;
@@ -139,7 +140,7 @@ class BvhTest {
         Vec3f dir = rnd.nextVec3f();
         Mat4f view = Mat4f.lookAt(eye, eye.add(dir), Math.abs(dir.normalize().y()) > 0.95f ? Vec3f.UNIT_X : Vec3f.UNIT_Y);
         if (rnd.nextBoolean()) {
-            return Frustumf.fromViewProjection(Mat4f.perspective(fovy, aspect, near, near * 100f, true).mul(view),
+            return Frustumf.fromViewProjection(Mat4f.perspective(fovy, aspect, near, near * 100f, ClipSpace.D3D).mul(view),
                     DepthRange.ZERO_TO_ONE);
         }
         return Frustumf.fromViewProjection(Mat4f.perspectiveReversedZ(fovy, aspect, near).mul(view),

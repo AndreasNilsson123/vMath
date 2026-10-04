@@ -6,6 +6,41 @@ Date: 2026-10-04. Branch `master`, HEAD `0107025`, working tree as found (two st
 
 ---
 
+## Status after the follow-up work (2026-10-04)
+
+The findings below are the audit as written; this table says what was done about them afterwards. Everything is uncommitted in the working tree, and a full `./gradlew build -Dvmath.requireEnvironment=true --rerun-tasks` was the check.
+
+| ID | Status | What was done, and what was not |
+|---|---|---|
+| TD-001 | Done | Guard in `Gjk.epa` for "no live face"; `GjkDegenerateTest`. No input was found that reaches the guard (PIT shows it uncovered), so the test shows the code holds on nearly flat shapes, not that the old code crashed. The same tests now run the face-table compaction path, which no test ran before. |
+| TD-002 | Done | `EpaPolytope` holds the vertices, faces and horizon of the expanding polytope; one `barycentric` replaces the two copies; the constants are named. `Gjk` is shorter, `epa` is still about 100 lines. |
+| TD-003 | Done | The boolean `Mat4f` overloads are `@Deprecated`, about 25 files were migrated, `ClusterGrid.of` and `HiZPyramid.fromDepth` got `ClipSpace` overloads. They keep their boolean overloads (a `ClusterGrid` only needs the y direction; reversed-z is not a `ClipSpace`). |
+| TD-004 | Done for two | `Sdfs.raycast(sdf, ray, MarchLimits, hit)` and `MeshSimplifier.simplify(mesh, Options)`. `Curves`, `TileSelector.select`, `Srgb`, `GpuCullReference` were not changed. |
+| TD-005 | Done | No `ThreadLocal` in `Sdfs`. |
+| TD-006 | Done | `RigidBody`: scratch arrays instead of allocations, `isFinite()`, and a singular Jacobian leaves the angular velocity unchanged. |
+| TD-007 | Done in part | `TileSelector.select` clears only the used slots of the node table, resets its counters in one method and drops its references in a `finally`. The two tile key encodings stay (commented as deliberate); `HorizonCuller` is immutable and is still allocated per call. |
+| TD-008 | Not done, with a reason | `Intersectionf` has 33 public methods averaging 12 lines (largest 53); its 1,101 lines are mostly Javadoc (608 code lines). Splitting it into `Rays`, `Overlaps` and `Sweeps` would need `Intersectionf` to stay as a facade (it is stable API) and so duplicate about 600 lines of Javadoc. The slab/p-vertex specification test (TD-025) now exists if someone wants to do it anyway. |
+| TD-009 | Decision: keep | Evidence: `vmath.pack` is imported by `mesh` only, `tex`, `color`, `mem` and `physics` by nothing in the library (only by bench and samples), and none of them is in the `v0.1.0` baseline, so moving them would not break `japicmp`. Not moved: `pack` is a general-purpose utility that `scene`'s tests also use, and moving it into `render` would make it reachable only with the whole renderer; `mem`, `tex`, `color` cost no dependency where they are. Revisit with the experimental-promotion plan (register TD-05). |
+| TD-010 | Done | `PersistentBufferRing.beginFrame` commits nothing before the wait succeeds. |
+| TD-011 | Done | `Backing` helper. |
+| TD-012 | Done | `Ktx2.writeHeader`. |
+| TD-013 | Done as documentation | The contradictory roadmap bullet is fixed and `docs/CODEGEN.md` says that the int vectors are hand-written and why that is the current state. They are not templated. |
+| TD-014 | Done for `Gltf`; documented for the mesh results | The five `Gltf` records copy their arrays and compare by contents. `MeshLod.Chain`, `MeshSimplifier.Result`, `RectPacker.Result`, `UvAtlas.Result` say in their Javadoc that their arrays are not copied (they can be as large as the mesh). |
+| TD-015 | Done | `Mesh.bounds()`. |
+| TD-016 | Done | `vmath.camera` is split into `camera`, `lighting` (`ClusterGrid`, `ClusterLights`, `Cascades`, `CascadeCasters`) and `sky` (`Atmosphere`, `PreethamSky`, `SolarPosition`). None of these was in the baseline, so no forwarders. Coverage floors for the two new packages are copied from `camera` minus 2 and 4 points: measure and set them properly. |
+| TD-017 | Done in part | The link check on external URIs (`toRealPath`) and the single bounded read. The BIN chunk of a GLB is still copied. The symlink test skips on this Windows machine, so that check has not been run anywhere yet. |
+| TD-018 | Rejected by measurement | A count-then-fill pass was 1.8 to 1.9 times slower than the list of pairs in `ClusterLightBench` (1,024 and 4,096 lights), so the list stays; the code says so. |
+| TD-019 | Done for 8 of 12 | `UvAtlas.generate` (271 lines) is now about 35 lines plus named steps; `Meshlets.build`, `ClusterHierarchy.build`, `Overdraw.optimize`, `RectPacker.pack`, `MeshOptimizer.optimizeVertexCache`, `MeshTools.computeNormalsWithCrease`, `GltfSkins.build` and `SurfaceNets.mesh` were split as well. Not done: `ManifoldBuilder.faceContact` and `.polytopes`, `ConvexPolytope`'s constructor. The mesh mutation rerun that the item asked for first was not done; the existing mesh tests are what checks these. |
+| TD-020 | Done | `KernelSelector`, one property scheme (`vmath.frustumKernel`, with `vmath.kernel` as an alias), a log message when a provider is skipped or a forced name is unknown. |
+| TD-021 | Done | `-Werror` (with `-Xlint:-incubating`) and the doclint options for `vmath-simd`; `-Xwerror` is left out of its javadoc because javadoc cannot silence the incubator notice. |
+| TD-022 | Done | `ParallelFrustumKernel`. |
+| TD-023 | Done | `SimdSupport`. |
+| TD-024 | Done | The `testVector8/16/32/64` tasks run the kernel tests with `-XX:MaxVectorSize`. This machine's limit is 32 bytes, so the 64 run was a 32 run. |
+| TD-025 | Done | `CullCopiesAgreeTest`: the scalar kernel, static BVH, dynamic tree and the GPU reference agree on random and plane-touching boxes. A box with NaN bounds makes the static BVH disagree with the others; the trees are documented there as "not asked", not investigated. |
+| TD-026 | Done | `vmath.Environment.require`, skipped tests are listed, CI sets `-Dvmath.requireEnvironment=true`. |
+| TD-027 | Done | PIT ran on `geo`, `physics`, `camera`, `gpucull`, `pack`, `tex`, `color` and `mem`; results are in `docs/COVERAGE.md`. The survivors in `Gjk` (196), `RigidBody` (166) and `ManifoldBuilder` (127) were not worked through. |
+| TD-028 | Done as process | A nightly `simd-next-jdk` CI job and a note in `docs/VERSIONING.md`. The job could not be run from here. |
+
 ## 0. Method, and what this audit does not cover
 
 **Important context:** the repo already has an audit, `docs/technical-debt.md` (2026-10-01, TD-01..TD-33, 24 ticked). That audit predates the split into `vmath-scene` and most findings below are new. Where I re-checked something it already records, I say so. Ids in this report are `TD-0xx` too, but they are **a different numbering**; I cite the older ones as "register TD-nn".

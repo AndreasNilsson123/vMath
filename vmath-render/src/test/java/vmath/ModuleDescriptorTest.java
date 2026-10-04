@@ -30,7 +30,7 @@ class ModuleDescriptorTest {
             "vmath.core", Set.of("vmath.core", "vmath.mem", "vmath.color", "vmath.tex"),
             "vmath.geo", Set.of("vmath.geo", "vmath.pack", "vmath.physics"),
             "vmath.scene", Set.of("vmath.bulk", "vmath.spatial", "vmath.occlusion", "vmath.anim", "vmath.gl", "vmath.util"),
-            "vmath.render", Set.of("vmath.camera", "vmath.mesh", "vmath.gltf", "vmath.gpucull")));
+            "vmath.render", Set.of("vmath.camera", "vmath.lighting", "vmath.sky", "vmath.mesh", "vmath.gltf", "vmath.gpucull")));
 
     /** The modules each part may require at run time besides java.base: the ones below it. */
     private static final Map<String, Set<String>> REQUIRES = Map.of(
@@ -85,7 +85,7 @@ class ModuleDescriptorTest {
                 assertTrue(all.add(pkg), pkg + " is in two modules");
             }
         }
-        assertEquals(17, all.size(), "the library has 17 packages: " + all);
+        assertEquals(19, all.size(), "the library has 19 packages: " + all);
     }
 
     @Test

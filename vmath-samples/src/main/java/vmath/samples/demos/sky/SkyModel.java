@@ -1,8 +1,8 @@
 package vmath.samples.demos.sky;
 
-import vmath.camera.Atmosphere;
-import vmath.camera.PreethamSky;
-import vmath.camera.SolarPosition;
+import vmath.sky.Atmosphere;
+import vmath.sky.PreethamSky;
+import vmath.sky.SolarPosition;
 
 /**
  * The light of one moment at one place, worked out with the library's models: where the sun is

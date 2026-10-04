@@ -40,6 +40,10 @@ public final class RectPacker {
      * A packing: the bin size used and, per input rectangle, its position and whether it was
      * rotated by 90 degrees (width and height swapped).
      *
+     * <p>The arrays are the result's own and are not copied, because they can be as large as
+     * the mesh: treat them as read-only, and note that two results are equal only if they hold
+     * the same arrays.
+     *
      * @param width the width
      * @param height the height
      * @param x the x
@@ -91,21 +95,48 @@ public final class RectPacker {
             }
             return Long.compare((long) w[b] * h[b], (long) w[a] * h[a]);
         });
-        int[] fx = new int[16], fy = new int[16], fw = new int[16], fh = new int[16];
-        int free = 1;
-        fx[0] = 0;
-        fy[0] = 0;
-        fw[0] = binWidth;
-        fh[0] = binHeight;
+        FreeRects free = new FreeRects(binWidth, binHeight);
         for (int oi = 0; oi < n; oi++) {
             int r = order[oi];
+            int found = free.bestFit(w[r], h[r], allowRotation);
+            if (found < 0) {
+                return false;
+            }
+            int bi = found >> 1;
+            boolean bestRot = (found & 1) == 1;
+            int pw = bestRot ? h[r] : w[r], ph = bestRot ? w[r] : h[r];
+            int px = free.x[bi], py = free.y[bi];
+            outX[r] = px;
+            outY[r] = py;
+            outRotated[r] = bestRot;
+            free.place(px, py, pw, ph);
+        }
+        return true;
+    }
+
+    /**
+     * The free rectangles of the bin in the maximal-rectangles method: after a rectangle is
+     * placed, every free rectangle it overlaps is split around it, and the ones that lie inside
+     * another are dropped.
+     */
+    private static final class FreeRects {
+        int[] x = new int[16], y = new int[16], w = new int[16], h = new int[16];
+        int count = 1;
+
+        FreeRects(int binWidth, int binHeight) {
+            w[0] = binWidth;
+            h[0] = binHeight;
+        }
+
+        // the free rectangle with the smallest leftover on its shorter side (then on the longer), for a rectangle of rw x rh or, if allowed, turned; returns index * 2 + (turned ? 1 : 0), or -1
+        int bestFit(int rw0, int rh0, boolean allowRotation) {
             int bestShort = Integer.MAX_VALUE, bestLong = Integer.MAX_VALUE, bi = -1;
             boolean bestRot = false;
             for (int pass = 0; pass < (allowRotation ? 2 : 1); pass++) {
-                int rw = pass == 0 ? w[r] : h[r], rh = pass == 0 ? h[r] : w[r];
-                for (int f = 0; f < free; f++) {
-                    if (rw <= fw[f] && rh <= fh[f]) {
-                        int dw = fw[f] - rw, dh = fh[f] - rh;
+                int rw = pass == 0 ? rw0 : rh0, rh = pass == 0 ? rh0 : rw0;
+                for (int f = 0; f < count; f++) {
+                    if (rw <= w[f] && rh <= h[f]) {
+                        int dw = w[f] - rw, dh = h[f] - rh;
                         int shortSide = Math.min(dw, dh), longSide = Math.max(dw, dh);
                         if (shortSide < bestShort || (shortSide == bestShort && longSide < bestLong)) {
                             bestShort = shortSide;
@@ -116,20 +147,16 @@ public final class RectPacker {
                     }
                 }
             }
-            if (bi < 0) {
-                return false;
-            }
-            int pw = bestRot ? h[r] : w[r], ph = bestRot ? w[r] : h[r];
-            int px = fx[bi], py = fy[bi];
-            outX[r] = px;
-            outY[r] = py;
-            outRotated[r] = bestRot;
-            // keep the free rectangles the placed one does not touch; split each one it does touch into up to four
-            int cap = free * 5 + 4;
+            return bi < 0 ? -1 : bi * 2 + (bestRot ? 1 : 0);
+        }
+
+        // keeps the free rectangles the placed one does not touch and splits each one it does touch into up to four, then prunes
+        void place(int px, int py, int pw, int ph) {
+            int cap = count * 5 + 4;
             int[] nx = new int[cap], ny = new int[cap], nw = new int[cap], nh = new int[cap];
             int m = 0;
-            for (int f = 0; f < free; f++) {
-                int ox = fx[f], oy = fy[f], ow = fw[f], oh = fh[f];
+            for (int f = 0; f < count; f++) {
+                int ox = x[f], oy = y[f], ow = w[f], oh = h[f];
                 if (px >= ox + ow || px + pw <= ox || py >= oy + oh || py + ph <= oy) {
                     nx[m] = ox;
                     ny[m] = oy;
@@ -167,27 +194,30 @@ public final class RectPacker {
                     m++;
                 }
             }
-            fx = nx;
-            fy = ny;
-            fw = nw;
-            fh = nh;
-            free = m;
-            // prune
-            for (int a = 0; a < free; a++) {
-                for (int b = 0; b < free; b++) {
-                    if (a != b && fx[a] >= fx[b] && fy[a] >= fy[b] && fx[a] + fw[a] <= fx[b] + fw[b] && fy[a] + fh[a] <= fy[b] + fh[b]) {
-                        free--;
-                        fx[a] = fx[free];
-                        fy[a] = fy[free];
-                        fw[a] = fw[free];
-                        fh[a] = fh[free];
+            x = nx;
+            y = ny;
+            w = nw;
+            h = nh;
+            count = m;
+            prune();
+        }
+
+        // drops every free rectangle that lies inside another
+        private void prune() {
+            for (int a = 0; a < count; a++) {
+                for (int b = 0; b < count; b++) {
+                    if (a != b && x[a] >= x[b] && y[a] >= y[b] && x[a] + w[a] <= x[b] + w[b] && y[a] + h[a] <= y[b] + h[b]) {
+                        count--;
+                        x[a] = x[count];
+                        y[a] = y[count];
+                        w[a] = w[count];
+                        h[a] = h[count];
                         a--;
                         break;
                     }
                 }
             }
         }
-        return true;
     }
 
     /**

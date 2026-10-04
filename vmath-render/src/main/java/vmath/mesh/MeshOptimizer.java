@@ -186,67 +186,112 @@ public final class MeshOptimizer {
         if (triangles < 2) {
             return;
         }
-        // triangle lists per vertex (counting sort)
-        int[] valence = new int[vertexCount];
-        for (int i = 0; i < indexCount; i++) {
-            valence[indices[i]]++;
-        }
-        int[] start = new int[vertexCount + 1];
-        for (int v = 0; v < vertexCount; v++) {
-            start[v + 1] = start[v] + valence[v];
-        }
-        int[] fill = Arrays.copyOf(start, vertexCount);
-        int[] adjacent = new int[indexCount];
-        for (int t = 0; t < triangles; t++) {
-            for (int k = 0; k < 3; k++) {
-                adjacent[fill[indices[t * 3 + k]]++] = t;
+        Forsyth run = new Forsyth(indices, indexCount, vertexCount, cache);
+        run.run();
+        System.arraycopy(run.out, 0, indices, 0, indexCount);
+    }
+
+    /**
+     * One run of Forsyth's vertex cache optimisation: every vertex and triangle has a score from
+     * its position in a simulated cache and the number of triangles it still has to give, and the
+     * triangle with the best score is emitted next.
+     */
+    private static final class Forsyth {
+        final int[] indices;
+        final int indexCount;
+        final int triangles;
+        final int cache;
+        final int[] start;       // the triangles of vertex v are adjacent[start[v] .. start[v + 1])
+        final int[] adjacent;
+        final int[] remaining;   // triangles of each vertex not yet emitted
+        final int[] cachePos;
+        final float[] vscore;
+        final float[] tscore;
+        final boolean[] done;
+        final int[] out;
+        final int[] lru;
+        int lruSize;
+        final int[] scratch;
+        int scanFrom;
+
+        Forsyth(int[] indices, int indexCount, int vertexCount, int cache) {
+            this.indices = indices;
+            this.indexCount = indexCount;
+            this.cache = cache;
+            triangles = indexCount / 3;
+            // triangle lists per vertex (counting sort)
+            int[] valence = new int[vertexCount];
+            for (int i = 0; i < indexCount; i++) {
+                valence[indices[i]]++;
             }
-        }
-        int[] remaining = valence.clone(); // triangles of each vertex not yet emitted
-        int[] cachePos = new int[vertexCount];
-        Arrays.fill(cachePos, -1);
-        float[] vscore = new float[vertexCount];
-        for (int v = 0; v < vertexCount; v++) {
-            vscore[v] = vertexScore(-1, remaining[v], cache);
-        }
-        float[] tscore = new float[triangles];
-        boolean[] done = new boolean[triangles];
-        for (int t = 0; t < triangles; t++) {
-            tscore[t] = vscore[indices[t * 3]] + vscore[indices[t * 3 + 1]] + vscore[indices[t * 3 + 2]];
-        }
-        int[] out = new int[indexCount];
-        int[] lru = new int[cache + 3];
-        int lruSize = 0;
-        int[] scratch = new int[cache + 3];
-        int scanFrom = 0;
-        int best = 0;
-        for (int i = 1; i < triangles; i++) {
-            if (tscore[i] > tscore[best]) {
-                best = i;
+            start = new int[vertexCount + 1];
+            for (int v = 0; v < vertexCount; v++) {
+                start[v + 1] = start[v] + valence[v];
             }
-        }
-        for (int emitted = 0; emitted < triangles; emitted++) {
-            if (best < 0 || done[best]) {
-                best = -1;
-                float bs = -1f;
-                for (int k = 0; k < lruSize; k++) { // candidates: triangles around vertices still in the cache
-                    int v = lru[k];
-                    for (int a = start[v]; a < start[v + 1]; a++) {
-                        int t = adjacent[a];
-                        if (!done[t] && tscore[t] > bs) {
-                            bs = tscore[t];
-                            best = t;
-                        }
-                    }
-                }
-                if (best < 0) { // the cache holds nothing useful: take the first triangle not emitted yet
-                    while (done[scanFrom]) {
-                        scanFrom++;
-                    }
-                    best = scanFrom;
+            int[] fill = Arrays.copyOf(start, vertexCount);
+            adjacent = new int[indexCount];
+            for (int t = 0; t < triangles; t++) {
+                for (int k = 0; k < 3; k++) {
+                    adjacent[fill[indices[t * 3 + k]]++] = t;
                 }
             }
-            int t = best;
+            remaining = valence.clone();
+            cachePos = new int[vertexCount];
+            Arrays.fill(cachePos, -1);
+            vscore = new float[vertexCount];
+            for (int v = 0; v < vertexCount; v++) {
+                vscore[v] = vertexScore(-1, remaining[v], cache);
+            }
+            tscore = new float[triangles];
+            done = new boolean[triangles];
+            for (int t = 0; t < triangles; t++) {
+                tscore[t] = vscore[indices[t * 3]] + vscore[indices[t * 3 + 1]] + vscore[indices[t * 3 + 2]];
+            }
+            out = new int[indexCount];
+            lru = new int[cache + 3];
+            scratch = new int[cache + 3];
+        }
+
+        void run() {
+            int best = 0;
+            for (int i = 1; i < triangles; i++) {
+                if (tscore[i] > tscore[best]) {
+                    best = i;
+                }
+            }
+            for (int emitted = 0; emitted < triangles; emitted++) {
+                if (best < 0 || done[best]) {
+                    best = bestAroundCache();
+                }
+                best = emit(best, emitted);
+            }
+        }
+
+        // the best triangle around the vertices still in the cache, or the first triangle not emitted yet if the cache holds nothing useful
+        int bestAroundCache() {
+            int best = -1;
+            float bs = -1f;
+            for (int k = 0; k < lruSize; k++) {
+                int v = lru[k];
+                for (int a = start[v]; a < start[v + 1]; a++) {
+                    int t = adjacent[a];
+                    if (!done[t] && tscore[t] > bs) {
+                        bs = tscore[t];
+                        best = t;
+                    }
+                }
+            }
+            if (best < 0) {
+                while (done[scanFrom]) {
+                    scanFrom++;
+                }
+                best = scanFrom;
+            }
+            return best;
+        }
+
+        // emits triangle t as number `emitted`, moves its vertices to the front of the cache and rescores what changed; returns the best triangle for next time, or -1
+        int emit(int t, int emitted) {
             done[t] = true;
             System.arraycopy(indices, t * 3, out, emitted * 3, 3);
             int a = indices[t * 3], b = indices[t * 3 + 1], c = indices[t * 3 + 2];
@@ -276,7 +321,7 @@ public final class MeshOptimizer {
                 vscore[lru[k]] = vertexScore(k, remaining[lru[k]], cache);
             }
             // rescore the triangles around everything whose score changed and pick the best of them for next time
-            best = -1;
+            int best = -1;
             float bs = -1f;
             for (int k = 0; k < Math.min(n, cache + 3); k++) {
                 int v = scratch[k];
@@ -292,8 +337,8 @@ public final class MeshOptimizer {
                     }
                 }
             }
+            return best;
         }
-        System.arraycopy(out, 0, indices, 0, indexCount);
     }
 
     private static float vertexScore(int cachePosition, int remainingTriangles, int cacheSize) {

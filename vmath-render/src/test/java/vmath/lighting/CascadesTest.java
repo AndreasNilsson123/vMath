@@ -1,4 +1,4 @@
-package vmath.camera;
+package vmath.lighting;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -6,13 +6,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
 import org.junit.jupiter.api.Test;
-import vmath.camera.Cascades.Cascade;
+import vmath.lighting.Cascades.Cascade;
 import vmath.core.Mat4f;
 import vmath.core.Quatf;
 import vmath.core.Rnd;
 import vmath.core.Vec3f;
 import vmath.core.Vec4f;
 import vmath.geo.DepthRange;
+import vmath.camera.Cameraf;
 
 class CascadesTest {
 

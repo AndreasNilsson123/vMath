@@ -19,6 +19,7 @@ import vmath.bulk.SegmentFloatArray;
 import vmath.bulk.TransformArray;
 import vmath.bulk.VisibilitySet;
 import vmath.bulk.Vec4fArray;
+import vmath.core.ClipSpace;
 import vmath.core.Quatf;
 import vmath.core.Transformf;
 import vmath.core.Vec3f;
@@ -348,7 +349,7 @@ class ApiEdgeCasesTest {
         assertTrue(TextureFormat.BC7_UNORM.isCompressed());
         assertTrue(TextureFormat.BC1_RGB_SRGB.isCompressed());
 
-        vmath.core.Mat4f proj = vmath.core.Mat4f.perspective(1f, 1f, 0.1f, 100f, true);
+        vmath.core.Mat4f proj = vmath.core.Mat4f.perspective(1f, 1f, 0.1f, 100f, ClipSpace.D3D);
         vmath.occlusion.DepthBuffer d = new vmath.occlusion.DepthBuffer(64, 64);
         d.begin(proj, 0.1f);
         // one big triangle that covers the whole view at z = -5, then a second one far off to the side (the pixels along the seam of a two-triangle quad are

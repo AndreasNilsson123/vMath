@@ -102,19 +102,9 @@ public final class MeshTools {
             valid[t] = faceData(p, idx[t * 3], idx[t * 3 + 1], idx[t * 3 + 2], fn, t * 3, cornerAngle, t * 3);
         }
 
-        // corners grouped by vertex (counting sort)
-        int[] start = new int[oldCount + 1];
-        for (int c = 0; c < corners; c++) {
-            start[idx[c] + 1]++;
-        }
-        for (int v = 0; v < oldCount; v++) {
-            start[v + 1] += start[v];
-        }
-        int[] fill = Arrays.copyOf(start, oldCount);
-        int[] cornerOf = new int[corners];
-        for (int c = 0; c < corners; c++) {
-            cornerOf[fill[idx[c]]++] = c;
-        }
+        CornerLists lists = cornersByVertex(idx, corners, oldCount);
+        int[] start = lists.start();
+        int[] cornerOf = lists.cornerOf();
 
         double cosCrease = Math.cos(Math.min(creaseAngle, Math.PI));
         int[] remapOut = new int[oldCount];
@@ -134,33 +124,7 @@ public final class MeshTools {
             if (cluster.length < n) {
                 cluster = new int[Math.max(n, cluster.length * 2)];
             }
-            Arrays.fill(cluster, 0, n, -1);
-            int groups = 0;
-            for (int i = 0; i < n; i++) {
-                if (cluster[i] != -1) {
-                    continue;
-                }
-                int seedTri = cornerOf[a + i] / 3;
-                cluster[i] = groups;
-                if (valid[seedTri]) {
-                    for (int j = i + 1; j < n; j++) {
-                        int tj = cornerOf[a + j] / 3;
-                        if (cluster[j] == -1 && valid[tj]
-                                && fn[seedTri * 3] * fn[tj * 3] + fn[seedTri * 3 + 1] * fn[tj * 3 + 1]
-                                + fn[seedTri * 3 + 2] * fn[tj * 3 + 2] >= cosCrease - 1e-9) {
-                            cluster[j] = groups;
-                        }
-                    }
-                } else {
-                    // a degenerate face has no normal: it rides along with the first group it can join
-                    for (int j = i + 1; j < n; j++) {
-                        if (cluster[j] == -1 && !valid[cornerOf[a + j] / 3]) {
-                            cluster[j] = groups;
-                        }
-                    }
-                }
-                groups++;
-            }
+            int groups = groupCorners(cluster, a, n, cornerOf, valid, fn, cosCrease);
             // vertex v keeps group 0; every further group gets a copy of the vertex
             int[] ids = new int[groups];
             ids[0] = v;
@@ -194,6 +158,62 @@ public final class MeshTools {
         int[] remap = Arrays.copyOf(remapOut, oldCount + extras);
         System.arraycopy(extra, 0, remap, oldCount, extras);
         return remap;
+    }
+
+    /**
+     * The corners of a mesh grouped by the vertex they use: the corners of vertex v are
+     * {@code cornerOf[start[v] .. start[v + 1])}, a corner being {@code triangle * 3 + k}.
+     */
+    private record CornerLists(int[] start, int[] cornerOf) {
+    }
+
+    // corners grouped by vertex (counting sort)
+    private static CornerLists cornersByVertex(int[] idx, int corners, int vertexCount) {
+        int[] start = new int[vertexCount + 1];
+        for (int c = 0; c < corners; c++) {
+            start[idx[c] + 1]++;
+        }
+        for (int v = 0; v < vertexCount; v++) {
+            start[v + 1] += start[v];
+        }
+        int[] fill = Arrays.copyOf(start, vertexCount);
+        int[] cornerOf = new int[corners];
+        for (int c = 0; c < corners; c++) {
+            cornerOf[fill[idx[c]]++] = c;
+        }
+        return new CornerLists(start, cornerOf);
+    }
+
+    // splits the n corners of one vertex (cornerOf[a ..]) into groups whose face normals lie within the crease angle of the group's first face; writes the group of every corner to cluster[0 .. n) and returns the number of groups
+    private static int groupCorners(int[] cluster, int a, int n, int[] cornerOf, boolean[] valid, double[] fn, double cosCrease) {
+        Arrays.fill(cluster, 0, n, -1);
+        int groups = 0;
+        for (int i = 0; i < n; i++) {
+            if (cluster[i] != -1) {
+                continue;
+            }
+            int seedTri = cornerOf[a + i] / 3;
+            cluster[i] = groups;
+            if (valid[seedTri]) {
+                for (int j = i + 1; j < n; j++) {
+                    int tj = cornerOf[a + j] / 3;
+                    if (cluster[j] == -1 && valid[tj]
+                            && fn[seedTri * 3] * fn[tj * 3] + fn[seedTri * 3 + 1] * fn[tj * 3 + 1]
+                            + fn[seedTri * 3 + 2] * fn[tj * 3 + 2] >= cosCrease - 1e-9) {
+                        cluster[j] = groups;
+                    }
+                }
+            } else {
+                // a degenerate face has no normal: it rides along with the first group it can join
+                for (int j = i + 1; j < n; j++) {
+                    if (cluster[j] == -1 && !valid[cornerOf[a + j] / 3]) {
+                        cluster[j] = groups;
+                    }
+                }
+            }
+            groups++;
+        }
+        return groups;
     }
 
     private static void writeNormals(Mesh mesh, double[] acc) {

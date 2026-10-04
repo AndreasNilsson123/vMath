@@ -15,7 +15,8 @@ import vmath.bulk.IntList;
 import vmath.bulk.Mat4fArray;
 import vmath.bulk.VisibilitySet;
 import vmath.camera.Cameraf;
-import vmath.camera.Cascades;
+import vmath.lighting.Cascades;
+import vmath.core.ClipSpace;
 import vmath.core.Mat4f;
 import vmath.core.Vec3f;
 import vmath.geo.Aabbf;
@@ -26,7 +27,7 @@ import vmath.geo.Spheref;
 import vmath.occlusion.DepthBuffer;
 import vmath.occlusion.OcclusionStage;
 import vmath.spatial.BvhQuery;
-import vmath.camera.CascadeCasters;
+import vmath.lighting.CascadeCasters;
 import vmath.spatial.ConeCull;
 import vmath.spatial.CullContext;
 import vmath.spatial.CullPipeline;
@@ -75,7 +76,7 @@ class AllocationContractTest {
 
     private static Mat4f viewProjection() {
         Mat4f view = Mat4f.lookAt(Vec3f.ZERO, new Vec3f(0.3f, 0.1f, -1f), Vec3f.UNIT_Y);
-        return Mat4f.perspective(1.0f, 16f / 9f, 0.3f, 150f, true).mul(view);
+        return Mat4f.perspective(1.0f, 16f / 9f, 0.3f, 150f, ClipSpace.D3D).mul(view);
     }
 
     private static Frustumf frustum() {
@@ -377,8 +378,8 @@ class AllocationContractTest {
 
     @Test
     void clusterLightAssignment() {
-        vmath.camera.ClusterGrid grid = vmath.camera.ClusterGrid.of(1.0f, 16f / 9f, 0.1f, 200f, 1280, 720, 64, 16, false);
-        vmath.camera.ClusterLights lights = new vmath.camera.ClusterLights();
+        vmath.lighting.ClusterGrid grid = vmath.lighting.ClusterGrid.of(1.0f, 16f / 9f, 0.1f, 200f, 1280, 720, 64, 16, false);
+        vmath.lighting.ClusterLights lights = new vmath.lighting.ClusterLights();
         for (int i = 0; i < 200; i++) {
             float d = 2f + i * 0.5f;
             if (i % 4 == 0) {
@@ -1018,7 +1019,7 @@ class AllocationContractTest {
     void cameraAndSunHelpers() {
         var cam = vmath.camera.PhysicalCamera.fullFrame(50, 2.8, 1.0 / 125, 100, 4);
         double[] rgb = new double[3];
-        var sky = new vmath.camera.PreethamSky(3, 0.8);
+        var sky = new vmath.sky.PreethamSky(3, 0.8);
         double[] t = {0.0};
         assertNoAllocation("PhysicalCamera and Atmosphere", WARM, CALLS, () -> {
             t[0] += 0.0001;
@@ -1029,8 +1030,8 @@ class AllocationContractTest {
             cam.nearFocusLimit();
             cam.farFocusLimit();
             cam.circleOfConfusion(10 + t[0]);
-            vmath.camera.Atmosphere.airMass(0.2 + t[0]);
-            vmath.camera.Atmosphere.sunTransmittanceRgb(0.3 + t[0], 0.05, 1.3, 0.0, rgb);
+            vmath.sky.Atmosphere.airMass(0.2 + t[0]);
+            vmath.sky.Atmosphere.sunTransmittanceRgb(0.3 + t[0], 0.05, 1.3, 0.0, rgb);
         });
         assertNoAllocation("PreethamSky", WARM, CALLS, () -> {
             t[0] += 0.0001;

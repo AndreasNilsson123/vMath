@@ -46,14 +46,14 @@ class Mat4fTest {
             float near = (float) rnd.range(0.01, 10);
             float far = near * (float) rnd.range(10, 1e4);
             boolean zeroToOne = rnd.nextBoolean();
-            close(Mat4f.perspective(fovy, aspect, near, far, zeroToOne),
+            close(Mat4f.perspective(fovy, aspect, near, far, zeroToOne ? ClipSpace.D3D : ClipSpace.OPENGL),
                     new Matrix4f().setPerspective(fovy, aspect, near, far, zeroToOne), EPS, i);
             close(Mat4f.perspectiveReversedZ(fovy, aspect, near),
                     new Matrix4f().setPerspective(fovy, aspect, Float.POSITIVE_INFINITY, near, true), EPS_REVZ, i);
 
             float l = (float) rnd.range(-10, -1), r = (float) rnd.range(1, 10);
             float b = (float) rnd.range(-10, -1), t = (float) rnd.range(1, 10);
-            close(Mat4f.ortho(l, r, b, t, near, far, zeroToOne),
+            close(Mat4f.ortho(l, r, b, t, near, far, zeroToOne ? ClipSpace.D3D : ClipSpace.OPENGL),
                     new Matrix4f().setOrtho(l, r, b, t, near, far, zeroToOne), EPS, i);
         }
     }
@@ -191,11 +191,11 @@ class Mat4fTest {
             float near = (float) rnd.range(0.05, 5);
             float far = near * (float) rnd.range(10, 1e3);
             boolean zeroToOne = rnd.nextBoolean();
-            close(Mat4f.frustum(l, r, b, t, near, far, zeroToOne),
+            close(Mat4f.frustum(l, r, b, t, near, far, zeroToOne ? ClipSpace.D3D : ClipSpace.OPENGL),
                     new Matrix4f().setFrustum(l, r, b, t, near, far, zeroToOne), EPS, i);
             float fovy = (float) rnd.range(0.3, 2.5);
             float aspect = (float) rnd.range(0.5, 3);
-            close(Mat4f.perspectiveInfinite(fovy, aspect, near, zeroToOne),
+            close(Mat4f.perspectiveInfinite(fovy, aspect, near, zeroToOne ? ClipSpace.D3D : ClipSpace.OPENGL),
                     new Matrix4f().setPerspective(fovy, aspect, near, Float.POSITIVE_INFINITY, zeroToOne), EPS_REVZ, i);
         }
     }
@@ -204,8 +204,8 @@ class Mat4fTest {
     void infinitePerspectiveIsTheLimitOfFinite() {
         float fovy = 1.1f, aspect = 1.6f, near = 0.1f;
         for (boolean zeroToOne : new boolean[] {false, true}) {
-            close(Mat4f.perspectiveInfinite(fovy, aspect, near, zeroToOne),
-                    Mat4f.perspective(fovy, aspect, near, 1e7f, zeroToOne), 1e-3, 0);
+            close(Mat4f.perspectiveInfinite(fovy, aspect, near, zeroToOne ? ClipSpace.D3D : ClipSpace.OPENGL),
+                    Mat4f.perspective(fovy, aspect, near, 1e7f, zeroToOne ? ClipSpace.D3D : ClipSpace.OPENGL), 1e-3, 0);
         }
     }
 
@@ -261,6 +261,6 @@ class Mat4fTest {
     void isAffineDistinguishesProjections() {
         check(Mat4f.IDENTITY.isAffine(0f), 0, "identity is affine");
         check(rnd.nextTrsMat4f().isAffine(EPS), 0, "TRS is affine");
-        check(!Mat4f.perspective(1f, 1.5f, 0.1f, 100f, false).isAffine(EPS), 0, "perspective is not affine");
+        check(!Mat4f.perspective(1f, 1.5f, 0.1f, 100f, ClipSpace.OPENGL).isAffine(EPS), 0, "perspective is not affine");
     }
 }

@@ -8,6 +8,7 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import vmath.bulk.BoundsArray;
 import vmath.bulk.VisibilitySet;
+import vmath.core.ClipSpace;
 import vmath.core.Mat4f;
 import vmath.core.Rnd;
 import vmath.core.Vec3f;
@@ -32,9 +33,9 @@ class CullingTest {
         Vec3f dir = rnd.nextVec3f();
         Mat4f view = Mat4f.lookAt(eye, eye.add(dir), Math.abs(dir.normalize().y()) > 0.95f ? Vec3f.UNIT_X : Vec3f.UNIT_Y);
         Frustumf f = switch ((int) rnd.range(0, 3)) {
-            case 0 -> Frustumf.fromViewProjection(Mat4f.perspective(fovy, aspect, near, far, false).mul(view),
+            case 0 -> Frustumf.fromViewProjection(Mat4f.perspective(fovy, aspect, near, far, ClipSpace.OPENGL).mul(view),
                     DepthRange.NEGATIVE_ONE_TO_ONE);
-            case 1 -> Frustumf.fromViewProjection(Mat4f.perspective(fovy, aspect, near, far, true).mul(view),
+            case 1 -> Frustumf.fromViewProjection(Mat4f.perspective(fovy, aspect, near, far, ClipSpace.D3D).mul(view),
                     DepthRange.ZERO_TO_ONE);
             default -> Frustumf.fromViewProjection(Mat4f.perspectiveReversedZ(fovy, aspect, near).mul(view),
                     DepthRange.REVERSED_ZERO_TO_ONE);

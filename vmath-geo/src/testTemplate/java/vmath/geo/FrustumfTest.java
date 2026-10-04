@@ -7,6 +7,7 @@ import static vmath.core.Check.close;
 import static vmath.core.Rnd.N;
 
 import org.junit.jupiter.api.Test;
+import vmath.core.ClipSpace;
 import vmath.core.Mat4f;
 import vmath.core.Rnd;
 import vmath.core.Vec3f;
@@ -35,11 +36,11 @@ class FrustumfTest {
         switch ((int) rnd.range(0, 4)) {
             case 0 -> {
                 outDepth[0] = DepthRange.NEGATIVE_ONE_TO_ONE;
-                return Mat4f.perspective(fovy, aspect, near, far, false).mul(view);
+                return Mat4f.perspective(fovy, aspect, near, far, ClipSpace.OPENGL).mul(view);
             }
             case 1 -> {
                 outDepth[0] = DepthRange.ZERO_TO_ONE;
-                return Mat4f.perspective(fovy, aspect, near, far, true).mul(view);
+                return Mat4f.perspective(fovy, aspect, near, far, ClipSpace.D3D).mul(view);
             }
             case 2 -> {
                 outDepth[0] = DepthRange.REVERSED_ZERO_TO_ONE;
@@ -48,7 +49,7 @@ class FrustumfTest {
             default -> {
                 outDepth[0] = DepthRange.NEGATIVE_ONE_TO_ONE;
                 float s = (float) rnd.range(1, 10);
-                return Mat4f.ortho(-s * aspect, s * aspect, -s, s, near, far, false).mul(view);
+                return Mat4f.ortho(-s * aspect, s * aspect, -s, s, near, far, ClipSpace.OPENGL).mul(view);
             }
         }
     }

@@ -4,6 +4,7 @@ import vmath.annotations.DoubleOnly;
 import vmath.annotations.FloatOnly;
 import vmath.annotations.GenerateDouble;
 import vmath.annotations.ValueType;
+import vmath.core.ClipSpace;
 import vmath.core.Mat4f;
 import vmath.core.Quatf;
 import vmath.core.Vec3f;
@@ -208,10 +209,10 @@ public record Cameraf(Vec3f position, Quatf orientation, float fovy, float aspec
     public Mat4f projection() {
         boolean infinite = Float.isInfinite(far);
         return switch (depth) {
-            case NEGATIVE_ONE_TO_ONE -> infinite ? Mat4f.perspectiveInfinite(fovy, aspect, near, false)
-                    : Mat4f.perspective(fovy, aspect, near, far, false);
-            case ZERO_TO_ONE -> infinite ? Mat4f.perspectiveInfinite(fovy, aspect, near, true)
-                    : Mat4f.perspective(fovy, aspect, near, far, true);
+            case NEGATIVE_ONE_TO_ONE -> infinite ? Mat4f.perspectiveInfinite(fovy, aspect, near, ClipSpace.OPENGL)
+                    : Mat4f.perspective(fovy, aspect, near, far, ClipSpace.OPENGL);
+            case ZERO_TO_ONE -> infinite ? Mat4f.perspectiveInfinite(fovy, aspect, near, ClipSpace.D3D)
+                    : Mat4f.perspective(fovy, aspect, near, far, ClipSpace.D3D);
             case REVERSED_ZERO_TO_ONE -> Mat4f.perspectiveReversedZ(fovy, aspect, near);
         };
     }

@@ -24,7 +24,7 @@ public interface FrustumKernelProvider {
      * property.
      *
      * @return identifier of the kernel this provider creates; also what
-     *     {@code -Dvmath.kernel=<name>} selects
+     *     {@code -Dvmath.frustumKernel=<name>} selects
      */
     String name();
 

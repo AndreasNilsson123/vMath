@@ -1,5 +1,6 @@
 package vmath.mesh;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -134,6 +135,22 @@ class MeshSimplifierTest {
         }
         assertEquals(r.trianglesAfter(), m.triangleCount());
         assertEquals(m.vertexCount(), usedVertices(m), "no unused vertices remain");
+    }
+
+    @Test
+    void optionsGiveTheResultOfThePositionalOverloads() {
+        Mesh a = grid(30, 3f, false), b = grid(30, 3f, false);
+        MeshSimplifier.Result ra = MeshSimplifier.simplify(a, 60, Float.MAX_VALUE, true);
+        MeshSimplifier.Result rb = MeshSimplifier.simplify(b, MeshSimplifier.Options.target(60).lockBorder(true));
+        assertEquals(ra.trianglesAfter(), rb.trianglesAfter());
+        assertEquals(ra.collapses(), rb.collapses());
+        assertEquals(ra.error(), rb.error());
+        assertArrayEquals(java.util.Arrays.copyOf(a.positions(), a.vertexCount() * 3), java.util.Arrays.copyOf(b.positions(), b.vertexCount() * 3));
+        MeshSimplifier.Options base = MeshSimplifier.Options.target(10);
+        base.maxError(0.5f).lockBorder(true);
+        Mesh c = grid(30, 3f, false);
+        assertEquals(1800, MeshSimplifier.simplify(c, base).trianglesBefore(), "options are immutable: the base still has no limit");
+        assertTrue(c.triangleCount() <= 10);
     }
 
     @Test

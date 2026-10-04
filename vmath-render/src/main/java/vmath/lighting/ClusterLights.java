@@ -1,4 +1,4 @@
-package vmath.camera;
+package vmath.lighting;
 
 import java.lang.foreign.MemorySegment;
 import java.util.Arrays;
@@ -231,6 +231,8 @@ public final class ClusterLights {
             cursor = new int[clusters];
         }
         // one visiting pass records every (cluster, light) pair, light by light; a counting sort by cluster then keeps the lights of a cluster in ascending order
+        // (a count pass followed by a fill pass would avoid the list of pairs, but visiting every light twice was measured at 1.8 to 1.9 times the time of ClusterLightBench
+        // for 1 024 and 4 096 lights, so the list of pairs stays)
         pairCount = 0;
         for (int l = 0; l < lightCount; l++) {
             visit(grid, l, tileNear, tileFar);

@@ -13,6 +13,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import vmath.bulk.BoundsArray;
 import vmath.bulk.VisibilitySet;
+import vmath.core.ClipSpace;
 import vmath.core.Mat4f;
 import vmath.core.Rnd;
 import vmath.core.Vec3f;
@@ -41,7 +42,7 @@ class ParallelFrustumKernelTest {
         Mat4f view = Mat4f.lookAt(eye, eye.add(dir), Math.abs(dir.normalize().y()) > 0.95f ? Vec3f.UNIT_X : Vec3f.UNIT_Y);
         float near = (float) rnd.range(0.1, 1);
         return Frustumf.fromViewProjection(
-                Mat4f.perspective((float) rnd.range(0.5, 1.8), (float) rnd.range(0.8, 2.2), near, near * 200f, true).mul(view),
+                Mat4f.perspective((float) rnd.range(0.5, 1.8), (float) rnd.range(0.8, 2.2), near, near * 200f, ClipSpace.D3D).mul(view),
                 DepthRange.ZERO_TO_ONE);
     }
 

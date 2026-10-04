@@ -15,6 +15,7 @@ import org.openjdk.jmh.annotations.State;
 import org.openjdk.jmh.annotations.Warmup;
 import vmath.bulk.BoundsArray;
 import vmath.bulk.VisibilitySet;
+import vmath.core.ClipSpace;
 import vmath.core.Mat4f;
 import vmath.core.Vec3f;
 import vmath.geo.Aabbf;
@@ -75,7 +76,7 @@ public class CullBench {
             bounds.add(objects[i]);
         }
         Mat4f view = Mat4f.lookAt(new Vec3f(0f, 0f, 0f), new Vec3f(0.3f, 0.1f, -1f), Vec3f.UNIT_Y);
-        Mat4f proj = Mat4f.perspective(1.0f, 16f / 9f, 0.1f, world * 1.5f, true);
+        Mat4f proj = Mat4f.perspective(1.0f, 16f / 9f, 0.1f, world * 1.5f, ClipSpace.D3D);
         frustum = Frustumf.fromViewProjection(proj.mul(view), DepthRange.ZERO_TO_ONE);
         ctx = new CullContext(frustum, Vec3f.ZERO, 0f);
         visible = new VisibilitySet(count);

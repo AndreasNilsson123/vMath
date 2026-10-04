@@ -19,6 +19,7 @@ class FrustumKernelSelectionTest {
     @AfterEach
     void clearForcedKernel() {
         System.clearProperty("vmath.kernel");
+        System.clearProperty("vmath.frustumKernel");
     }
 
     @Test
@@ -45,6 +46,14 @@ class FrustumKernelSelectionTest {
         // a provider that is chosen but cannot build its kernel does not take culling down either
         System.setProperty("vmath.kernel", "test-failing-create");
         assertEquals("scalar", FrustumKernels.best().name());
+    }
+
+    @Test
+    void theNewPropertyNameWinsOverTheOlderOne() {
+        System.setProperty("vmath.kernel", "test-low");
+        assertEquals("test-low", FrustumKernels.best().name(), "the older name still works");
+        System.setProperty("vmath.frustumKernel", "test-zero");
+        assertEquals("test-zero", FrustumKernels.best().name(), "and the new one takes precedence");
     }
 
     @Test

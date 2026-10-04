@@ -1,12 +1,12 @@
-package vmath.camera;
+package vmath.sky;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
-import vmath.camera.SolarPosition.Day;
-import vmath.camera.SolarPosition.DayKind;
-import vmath.camera.SolarPosition.Sun;
+import vmath.sky.SolarPosition.Day;
+import vmath.sky.SolarPosition.DayKind;
+import vmath.sky.SolarPosition.Sun;
 
 class SolarPositionTest {
 

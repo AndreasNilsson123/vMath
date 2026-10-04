@@ -9,6 +9,7 @@ import java.lang.foreign.MemorySegment;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import org.junit.jupiter.api.Test;
+import vmath.core.ClipSpace;
 import vmath.core.Mat3f;
 import vmath.core.Mat4f;
 import vmath.core.Mat4x3f;
@@ -80,7 +81,7 @@ class GpuStructTest {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment seg = arena.allocate(CameraBlockGpu.SIZE + 32, 16);
             for (int trial = 0; trial < 200; trial++) {
-                Mat4f view = rnd.nextTrsMat4f(), proj = Mat4f.perspective(1f, 1.5f, 0.1f, 100f, true);
+                Mat4f view = rnd.nextTrsMat4f(), proj = Mat4f.perspective(1f, 1.5f, 0.1f, 100f, ClipSpace.D3D);
                 Vec3f pos = rnd.nextVec3f();
                 float time = (float) rnd.range(0, 100);
                 CameraBlockGpu.write(new CameraBlock(view, proj, pos, time), seg, 16);

@@ -46,7 +46,9 @@ class PackageLayeringTest {
             // layer 4; util uses anim only for DebugLines.skeleton
             Map.entry("occlusion", Set.of("core", "geo", "bulk", "spatial")),
             Map.entry("util", Set.of("core", "geo", "anim")),
-            Map.entry("camera", Set.of("core", "geo", "bulk", "gl", "spatial")),
+            Map.entry("camera", Set.of("core", "geo")),
+            Map.entry("lighting", Set.of("core", "geo", "bulk", "gl", "spatial", "camera")),
+            Map.entry("sky", Set.of()),
             Map.entry("mesh", Set.of("geo", "gl", "pack", "spatial")),
             // layer 5: the widest fan-out
             Map.entry("gltf", Set.of("core", "bulk", "anim", "mesh")),
@@ -57,7 +59,7 @@ class PackageLayeringTest {
             Map.entry("core", 0), Map.entry("mem", 0), Map.entry("color", 0), Map.entry("tex", 0),
             Map.entry("geo", 1), Map.entry("pack", 1), Map.entry("physics", 1),
             Map.entry("bulk", 2), Map.entry("anim", 2), Map.entry("gl", 2), Map.entry("spatial", 2), Map.entry("occlusion", 2), Map.entry("util", 2),
-            Map.entry("camera", 3), Map.entry("mesh", 3), Map.entry("gltf", 3), Map.entry("gpucull", 3));
+            Map.entry("camera", 3), Map.entry("lighting", 3), Map.entry("sky", 3), Map.entry("mesh", 3), Map.entry("gltf", 3), Map.entry("gpucull", 3));
 
     /** The measured edges between the packages of the library: package to the set of packages it uses. */
     private static Map<String, Set<String>> measure() throws Exception {

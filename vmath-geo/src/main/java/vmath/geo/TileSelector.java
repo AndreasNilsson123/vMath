@@ -75,6 +75,7 @@ public final class TileSelector {
 
     private final long[] nodeKeys;
     private final byte[] nodeState;
+    private final int[] usedSlots; // the slots of nodeKeys that hold a key, in the order they were filled
     private final int nodeMask;
     private int nodeCount;
 
@@ -136,6 +137,7 @@ public final class TileSelector {
         int tableSize = Integer.highestOneBit(2 * nodeLimit - 1) << 1;
         nodeKeys = new long[tableSize];
         nodeState = new byte[tableSize];
+        usedSlots = new int[tableSize];
         nodeMask = tableSize - 1;
         leaves = new long[nodeLimit + 8];
         stack = new long[nodeLimit + 8];
@@ -181,6 +183,16 @@ public final class TileSelector {
      *     describe
      */
     public int select(Frustumd view, Vec3d camera, double fovY, int viewportHeight, double maxSpacingPixels, boolean useHorizon) {
+        try {
+            return selectTiles(view, camera, fovY, viewportHeight, maxSpacingPixels, useHorizon);
+        } finally {
+            // the selector does not keep the view or the horizon of the call, also when the call fails
+            frustum = null;
+            horizon = null;
+        }
+    }
+
+    private int selectTiles(Frustumd view, Vec3d camera, double fovY, int viewportHeight, double maxSpacingPixels, boolean useHorizon) {
         frustum = view;
         camX = camera.x();
         camY = camera.y();
@@ -188,16 +200,7 @@ public final class TileSelector {
         horizon = useHorizon ? new HorizonCuller(camera) : null;
         double pixelsPerMetreAtOne = viewportHeight / (2.0 * Math.tan(0.5 * fovY));
         double maxSpacingMetresPerDistance = maxSpacingPixels / pixelsPerMetreAtOne;
-        java.util.Arrays.fill(nodeKeys, 0L);
-        nodeCount = 0;
-        leafCount = 0;
-        count = 0;
-        truncated = false;
-        overflowed = false;
-        visited = 0;
-        frustumCulled = 0;
-        horizonCulled = 0;
-        balanceSplits = 0;
+        resetState();
 
         int sp = 0;
         int n0 = 1 << minZoom;
@@ -256,9 +259,23 @@ public final class TileSelector {
             ys[count] = yOf(key);
             count++;
         }
-        frustum = null;
-        horizon = null;
         return count;
+    }
+
+    // empties the node table by clearing the slots that were used, so the cost follows the tiles of the last call and not the size of the table, and zeroes the counters
+    private void resetState() {
+        for (int i = 0; i < nodeCount; i++) {
+            nodeKeys[usedSlots[i]] = 0L;
+        }
+        nodeCount = 0;
+        leafCount = 0;
+        count = 0;
+        truncated = false;
+        overflowed = false;
+        visited = 0;
+        frustumCulled = 0;
+        horizonCulled = 0;
+        balanceSplits = 0;
     }
 
     private void balance() {
@@ -383,6 +400,7 @@ public final class TileSelector {
         return (int) ((key * 0x9E3779B97F4A7C15L) >>> 40);
     }
 
+    // not the encoding of TileId.key(), which interleaves the bits of x and y: this one keeps the three fields apart so that zoomOf, xOf and yOf are a shift and a mask, and the top bit keeps a key from ever being 0, the empty marker of the tables
     private static long pack(int z, int x, int y) {
         return (1L << 63) | ((long) z << 58) | ((long) x << 29) | y;
     }
@@ -417,7 +435,7 @@ public final class TileSelector {
         }
         if (nodeKeys[h] == 0L) {
             nodeKeys[h] = key;
-            nodeCount++;
+            usedSlots[nodeCount++] = h;
         }
         nodeState[h] = (byte) state;
     }

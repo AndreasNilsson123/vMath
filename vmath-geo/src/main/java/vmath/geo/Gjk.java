@@ -77,6 +77,12 @@ public final class Gjk {
      */
     public static final int MAX_FACES = 2048;
     private static final int MAX_VERTICES = 520;
+    /** The room that one step of the expansion may need for new faces before the face table is compacted. */
+    private static final int FACE_RESERVE = 96;
+    /** How far in front of a face (relative to the size of the polytope) a point must be for the face to see it. */
+    private static final double FACE_VISIBLE = 1e-12;
+    /** How much farther from the origin than the nearest face (relative) a face may be and still tie with it. */
+    private static final double FACE_TIE = 1e-12;
 
     /**
      * What a query reports; reuse one object for many queries.
@@ -133,16 +139,8 @@ public final class Gjk {
     private final int[] bestIdx = new int[4];
 
     // ---- the expanding polytope
-    private final double[][] ev = new double[MAX_VERTICES][3];
-    private final double[][] eva = new double[MAX_VERTICES][3];
-    private final double[][] evb = new double[MAX_VERTICES][3];
-    private final int[] fv = new int[3 * MAX_FACES];
-    private final double[] fn = new double[3 * MAX_FACES];
-    private final double[] fd = new double[MAX_FACES];
-    private final boolean[] fAlive = new boolean[MAX_FACES];
-    private final int[] horizon = new int[2 * 3 * MAX_FACES];
-    private int vertices;
-    private int faces;
+    private final EpaPolytope poly = new EpaPolytope(MAX_VERTICES, MAX_FACES);
+    private final double[] bary = new double[3];
 
     /**
      * Creates a query object with its working arrays; reuse it for many queries.
@@ -598,10 +596,14 @@ public final class Gjk {
     // ---------------------------------------------------------------- EPA
 
     private void epa(ConvexShape a, ConvexShape b, Result r) {
+        double[][] ev = poly.ev, eva = poly.eva, evb = poly.evb;
+        int[] fv = poly.fv;
+        double[] fn = poly.fn, fd = poly.fd;
+        boolean[] fAlive = poly.fAlive;
         // the polytope starts as a tetrahedron around the origin: the GJK simplex, grown to four points when it ended on a face, an edge or a vertex
-        vertices = 0;
+        poly.clear();
         for (int i = 0; i < size; i++) {
-            addVertexCopy(w[i], wa[i], wb[i]);
+            poly.addVertexCopy(w[i], wa[i], wb[i]);
         }
         if (!growToTetrahedron(a, b)) {
             // a shape without volume: report touching along the last search direction
@@ -612,78 +614,64 @@ public final class Gjk {
             r.normal[2] = 0;
             return;
         }
-        faces = 0;
-        addFace(0, 1, 2, 3);
-        addFace(0, 3, 1, 2);
-        addFace(1, 3, 2, 0);
-        addFace(2, 3, 0, 1);
+        poly.addFace(0, 1, 2, 3);
+        poly.addFace(0, 3, 1, 2);
+        poly.addFace(1, 3, 2, 0);
+        poly.addFace(2, 3, 0, 1);
         double scale = 1;
         for (int i = 0; i < 4; i++) {
             scale = Math.max(scale, Math.sqrt(ev[i][0] * ev[i][0] + ev[i][1] * ev[i][1] + ev[i][2] * ev[i][2]));
         }
         int closest = -1;
         for (int iter = 0; iter < MAX_EPA_ITERATIONS; iter++) {
-            closest = -1;
-            double dmin = Double.POSITIVE_INFINITY;
-            for (int f = 0; f < faces; f++) {
-                if (fAlive[f] && fd[f] < dmin) {
-                    dmin = fd[f];
-                    closest = f;
-                }
-            }
+            closest = poly.nearestFace();
             if (closest < 0) {
                 break;
             }
+            double dmin = fd[closest];
             double nx = fn[3 * closest], ny = fn[3 * closest + 1], nz = fn[3 * closest + 2];
-            if (vertices >= MAX_VERTICES) {
+            if (poly.vertices >= MAX_VERTICES) {
                 break;
             }
-            int p = vertices;
+            int p = poly.vertices;
             minkowski(a, b, nx, ny, nz, ev[p], eva[p], evb[p]);
             double gap = ev[p][0] * nx + ev[p][1] * ny + ev[p][2] * nz - dmin;
             if (gap <= EPA_TOLERANCE * (1 + scale)) {
                 break;
             }
-            vertices++;
+            poly.vertices++;
             // remove the faces that can see the new point, and join the rim to it
-            if (faces > MAX_FACES - 96) {
-                compactFaces();
+            if (poly.faces > MAX_FACES - FACE_RESERVE) {
+                poly.compactFaces();
             }
             int edges = 0;
-            for (int f = 0; f < faces; f++) {
+            for (int f = 0; f < poly.faces; f++) {
                 if (!fAlive[f]) {
                     continue;
                 }
                 int fa = fv[3 * f], fb = fv[3 * f + 1], fc = fv[3 * f + 2];
                 double side = (ev[p][0] - ev[fa][0]) * fn[3 * f] + (ev[p][1] - ev[fa][1]) * fn[3 * f + 1] + (ev[p][2] - ev[fa][2]) * fn[3 * f + 2];
-                if (side > 1e-12 * scale) {
+                if (side > FACE_VISIBLE * scale) {
                     fAlive[f] = false;
-                    edges = addEdge(edges, fa, fb);
-                    edges = addEdge(edges, fb, fc);
-                    edges = addEdge(edges, fc, fa);
+                    edges = poly.addEdge(edges, fa, fb);
+                    edges = poly.addEdge(edges, fb, fc);
+                    edges = poly.addEdge(edges, fc, fa);
                 }
             }
-            if (faces + edges > MAX_FACES) {
-                compactFaces();
+            if (poly.faces + edges > MAX_FACES) {
+                poly.compactFaces();
             }
             int newFaces = 0;
-            for (int e = 0; e < edges && faces < MAX_FACES; e++) {
-                addFace(horizon[2 * e], horizon[2 * e + 1], p, -1);
+            for (int e = 0; e < edges && poly.faces < MAX_FACES; e++) {
+                poly.addFace(poly.horizon[2 * e], poly.horizon[2 * e + 1], p, -1);
                 newFaces++;
             }
             if (newFaces == 0) {
                 break;
             }
         }
-        // the faces may have been renumbered or replaced since the loop chose one: find the nearest again
-        closest = -1;
-        double nearest = Double.POSITIVE_INFINITY;
-        for (int f = 0; f < faces; f++) {
-            if (fAlive[f] && fd[f] < nearest) {
-                nearest = fd[f];
-                closest = f;
-            }
-        }
+        // the poly.faces may have been renumbered or replaced since the loop chose one: find the nearest again
+        closest = poly.nearestFace();
         if (closest < 0) {
             // every face was removed (a polytope that numerically has no volume): report touching along the last search direction
             witness(r);
@@ -693,13 +681,13 @@ public final class Gjk {
             r.normal[2] = 0;
             return;
         }
-        // faces of one planar facet of the polytope tie for the smallest distance: take the one that contains the projection of the origin
-        double tieLimit = fd[closest] + 1e-12 * (1 + scale);
+        // poly.faces of one planar facet of the polytope tie for the smallest distance: take the one that contains the projection of the origin
+        double tieLimit = fd[closest] + FACE_TIE * (1 + scale);
         double bestMin = -Double.MAX_VALUE;
         int chosen = closest;
-        for (int f = 0; f < faces; f++) {
+        for (int f = 0; f < poly.faces; f++) {
             if (fAlive[f] && fd[f] <= tieLimit) {
-                double m = minBarycentric(f);
+                double m = poly.minBarycentric(f);
                 if (m > bestMin) {
                     bestMin = m;
                     chosen = f;
@@ -711,18 +699,8 @@ public final class Gjk {
         int ia = fv[3 * closest], ib = fv[3 * closest + 1], ic = fv[3 * closest + 2];
         double depth = fd[closest];
         double nx = fn[3 * closest], ny = fn[3 * closest + 1], nz = fn[3 * closest + 2];
-        double qx = nx * depth, qy = ny * depth, qz = nz * depth;
-        double e0x = ev[ib][0] - ev[ia][0], e0y = ev[ib][1] - ev[ia][1], e0z = ev[ib][2] - ev[ia][2];
-        double e1x = ev[ic][0] - ev[ia][0], e1y = ev[ic][1] - ev[ia][1], e1z = ev[ic][2] - ev[ia][2];
-        double qpx = qx - ev[ia][0], qpy = qy - ev[ia][1], qpz = qz - ev[ia][2];
-        double d00 = e0x * e0x + e0y * e0y + e0z * e0z, d01 = e0x * e1x + e0y * e1y + e0z * e1z, d11 = e1x * e1x + e1y * e1y + e1z * e1z;
-        double d20 = qpx * e0x + qpy * e0y + qpz * e0z, d21 = qpx * e1x + qpy * e1y + qpz * e1z;
-        double denom = d00 * d11 - d01 * d01;
-        double bv = denom != 0 ? (d11 * d20 - d01 * d21) / denom : 0, bw = denom != 0 ? (d00 * d21 - d01 * d20) / denom : 0;
-        double bu = 1 - bv - bw;
-        bu = Math.max(0, bu);
-        bv = Math.max(0, bv);
-        bw = Math.max(0, bw);
+        poly.barycentric(closest, bary);
+        double bu = Math.max(0, bary[0]), bv = Math.max(0, bary[1]), bw = Math.max(0, bary[2]);
         double sum = bu + bv + bw;
         bu /= sum;
         bv /= sum;
@@ -739,110 +717,6 @@ public final class Gjk {
         // A - B has its nearest boundary point at n * depth, so moving B by +n * depth moves that point to the origin
     }
 
-    /**
-     * The smallest barycentric coordinate of the projection of the origin on face {@code f}:
-     * negative when the projection falls outside the triangle.
-     */
-    private double minBarycentric(int f) {
-        int ia = fv[3 * f], ib = fv[3 * f + 1], ic = fv[3 * f + 2];
-        double qx = fn[3 * f] * fd[f], qy = fn[3 * f + 1] * fd[f], qz = fn[3 * f + 2] * fd[f];
-        double e0x = ev[ib][0] - ev[ia][0], e0y = ev[ib][1] - ev[ia][1], e0z = ev[ib][2] - ev[ia][2];
-        double e1x = ev[ic][0] - ev[ia][0], e1y = ev[ic][1] - ev[ia][1], e1z = ev[ic][2] - ev[ia][2];
-        double px = qx - ev[ia][0], py = qy - ev[ia][1], pz = qz - ev[ia][2];
-        double d00 = e0x * e0x + e0y * e0y + e0z * e0z, d01 = e0x * e1x + e0y * e1y + e0z * e1z, d11 = e1x * e1x + e1y * e1y + e1z * e1z;
-        double d20 = px * e0x + py * e0y + pz * e0z, d21 = px * e1x + py * e1y + pz * e1z;
-        double denom = d00 * d11 - d01 * d01;
-        if (denom == 0) {
-            return -Double.MAX_VALUE;
-        }
-        double bv = (d11 * d20 - d01 * d21) / denom, bw = (d00 * d21 - d01 * d20) / denom;
-        return Math.min(1 - bv - bw, Math.min(bv, bw));
-    }
-
-    /**
-     * Moves the live faces to the front of the face arrays.
-     */
-    private void compactFaces() {
-        int m = 0;
-        for (int f = 0; f < faces; f++) {
-            if (fAlive[f]) {
-                if (f != m) {
-                    System.arraycopy(fv, 3 * f, fv, 3 * m, 3);
-                    System.arraycopy(fn, 3 * f, fn, 3 * m, 3);
-                    fd[m] = fd[f];
-                    fAlive[m] = true;
-                }
-                m++;
-            }
-        }
-        for (int f = m; f < faces; f++) {
-            fAlive[f] = false;
-        }
-        faces = m;
-    }
-
-    private void addVertexCopy(double[] pw, double[] pa, double[] pb) {
-        System.arraycopy(pw, 0, ev[vertices], 0, 3);
-        System.arraycopy(pa, 0, eva[vertices], 0, 3);
-        System.arraycopy(pb, 0, evb[vertices], 0, 3);
-        vertices++;
-    }
-
-    /**
-     * Adds the face (a, b, c) with its outward normal; {@code inside} is a vertex known to be
-     * inside (or -1: the origin is inside).
-     */
-    private void addFace(int a, int b, int c, int inside) {
-        int f = faces++;
-        double ux = ev[b][0] - ev[a][0], uy = ev[b][1] - ev[a][1], uz = ev[b][2] - ev[a][2];
-        double vx = ev[c][0] - ev[a][0], vy = ev[c][1] - ev[a][1], vz = ev[c][2] - ev[a][2];
-        double nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
-        double len = Math.sqrt(nx * nx + ny * ny + nz * nz);
-        if (len > 0) {
-            nx /= len;
-            ny /= len;
-            nz /= len;
-        }
-        double d = nx * ev[a][0] + ny * ev[a][1] + nz * ev[a][2];
-        // the first four faces are oriented away from the fourth vertex; later faces keep the winding of the rim edge they were made on, which is already outward
-        boolean flip = inside >= 0 && nx * (ev[inside][0] - ev[a][0]) + ny * (ev[inside][1] - ev[a][1]) + nz * (ev[inside][2] - ev[a][2]) > 0;
-        if (flip) {
-            nx = -nx;
-            ny = -ny;
-            nz = -nz;
-            d = -d;
-            int t = b;
-            b = c;
-            c = t;
-        }
-        fv[3 * f] = a;
-        fv[3 * f + 1] = b;
-        fv[3 * f + 2] = c;
-        fn[3 * f] = nx;
-        fn[3 * f + 1] = ny;
-        fn[3 * f + 2] = nz;
-        fd[f] = Math.max(d, 0);
-        fAlive[f] = true;
-    }
-
-    /**
-     * Adds the directed edge to the horizon list, cancelling it against its reverse.
-     *
-     * <p>Returns the new edge count.
-     */
-    private int addEdge(int count, int a, int b) {
-        for (int e = 0; e < count; e++) {
-            if (horizon[2 * e] == b && horizon[2 * e + 1] == a) {
-                horizon[2 * e] = horizon[2 * (count - 1)];
-                horizon[2 * e + 1] = horizon[2 * (count - 1) + 1];
-                return count - 1;
-            }
-        }
-        horizon[2 * count] = a;
-        horizon[2 * count + 1] = b;
-        return count + 1;
-    }
-
     private static final double[][] PROBES = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}, {1, 1, 1}, {-1, -1, 1}, {-1, 1, -1}, {1, -1, -1},
             {1, 1, -1}, {-1, 1, 1}, {1, -1, 1}, {-1, -1, -1}};
 
@@ -857,8 +731,9 @@ public final class Gjk {
      * volume).
      */
     private boolean growToTetrahedron(ConvexShape a, ConvexShape b) {
-        while (vertices < 4) {
-            int p = vertices;
+        double[][] ev = poly.ev, eva = poly.eva, evb = poly.evb;
+        while (poly.vertices < 4) {
+            int p = poly.vertices;
             double best = 0;
             int bestProbe = -1;
             double scale = 1;
@@ -867,7 +742,7 @@ public final class Gjk {
             }
             for (int k = 0; k < PROBES.length; k++) {
                 minkowski(a, b, PROBES[k][0], PROBES[k][1], PROBES[k][2], probeW, probeA, probeB);
-                double m = independence(p, probeW);
+                double m = poly.independence(p, probeW);
                 if (m > best) {
                     best = m;
                     bestProbe = k;
@@ -877,32 +752,9 @@ public final class Gjk {
                 return false;
             }
             minkowski(a, b, PROBES[bestProbe][0], PROBES[bestProbe][1], PROBES[bestProbe][2], ev[p], eva[p], evb[p]);
-            vertices++;
+            poly.vertices++;
         }
         return true;
     }
 
-    /**
-     * How far the point is from the point, line or plane spanned by the first {@code p} vertices (0
-     * for p = 0 is treated as 1: any point is fine).
-     */
-    private double independence(int p, double[] q) {
-        if (p == 0) {
-            return 1;
-        }
-        double ux = q[0] - ev[0][0], uy = q[1] - ev[0][1], uz = q[2] - ev[0][2];
-        if (p == 1) {
-            return Math.sqrt(ux * ux + uy * uy + uz * uz);
-        }
-        double ax = ev[1][0] - ev[0][0], ay = ev[1][1] - ev[0][1], az = ev[1][2] - ev[0][2];
-        double cx = ay * uz - az * uy, cy = az * ux - ax * uz, cz = ax * uy - ay * ux;
-        double al = Math.sqrt(ax * ax + ay * ay + az * az);
-        if (p == 2) {
-            return al > 0 ? Math.sqrt(cx * cx + cy * cy + cz * cz) / al : 0;
-        }
-        double bx = ev[2][0] - ev[0][0], by = ev[2][1] - ev[0][1], bz = ev[2][2] - ev[0][2];
-        double nx = ay * bz - az * by, ny = az * bx - ax * bz, nz = ax * by - ay * bx;
-        double nl = Math.sqrt(nx * nx + ny * ny + nz * nz);
-        return nl > 0 ? Math.abs(nx * ux + ny * uy + nz * uz) / nl : 0;
-    }
 }

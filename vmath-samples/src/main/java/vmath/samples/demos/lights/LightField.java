@@ -1,7 +1,7 @@
 package vmath.samples.demos.lights;
 
-import vmath.camera.ClusterGrid;
-import vmath.camera.ClusterLights;
+import vmath.lighting.ClusterGrid;
+import vmath.lighting.ClusterLights;
 import vmath.core.Mat4f;
 import vmath.util.Rng;
 

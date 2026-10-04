@@ -1,6 +1,8 @@
-package vmath.camera;
+package vmath.lighting;
 
 import vmath.annotations.Experimental;
+import vmath.core.ClipSpace;
+import vmath.camera.Cameraf;
 
 /**
  * The cluster grid of clustered (and tiled) forward lighting: the view frustum cut into tiles in x
@@ -115,6 +117,25 @@ public final class ClusterGrid {
     }
 
     /**
+     * Creates a cluster grid from a camera and a viewport for the clip space of a graphics API.
+     *
+     * <p>As {@link #of(Cameraf, int, int, int, int, float, boolean)} with {@code yDown} taken from
+     * {@code space}; the depth range of the clip space does not matter for a cluster grid.
+     *
+     * @param camera the camera; must not be {@code null}
+     * @param viewportWidth the viewport width
+     * @param viewportHeight the viewport height
+     * @param tilePixels the tile pixels
+     * @param slices the slices
+     * @param far the distance to the far plane
+     * @param space the clip space whose y direction the grid follows; must not be {@code null}
+     * @return a grid for a camera
+     */
+    public static ClusterGrid of(Cameraf camera, int viewportWidth, int viewportHeight, int tilePixels, int slices, float far, ClipSpace space) {
+        return of(camera, viewportWidth, viewportHeight, tilePixels, slices, far, space.yDown());
+    }
+
+    /**
      * Creates a cluster grid from field of view, aspect ratio and depth range, for when no
      * {@link Cameraf} is at hand.
      *
@@ -131,6 +152,28 @@ public final class ClusterGrid {
      */
     public static ClusterGrid of(float fovy, float aspect, float near, float far, int viewportWidth, int viewportHeight, int tilePixels, int slices, boolean yDown) {
         return new ClusterGrid(viewportWidth, viewportHeight, tilePixels, slices, yDown, fovy, aspect, near, far);
+    }
+
+    /**
+     * Creates a cluster grid from field of view, aspect ratio and depth range for the clip space of
+     * a graphics API.
+     *
+     * <p>As {@link #of(float, float, float, float, int, int, int, int, boolean)} with
+     * {@code yDown} taken from {@code space}.
+     *
+     * @param fovy the vertical field of view in radians
+     * @param aspect the aspect ratio, width divided by height
+     * @param near the distance to the near plane
+     * @param far the distance to the far plane
+     * @param viewportWidth the viewport width
+     * @param viewportHeight the viewport height
+     * @param tilePixels the tile pixels
+     * @param slices the slices
+     * @param space the clip space whose y direction the grid follows; must not be {@code null}
+     * @return a grid from a vertical field of view (radians), an aspect ratio and the depth range
+     */
+    public static ClusterGrid of(float fovy, float aspect, float near, float far, int viewportWidth, int viewportHeight, int tilePixels, int slices, ClipSpace space) {
+        return of(fovy, aspect, near, far, viewportWidth, viewportHeight, tilePixels, slices, space.yDown());
     }
 
     /**

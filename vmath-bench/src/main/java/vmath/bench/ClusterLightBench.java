@@ -13,8 +13,8 @@ import org.openjdk.jmh.annotations.Scope;
 import org.openjdk.jmh.annotations.Setup;
 import org.openjdk.jmh.annotations.State;
 import org.openjdk.jmh.annotations.Warmup;
-import vmath.camera.ClusterGrid;
-import vmath.camera.ClusterLights;
+import vmath.lighting.ClusterGrid;
+import vmath.lighting.ClusterLights;
 
 /**
  * CPU reference of clustered light assignment: 1920 x 1080, 64-pixel tiles, 24 slices (30 x 17 x 24 = 12 240 clusters), lights scattered through the view

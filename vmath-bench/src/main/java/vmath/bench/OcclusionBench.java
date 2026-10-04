@@ -15,6 +15,7 @@ import org.openjdk.jmh.annotations.State;
 import org.openjdk.jmh.annotations.Warmup;
 import vmath.bulk.BoundsArray;
 import vmath.bulk.VisibilitySet;
+import vmath.core.ClipSpace;
 import vmath.core.Mat4f;
 import vmath.core.Vec3f;
 import vmath.geo.DepthRange;
@@ -84,7 +85,7 @@ public class OcclusionBench {
         depth = new DepthBuffer(w, h);
         Vec3f eye = new Vec3f(3f, 2f, 3f);
         Mat4f view = Mat4f.lookAt(eye, new Vec3f(200f, 20f, 120f), Vec3f.UNIT_Y);
-        viewProjection = Mat4f.perspective(1.0f, 2f, 0.3f, 800f, true).mul(view);
+        viewProjection = Mat4f.perspective(1.0f, 2f, 0.3f, 800f, ClipSpace.D3D).mul(view);
         Frustumf frustum = Frustumf.fromViewProjection(viewProjection, DepthRange.ZERO_TO_ONE);
         ctx = new CullContext(frustum, eye, 0f);
         visible = new VisibilitySet(count);

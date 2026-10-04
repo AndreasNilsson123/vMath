@@ -1,6 +1,6 @@
 package vmath.samples.demos.lights;
 
-import vmath.camera.ClusterGrid;
+import vmath.lighting.ClusterGrid;
 import vmath.gl.InstanceWriter;
 import vmath.mesh.VertexLayout;
 

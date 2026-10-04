@@ -13,6 +13,7 @@ import vmath.geo.Frustumf;
 
 /** The {@link ClipSpace} projection builders: depth range and Y direction per graphics API, and agreement with the older boolean overloads. */
 @GenerateDouble
+@SuppressWarnings("deprecation") // it checks the boolean overloads against the ClipSpace ones
 class ClipSpacefTest {
     @Eps(d = 1e-10)
     static final float EPS = 5e-4f;

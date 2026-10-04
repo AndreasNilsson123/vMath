@@ -29,8 +29,8 @@ convention must match the projection you built:
 
 | Projection | `DepthRange` |
 |---|---|
-| `Mat4f.perspective(..., false)` (GL default) | `NEGATIVE_ONE_TO_ONE` |
-| `Mat4f.perspective(..., true)`, Vulkan, D3D | `ZERO_TO_ONE` |
+| `Mat4f.perspective(..., ClipSpace.OPENGL)` (GL default) | `NEGATIVE_ONE_TO_ONE` |
+| `Mat4f.perspective(..., ClipSpace.D3D)` or `VULKAN` | `ZERO_TO_ONE` |
 | `Mat4f.perspectiveReversedZ` (infinite far) | `REVERSED_ZERO_TO_ONE` |
 
 For an infinite far plane the far plane degenerates to `(0, 0, 0, d > 0)`, which every point satisfies.
@@ -42,7 +42,7 @@ in clip space (a point is visible iff the clip inequalities hold), so it shares 
 
 Two implementations of `FrustumKernel` produce **bit-identical** results (the tests assert it, including NaN bounds and
 ranges). `FrustumKernels.best()` picks the SIMD one when the `vmath-simd` module is present and the incubator module is
-enabled, and falls back to scalar otherwise; `-Dvmath.kernel=scalar|simd` forces a choice.
+enabled, and falls back to scalar otherwise; `-Dvmath.frustumKernel=scalar|simd` (older name `-Dvmath.kernel`) forces a choice; a provider that fails to load, or a forced name that does not exist, is logged once through `System.Logger` `vmath.kernel`.
 
 **Scalar (`FrustumCuller`)** is plane-major and two-pass. For each of the six planes it passes over a 1024-object chunk, picks
 the box corner farthest along the plane normal (chosen once per plane by picking `maxX[]` or `minX[]`, so no per-object
@@ -164,7 +164,7 @@ is the SoA container with `cull(eye, visible)` and `cullOrthographic(dir, visibl
 ## Shadows and local lights
 
 **Cascades.** `Cascade.frustum()` is the volume the shadow map covers (a box around the slice, pushed `casterDistance` toward the
-light), so feeding it to a frustum stage already keeps casters outside the view. `CascadeCasters(camera, cascade, margin)` (in `vmath.camera`, next to `Cascades`) is the
+light), so feeding it to a frustum stage already keeps casters outside the view. `CascadeCasters(camera, cascade, margin)` (in `vmath.lighting`, next to `Cascades`) is the
 tighter second stage: in light space an object can only shadow the slice if its footprint overlaps the slice's footprint and it is
 not entirely beyond the slice's far side. A stabilised cascade is fitted around the slice's bounding sphere, so its box is far
 bigger than the slice: in a test scene the tight stage kept 499 objects where the cascade's own volume held 1186. It is

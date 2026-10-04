@@ -72,3 +72,34 @@ apply(from = rootProject.file("gradle/module-coverage.gradle.kts"))
 tasks.named("check") {
     dependsOn(tasks.javadoc)
 }
+
+// The kernels are checked at every lane width, not only at the one of the machine that builds: -XX:MaxVectorSize limits FloatVector.SPECIES_PREFERRED, so the tails of the vector
+// loops are exercised with 4, 8 and 16 lanes (64 bytes needs AVX-512 hardware: the JVM takes the largest size it has). 8 bytes is two lanes, below what SimdSupport accepts, and
+// checks that the module then offers no provider. The flag is ignored by JVMs that do not know it.
+val testSourceSet = sourceSets.getByName("test")
+val vectorSizes = listOf(8, 16, 32, 64)
+vectorSizes.forEach { bytes ->
+    val task = tasks.register<Test>("testVector$bytes") {
+        group = "verification"
+        description = "Runs the kernel tests with -XX:MaxVectorSize=$bytes."
+        useJUnitPlatform()
+        testClassesDirs = testSourceSet.output.classesDirs
+        classpath = testSourceSet.runtimeClasspath
+        jvmArgs("--add-modules=jdk.incubator.vector", "-XX:+IgnoreUnrecognizedVMOptions", "-XX:MaxVectorSize=$bytes")
+        if (valhalla) {
+            jvmArgs("--enable-preview")
+        }
+        systemProperty("vmath.simd.maxVectorBytes", bytes.toString())
+        if (bytes == 8) {
+            systemProperty("vmath.simd.expectUnsupported", "true")
+            filter { includeTestsMatching("vmath.simd.SimdSupportTest") }
+        } else {
+            filter {
+                includeTestsMatching("vmath.simd.SimdSupportTest")
+                includeTestsMatching("vmath.simd.SimdFrustumCullerTest")
+                includeTestsMatching("vmath.simd.SimdMatrixKernelTest")
+            }
+        }
+    }
+    tasks.named("check") { dependsOn(task) }
+}

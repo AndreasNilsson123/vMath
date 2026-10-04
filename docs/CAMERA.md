@@ -1,4 +1,6 @@
-# Camera and rendering maths (`vmath.camera`)
+# Camera and rendering maths (`vmath.camera`, `vmath.lighting`, `vmath.sky`)
+
+The camera, stereo and projection classes are in `vmath.camera`; the cluster grid, the light assignment and the shadow cascades are in `vmath.lighting`; the sun position and the sky models are in `vmath.sky`.
 
 ## `Cameraf` / `Camerad`
 
@@ -110,7 +112,7 @@ The graphics APIs disagree about clip space in two ways, and a projection matrix
 | `D3D` (Direct3D, Metal; also GL with `glClipControl(GL_LOWER_LEFT, GL_ZERO_TO_ONE)`) | 0 to 1 | up |
 
 `Mat4f.perspective`, `perspectiveInfinite`, `perspectiveReversedZ`, `ortho` and `frustum` each have an overload taking a `ClipSpace`, which is what
-to use instead of the boolean `zZeroToOne` overloads (those cannot express the Vulkan Y flip and remain for compatibility). The Vulkan variants are the
+to use instead of the boolean `zZeroToOne` overloads (those cannot express the Vulkan Y flip; they are deprecated and remain for compatibility). The Vulkan variants are the
 depth-0-to-1 matrix with its output `y` mirrored (`Mat4f.flipY()`). Reversed-Z needs a [0, 1] depth range, so `ClipSpace.OPENGL` is rejected there.
 `DepthRange.of(space)` gives the depth convention to pass to `Frustumf.fromViewProjection`; a Y flip only swaps the top and bottom planes, so culling is unchanged.
 

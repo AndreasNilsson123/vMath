@@ -44,6 +44,10 @@ public final class MeshLod {
     /**
      * A chain: {@code levels[0]} is a copy of the source, each next level is coarser.
      *
+     * <p>The arrays are the result's own and are not copied, because they can be as large as the
+     * mesh: treat them as read-only, and note that two results are equal only if they hold the
+     * same arrays.
+     *
      * @param levels the meshes, finest first
      * @param errors world-space error of each level (0 for level 0), strictly increasing
      */

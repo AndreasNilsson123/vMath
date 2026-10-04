@@ -14,6 +14,32 @@ class RigidBodyTest {
     private final SplittableRandom rng = new SplittableRandom(Rnd.SEED);
 
     @Test
+    void isFiniteFindsTheBodyThatWentWrong() {
+        RigidBody body = new RigidBody(MassProperties.box(0.5, 0.5, 0.5, 2.0));
+        assertTrue(body.isFinite());
+        body.integrate(1.0 / 60);
+        assertTrue(body.isFinite());
+        body.applyForce(0.0, Double.NaN, 0.0);
+        body.integrate(1.0 / 60);
+        assertTrue(!body.isFinite(), "one NaN force spreads to the velocity");
+    }
+
+    @Test
+    void theEnergyAndMomentumQueriesDoNotChangeTheBody() {
+        RigidBody body = new RigidBody(MassProperties.box(0.5, 1.0, 2.0, 3.0));
+        body.setPose(1, 2, 3, 0.1, 0.2, 0.3, Math.sqrt(1 - 0.14));
+        body.wx = 1;
+        body.wy = 2;
+        body.wz = 3;
+        double e = body.kineticEnergy();
+        double[] l1 = new double[3], l2 = new double[3];
+        body.angularMomentum(l1);
+        body.angularMomentum(l2);
+        assertArrayEquals(l1, l2, 0.0);
+        assertEquals(e, body.kineticEnergy(), 0.0);
+    }
+
+    @Test
     void freeFlightAndGravityFollowTheExactSemiImplicitFormula() {
         RigidBody b = new RigidBody(MassProperties.sphere(0.5, 2));
         b.setPose(1, 2, 3, 0, 0, 0, 1);

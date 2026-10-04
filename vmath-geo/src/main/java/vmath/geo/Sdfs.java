@@ -599,6 +599,67 @@ public final class Sdfs {
         return false;
     }
 
+    /**
+     * The limits of a sphere-tracing march: the part of the ray that is searched and how hard.
+     *
+     * <p>Groups the four numbers that follow the ray in
+     * {@link #raycast(Sdf, float, float, float, float, float, float, float, float, int, float, Hit)}
+     * so that a call cannot swap them.
+     *
+     * <p><b>Thread safety.</b> Immutable: safe to share between threads.
+     *
+     * <p><b>Example:</b>
+     *
+     * <pre>{@code
+     * Sdfs.MarchLimits limits = new Sdfs.MarchLimits(0f, 100f, 128, 1e-3f);
+     * boolean hit = Sdfs.raycast(sdf, new Rayf(0f, 5f, 0f, 0f, -1f, 0f), limits, new Sdfs.Hit());
+     * }</pre>
+     *
+     * @param tMin the smallest ray parameter to test
+     * @param tMax the largest ray parameter to test
+     * @param maxSteps the most distance evaluations of one march; must be at least 1
+     * @param epsilon the distance at which the surface counts as reached, also the offset of the
+     *     normal estimate; must be finite and not negative
+     */
+    public record MarchLimits(float tMin, float tMax, int maxSteps, float epsilon) {
+
+        /**
+         * Checks the limits.
+         *
+         * @throws IllegalArgumentException if {@code maxSteps} is below 1, {@code epsilon} is
+         *     negative or not finite, or {@code tMin} or {@code tMax} is NaN
+         */
+        public MarchLimits {
+            if (maxSteps < 1) {
+                throw new IllegalArgumentException("maxSteps must be at least 1: " + maxSteps);
+            }
+            if (!(epsilon >= 0f) || Float.isInfinite(epsilon)) {
+                throw new IllegalArgumentException("epsilon must be finite and not negative: " + epsilon);
+            }
+            if (Float.isNaN(tMin) || Float.isNaN(tMax)) {
+                throw new IllegalArgumentException("tMin and tMax must not be NaN");
+            }
+        }
+    }
+
+    /**
+     * Returns the sphere tracing of a ray, with the limits of the march in one object.
+     *
+     * <p>As {@link #raycast(Sdf, float, float, float, float, float, float, float, float, int, float, Hit)};
+     * allocates nothing itself ({@code ray} and {@code limits} are the caller's).
+     *
+     * @param sdf the sdf; must not be {@code null}
+     * @param ray the ray; its direction is normalised for you; must not be {@code null}
+     * @param limits the limits of the march; must not be {@code null}
+     * @param hit the hit; must not be {@code null}
+     * @return {@code true} if the ray hit the surface, in which case {@code hit} holds the hit;
+     *     {@code false} for a miss or when the step budget ran out
+     * @throws IllegalArgumentException if the direction is zero or not finite
+     */
+    public static boolean raycast(Sdf sdf, Rayf ray, MarchLimits limits, Hit hit) {
+        return raycast(sdf, ray.ox(), ray.oy(), ray.oz(), ray.dx(), ray.dy(), ray.dz(), limits.tMin(), limits.tMax(), limits.maxSteps(), limits.epsilon(), hit);
+    }
+
     private static void requireFinite(float v, String what) {
         if (Float.isNaN(v) || Float.isInfinite(v)) {
             throw new IllegalArgumentException(what + " must be finite: " + v);

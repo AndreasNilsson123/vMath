@@ -175,7 +175,45 @@ public final class Overdraw {
         if (tris < 4) {
             return new Result(before, before, acmrBefore, acmrBefore, tris, false);
         }
-        // clusters: runs of triangles, cut where a triangle brings two or more new vertices (a jump to a new region)
+        int[] clusterStart = cutClusters(pos, idx, n, tris);
+        int clusters = clusterStart.length - 1;
+        if (clusters < 2) {
+            return new Result(before, before, acmrBefore, acmrBefore, clusters, false);
+        }
+        double[] key = clusterKeys(pos, idx, n, clusterStart);
+        Integer[] order = new Integer[clusters];
+        for (int c = 0; c < clusters; c++) {
+            order[c] = c;
+        }
+        int[] best = null;
+        float bestOverdraw = before, bestAcmr = acmrBefore;
+        for (int direction = 0; direction < 2; direction++) {
+            final int dir = direction;
+            Arrays.sort(order, (p, q) -> dir == 0 ? Double.compare(key[q], key[p]) : Double.compare(key[p], key[q]));
+            int[] candidate = new int[n];
+            int o = 0;
+            for (int c : order) {
+                int len = (clusterStart[c + 1] - clusterStart[c]) * 3;
+                System.arraycopy(idx, clusterStart[c] * 3, candidate, o, len);
+                o += len;
+            }
+            float ov = measure(pos, candidate, n, resolution);
+            float ac = MeshOptimizer.acmr(candidate, n, CLUSTER_CACHE);
+            if (ov < bestOverdraw && ac <= acmrBefore * Math.max(1f, cacheThreshold)) {
+                best = candidate;
+                bestOverdraw = ov;
+                bestAcmr = ac;
+            }
+        }
+        if (best == null) {
+            return new Result(before, before, acmrBefore, acmrBefore, clusters, false);
+        }
+        System.arraycopy(best, 0, idx, 0, n);
+        return new Result(before, bestOverdraw, acmrBefore, bestAcmr, clusters, true);
+    }
+
+    // clusters: runs of triangles, cut where a triangle brings two or more new vertices (a jump to a new region); returns the first triangle of every cluster and then the triangle count
+    private static int[] cutClusters(float[] pos, int[] idx, int n, int tris) {
         int minSize = 128, maxSize = 512;
         // a cluster also ends when its box gets large: a long ring of triangles around a sphere has normals that cancel, so it could not be ordered at all
         float[] meshLo = {Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY};
@@ -236,10 +274,12 @@ public final class Overdraw {
             size++;
         }
         clusterStart[clusters] = tris;
-        if (clusters < 2) {
-            return new Result(before, before, acmrBefore, acmrBefore, clusters, false);
-        }
-        // the key of a cluster: how far out its average normal points, dot(centroid - mesh centroid, normal) / |normal|
+        return Arrays.copyOf(clusterStart, clusters + 1);
+    }
+
+    // the key of a cluster: how far out its average normal points, dot(centroid - mesh centroid, normal) / |normal|
+    private static double[] clusterKeys(float[] pos, int[] idx, int n, int[] clusterStart) {
+        int clusters = clusterStart.length - 1;
         double mx = 0, my = 0, mz = 0;
         for (int i = 0; i < n; i++) {
             mx += pos[idx[i] * 3];
@@ -267,34 +307,6 @@ public final class Overdraw {
             double nl = Math.sqrt(nx * nx + ny * ny + nz * nz);
             key[c] = nl > 0 ? ((cx / count - mx) * nx + (cy / count - my) * ny + (cz / count - mz) * nz) / nl : 0.0;
         }
-        Integer[] order = new Integer[clusters];
-        for (int c = 0; c < clusters; c++) {
-            order[c] = c;
-        }
-        int[] best = null;
-        float bestOverdraw = before, bestAcmr = acmrBefore;
-        for (int direction = 0; direction < 2; direction++) {
-            final int dir = direction;
-            Arrays.sort(order, (p, q) -> dir == 0 ? Double.compare(key[q], key[p]) : Double.compare(key[p], key[q]));
-            int[] candidate = new int[n];
-            int o = 0;
-            for (int c : order) {
-                int len = (clusterStart[c + 1] - clusterStart[c]) * 3;
-                System.arraycopy(idx, clusterStart[c] * 3, candidate, o, len);
-                o += len;
-            }
-            float ov = measure(pos, candidate, n, resolution);
-            float ac = MeshOptimizer.acmr(candidate, n, CLUSTER_CACHE);
-            if (ov < bestOverdraw && ac <= acmrBefore * Math.max(1f, cacheThreshold)) {
-                best = candidate;
-                bestOverdraw = ov;
-                bestAcmr = ac;
-            }
-        }
-        if (best == null) {
-            return new Result(before, before, acmrBefore, acmrBefore, clusters, false);
-        }
-        System.arraycopy(best, 0, idx, 0, n);
-        return new Result(before, bestOverdraw, acmrBefore, bestAcmr, clusters, true);
+        return key;
     }
 }

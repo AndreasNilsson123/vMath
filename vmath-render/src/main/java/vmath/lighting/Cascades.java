@@ -1,12 +1,14 @@
-package vmath.camera;
+package vmath.lighting;
 
 import java.util.ArrayList;
 import java.util.List;
+import vmath.core.ClipSpace;
 import vmath.core.Mat4f;
 import vmath.core.Vec3f;
 import vmath.geo.Aabbf;
 import vmath.geo.DepthRange;
 import vmath.geo.Frustumf;
+import vmath.camera.Cameraf;
 
 /**
  * Cascaded shadow map setup for a directional light: how to split the view range, and the
@@ -225,10 +227,10 @@ public final class Cascades {
         float near = -(maxZ + casterDistance);
         float far = -minZ;
         Mat4f proj = switch (shadowDepth) {
-            case NEGATIVE_ONE_TO_ONE -> Mat4f.ortho(minX, maxX, minY, maxY, near, far, false);
-            case ZERO_TO_ONE -> Mat4f.ortho(minX, maxX, minY, maxY, near, far, true);
+            case NEGATIVE_ONE_TO_ONE -> Mat4f.ortho(minX, maxX, minY, maxY, near, far, ClipSpace.OPENGL);
+            case ZERO_TO_ONE -> Mat4f.ortho(minX, maxX, minY, maxY, near, far, ClipSpace.D3D);
             // swapping near and far maps the near plane to depth 1 and the far plane to 0
-            case REVERSED_ZERO_TO_ONE -> Mat4f.ortho(minX, maxX, minY, maxY, far, near, true);
+            case REVERSED_ZERO_TO_ONE -> Mat4f.ortho(minX, maxX, minY, maxY, far, near, ClipSpace.D3D);
         };
         return new Cascade(sliceNear, sliceFar, lightView, proj, proj.mul(lightView),
                 new Aabbf(minX, minY, minZ, maxX, maxY, maxZ), (maxX - minX) / shadowMapSize, shadowDepth);

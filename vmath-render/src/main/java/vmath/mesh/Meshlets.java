@@ -106,45 +106,89 @@ public final class Meshlets {
         if (maxVertices < 3 || maxVertices > 255 || maxTriangles < 1) {
             throw new IllegalArgumentException("maxVertices must be in 3..255 and maxTriangles at least 1: " + maxVertices + ", " + maxTriangles);
         }
-        int tris = mesh.triangleCount(), nv = mesh.vertexCount();
-        float[] pos = mesh.positions();
-        int[] idx = mesh.indices();
-        // vertex -> triangles
-        int[] start = new int[nv + 1];
-        for (int i = 0; i < tris * 3; i++) {
-            start[idx[i] + 1]++;
-        }
-        for (int v = 0; v < nv; v++) {
-            start[v + 1] += start[v];
-        }
-        int[] fill = Arrays.copyOf(start, nv), adj = new int[tris * 3];
-        for (int t = 0; t < tris; t++) {
-            for (int k = 0; k < 3; k++) {
-                adj[fill[idx[t * 3 + k]]++] = t;
-            }
-        }
-        boolean[] used = new boolean[tris];
-        int[] localOf = new int[nv];
-        Arrays.fill(localOf, -1);
+        return new Builder(mesh, maxVertices, maxTriangles).run();
+    }
 
-        int cap = Math.max(1, tris / Math.max(1, maxTriangles / 2) + 1);
-        int[] vo = new int[cap], vc = new int[cap], to = new int[cap], tc = new int[cap];
-        float[] sphere = new float[cap * 4], cone = new float[cap * 4];
-        int[] allVertices = new int[Math.max(1, tris * 3)];
-        byte[] allTriangles = new byte[Math.max(1, tris * 3)];
-        int nVert = 0, nTri = 0, meshlets = 0;
-        int nextSeed = 0;
+    /**
+     * One run of the greedy build: the adjacency of the mesh, the meshlets closed so far and the
+     * state of the meshlet that is being grown.
+     */
+    private static final class Builder {
+        final float[] pos;
+        final int[] idx;
+        final int tris;
+        final int maxVertices;
+        final int maxTriangles;
+        final int[] start;     // vertex -> triangles: the triangles of vertex v are adj[start[v] .. start[v + 1])
+        final int[] adj;
+        final boolean[] used;
+        final int[] localOf;   // the index in the meshlet being grown of every vertex that is in it, -1 for the others
+        int[] vo, vc, to, tc;
+        float[] sphere, cone;
+        final int[] allVertices;
+        final byte[] allTriangles;
+        int nVert, nTri, meshlets, nextSeed;
         int[] candidates = new int[16];
-        float[] normals = new float[maxTriangles * 3];
+        final float[] normals;
+        // the meshlet being grown
+        int localVerts, localTris, candCount;
+        double cx, cy, cz; // running centroid of the meshlet's triangle centres
 
-        while (true) {
+        Builder(Mesh mesh, int maxVertices, int maxTriangles) {
+            this.maxVertices = maxVertices;
+            this.maxTriangles = maxTriangles;
+            tris = mesh.triangleCount();
+            int nv = mesh.vertexCount();
+            pos = mesh.positions();
+            idx = mesh.indices();
+            start = new int[nv + 1];
+            for (int i = 0; i < tris * 3; i++) {
+                start[idx[i] + 1]++;
+            }
+            for (int v = 0; v < nv; v++) {
+                start[v + 1] += start[v];
+            }
+            int[] fill = Arrays.copyOf(start, nv);
+            adj = new int[tris * 3];
+            for (int t = 0; t < tris; t++) {
+                for (int k = 0; k < 3; k++) {
+                    adj[fill[idx[t * 3 + k]]++] = t;
+                }
+            }
+            used = new boolean[tris];
+            localOf = new int[nv];
+            Arrays.fill(localOf, -1);
+            int cap = Math.max(1, tris / Math.max(1, maxTriangles / 2) + 1);
+            vo = new int[cap];
+            vc = new int[cap];
+            to = new int[cap];
+            tc = new int[cap];
+            sphere = new float[cap * 4];
+            cone = new float[cap * 4];
+            allVertices = new int[Math.max(1, tris * 3)];
+            allTriangles = new byte[Math.max(1, tris * 3)];
+            normals = new float[maxTriangles * 3];
+        }
+
+        Meshlets run() {
+            for (int seed = pickSeed(); seed >= 0; seed = pickSeed()) {
+                ensureRoomForAMeshlet();
+                int firstVertex = nVert, firstTriangle = nTri;
+                grow(seed);
+                close(firstVertex, firstTriangle);
+            }
+            return new Meshlets(meshlets, Arrays.copyOf(vo, meshlets), Arrays.copyOf(vc, meshlets), Arrays.copyOf(to, meshlets), Arrays.copyOf(tc, meshlets),
+                    Arrays.copyOf(allVertices, nVert), Arrays.copyOf(allTriangles, nTri * 3), Arrays.copyOf(sphere, meshlets * 4), Arrays.copyOf(cone, meshlets * 4));
+        }
+
+        // the seed of the next meshlet: among the next few unused triangles, the one with the fewest unused neighbours, so regions are eaten from their edges inwards; -1 when all are used
+        int pickSeed() {
             while (nextSeed < tris && used[nextSeed]) {
                 nextSeed++;
             }
             if (nextSeed == tris) {
-                break;
+                return -1;
             }
-            // seed: among the next few unused triangles, the one with the fewest unused neighbours, so regions are eaten from their edges inwards
             int seed = nextSeed, seedNeighbours = Integer.MAX_VALUE, looked = 0;
             for (int t = nextSeed; t < tris && looked < SEED_WINDOW; t++) {
                 if (used[t]) {
@@ -165,6 +209,10 @@ public final class Meshlets {
                     seed = t;
                 }
             }
+            return seed;
+        }
+
+        void ensureRoomForAMeshlet() {
             if (meshlets == vo.length) {
                 int c = meshlets * 2;
                 vo = Arrays.copyOf(vo, c);
@@ -174,84 +222,98 @@ public final class Meshlets {
                 sphere = Arrays.copyOf(sphere, c * 4);
                 cone = Arrays.copyOf(cone, c * 4);
             }
-            int firstVertex = nVert, firstTriangle = nTri;
-            int localVerts = 0, localTris = 0, candCount = 0;
-            double cx = 0, cy = 0, cz = 0; // running centroid of the meshlet's triangle centres
+        }
+
+        // grows a meshlet from the seed until a limit is reached or nothing that fits is left
+        void grow(int seed) {
+            localVerts = 0;
+            localTris = 0;
+            candCount = 0;
+            cx = 0;
+            cy = 0;
+            cz = 0;
             int next = seed;
             while (next >= 0) {
-                int t = next;
-                used[t] = true;
-                for (int k = 0; k < 3; k++) {
-                    int v = idx[t * 3 + k];
-                    if (localOf[v] < 0) {
-                        localOf[v] = localVerts++;
-                        allVertices[nVert++] = v;
-                        // the triangles around a new vertex become candidates
-                        for (int a = start[v]; a < start[v + 1]; a++) {
-                            if (!used[adj[a]]) {
-                                if (candCount == candidates.length) {
-                                    candidates = Arrays.copyOf(candidates, candCount * 2);
-                                }
-                                candidates[candCount++] = adj[a];
-                            }
-                        }
-                    }
-                    allTriangles[nTri * 3 + k] = (byte) localOf[v];
-                }
-                nTri++;
-                int o = localTris * 3;
-                double tx = (pos[idx[t * 3] * 3] + pos[idx[t * 3 + 1] * 3] + pos[idx[t * 3 + 2] * 3]) / 3.0;
-                double ty = (pos[idx[t * 3] * 3 + 1] + pos[idx[t * 3 + 1] * 3 + 1] + pos[idx[t * 3 + 2] * 3 + 1]) / 3.0;
-                double tz = (pos[idx[t * 3] * 3 + 2] + pos[idx[t * 3 + 1] * 3 + 2] + pos[idx[t * 3 + 2] * 3 + 2]) / 3.0;
-                cx = (cx * localTris + tx) / (localTris + 1);
-                cy = (cy * localTris + ty) / (localTris + 1);
-                cz = (cz * localTris + tz) / (localTris + 1);
-                unitNormal(pos, idx, t, normals, o);
-                localTris++;
-                next = -1;
+                addTriangle(next);
                 if (localTris == maxTriangles) {
                     break;
                 }
-                // the best candidate that still fits: fewest new vertices, then nearest to the centre
-                int bestNew = 4, bestSlot = -1;
-                double bestDist = Double.MAX_VALUE;
-                int w = 0;
-                for (int c = 0; c < candCount; c++) {
-                    int u = candidates[c];
-                    if (used[u]) {
-                        continue;
-                    }
-                    candidates[w++] = u; // compact the live ones as we go
-                    int fresh = 0;
-                    int a = idx[u * 3], b = idx[u * 3 + 1], d = idx[u * 3 + 2];
-                    if (localOf[a] < 0) {
-                        fresh++;
-                    }
-                    if (localOf[b] < 0 && b != a) {
-                        fresh++;
-                    }
-                    if (localOf[d] < 0 && d != a && d != b) {
-                        fresh++;
-                    }
-                    if (localVerts + fresh > maxVertices) {
-                        continue;
-                    }
-                    double ux = (pos[a * 3] + pos[b * 3] + pos[d * 3]) / 3.0 - cx;
-                    double uy = (pos[a * 3 + 1] + pos[b * 3 + 1] + pos[d * 3 + 1]) / 3.0 - cy;
-                    double uz = (pos[a * 3 + 2] + pos[b * 3 + 2] + pos[d * 3 + 2]) / 3.0 - cz;
-                    double dist = ux * ux + uy * uy + uz * uz;
-                    if (fresh < bestNew || (fresh == bestNew && dist < bestDist)) {
-                        bestNew = fresh;
-                        bestDist = dist;
-                        bestSlot = w - 1;
+                next = bestCandidate();
+            }
+        }
+
+        void addTriangle(int t) {
+            used[t] = true;
+            for (int k = 0; k < 3; k++) {
+                int v = idx[t * 3 + k];
+                if (localOf[v] < 0) {
+                    localOf[v] = localVerts++;
+                    allVertices[nVert++] = v;
+                    // the triangles around a new vertex become candidates
+                    for (int a = start[v]; a < start[v + 1]; a++) {
+                        if (!used[adj[a]]) {
+                            if (candCount == candidates.length) {
+                                candidates = Arrays.copyOf(candidates, candCount * 2);
+                            }
+                            candidates[candCount++] = adj[a];
+                        }
                     }
                 }
-                candCount = w;
-                if (bestSlot >= 0) {
-                    next = candidates[bestSlot];
+                allTriangles[nTri * 3 + k] = (byte) localOf[v];
+            }
+            nTri++;
+            int o = localTris * 3;
+            double tx = (pos[idx[t * 3] * 3] + pos[idx[t * 3 + 1] * 3] + pos[idx[t * 3 + 2] * 3]) / 3.0;
+            double ty = (pos[idx[t * 3] * 3 + 1] + pos[idx[t * 3 + 1] * 3 + 1] + pos[idx[t * 3 + 2] * 3 + 1]) / 3.0;
+            double tz = (pos[idx[t * 3] * 3 + 2] + pos[idx[t * 3 + 1] * 3 + 2] + pos[idx[t * 3 + 2] * 3 + 2]) / 3.0;
+            cx = (cx * localTris + tx) / (localTris + 1);
+            cy = (cy * localTris + ty) / (localTris + 1);
+            cz = (cz * localTris + tz) / (localTris + 1);
+            unitNormal(pos, idx, t, normals, o);
+            localTris++;
+        }
+
+        // the best candidate that still fits: fewest new vertices, then nearest to the centre; -1 if none fits
+        int bestCandidate() {
+            int bestNew = 4, bestSlot = -1;
+            double bestDist = Double.MAX_VALUE;
+            int w = 0;
+            for (int c = 0; c < candCount; c++) {
+                int u = candidates[c];
+                if (used[u]) {
+                    continue;
+                }
+                candidates[w++] = u; // compact the live ones as we go
+                int fresh = 0;
+                int a = idx[u * 3], b = idx[u * 3 + 1], d = idx[u * 3 + 2];
+                if (localOf[a] < 0) {
+                    fresh++;
+                }
+                if (localOf[b] < 0 && b != a) {
+                    fresh++;
+                }
+                if (localOf[d] < 0 && d != a && d != b) {
+                    fresh++;
+                }
+                if (localVerts + fresh > maxVertices) {
+                    continue;
+                }
+                double ux = (pos[a * 3] + pos[b * 3] + pos[d * 3]) / 3.0 - cx;
+                double uy = (pos[a * 3 + 1] + pos[b * 3 + 1] + pos[d * 3 + 1]) / 3.0 - cy;
+                double uz = (pos[a * 3 + 2] + pos[b * 3 + 2] + pos[d * 3 + 2]) / 3.0 - cz;
+                double dist = ux * ux + uy * uy + uz * uz;
+                if (fresh < bestNew || (fresh == bestNew && dist < bestDist)) {
+                    bestNew = fresh;
+                    bestDist = dist;
+                    bestSlot = w - 1;
                 }
             }
-            // close the meshlet
+            candCount = w;
+            return bestSlot >= 0 ? candidates[bestSlot] : -1;
+        }
+
+        // records the meshlet: its ranges, its bounding sphere and its normal cone
+        void close(int firstVertex, int firstTriangle) {
             vo[meshlets] = firstVertex;
             vc[meshlets] = localVerts;
             to[meshlets] = firstTriangle;
@@ -281,8 +343,6 @@ public final class Meshlets {
             NormalCone.compute(normals, 0, localTris, cone, meshlets * 4);
             meshlets++;
         }
-        return new Meshlets(meshlets, Arrays.copyOf(vo, meshlets), Arrays.copyOf(vc, meshlets), Arrays.copyOf(to, meshlets), Arrays.copyOf(tc, meshlets),
-                Arrays.copyOf(allVertices, nVert), Arrays.copyOf(allTriangles, nTri * 3), Arrays.copyOf(sphere, meshlets * 4), Arrays.copyOf(cone, meshlets * 4));
     }
 
     private static void unitNormal(float[] pos, int[] idx, int t, float[] out, int o) {

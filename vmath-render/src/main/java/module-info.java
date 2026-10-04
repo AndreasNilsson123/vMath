@@ -8,6 +8,8 @@ module vmath.render {
     requires transitive vmath.scene;
 
     exports vmath.camera;
+    exports vmath.lighting;
+    exports vmath.sky;
     exports vmath.mesh;
     exports vmath.gltf;
     exports vmath.gpucull;

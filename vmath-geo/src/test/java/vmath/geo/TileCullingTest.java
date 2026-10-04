@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.Random;
 import org.junit.jupiter.api.Test;
+import vmath.core.ClipSpace;
 import vmath.core.Geodetic;
 import vmath.core.Mat4d;
 import vmath.core.Vec3d;
@@ -28,7 +29,7 @@ class TileCullingTest {
         }
         double dist = eye.sub(target).length();
         Mat4d view = Mat4d.lookAt(eye, target, up);
-        Mat4d proj = Mat4d.perspective(fovY, aspect, Math.max(1.0, dist * 1e-4), dist * 4 + 2e7, false);
+        Mat4d proj = Mat4d.perspective(fovY, aspect, Math.max(1.0, dist * 1e-4), dist * 4 + 2e7, ClipSpace.OPENGL);
         return Frustumd.fromViewProjection(proj.mul(view), DepthRange.NEGATIVE_ONE_TO_ONE);
     }
 

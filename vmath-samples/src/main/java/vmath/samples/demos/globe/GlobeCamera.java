@@ -10,6 +10,7 @@ import static org.lwjgl.glfw.GLFW.GLFW_KEY_W;
 import static org.lwjgl.glfw.GLFW.GLFW_MOUSE_BUTTON_LEFT;
 
 import vmath.camera.Cameraf;
+import vmath.core.ClipSpace;
 import vmath.core.Geodetic;
 import vmath.core.Mat4d;
 import vmath.core.Vec3d;
@@ -278,7 +279,7 @@ final class GlobeCamera {
      */
     Frustumd frustum(double aspect) {
         Mat4d view = Mat4d.lookAt(position, position.add(forward), up);
-        Mat4d projection = Mat4d.perspective(FOVY, aspect, near(), far(), false);
+        Mat4d projection = Mat4d.perspective(FOVY, aspect, near(), far(), ClipSpace.OPENGL);
         return Frustumd.fromViewProjection(projection.mul(view), DepthRange.NEGATIVE_ONE_TO_ONE);
     }
 

@@ -84,6 +84,7 @@ public final class RigidBody {
      */
     private final double[] scratch6 = new double[6];
     private final double[] scratch9 = new double[9];
+    private final double[] scratch3 = new double[3];
     /**
      * The world-frame inverse inertia for the orientation {@code cacheQ*}: it is only recomputed
      * when the orientation changes (NaN never equals, so the first call computes).
@@ -370,6 +371,20 @@ public final class RigidBody {
     }
 
     /**
+     * Checks that the state of the body is made of finite numbers.
+     *
+     * <p>{@link #integrate} does not check its input, and one NaN in a force, a velocity or the
+     * orientation spreads to the whole state and stays there; call this after a step, or before
+     * a body is added to a world, to find the body that went wrong.
+     *
+     * @return {@code true} if the position, the orientation and both velocities are finite
+     */
+    public boolean isFinite() {
+        return Double.isFinite(px) && Double.isFinite(py) && Double.isFinite(pz) && Double.isFinite(qx) && Double.isFinite(qy) && Double.isFinite(qz) && Double.isFinite(qw)
+                && Double.isFinite(vx) && Double.isFinite(vy) && Double.isFinite(vz) && Double.isFinite(wx) && Double.isFinite(wy) && Double.isFinite(wz);
+    }
+
+    /**
      * Sums the translational and the rotational kinetic energy; static bodies contribute zero.
      *
      * @return the kinetic energy: {@code m |v|^2 / 2 + w . I w / 2} (infinite mass bodies report 0:
@@ -379,7 +394,7 @@ public final class RigidBody {
         if (invMass == 0) {
             return 0;
         }
-        double[] w = bodyAngularVelocity(new double[3]);
+        double[] w = bodyAngularVelocity(scratch3);
         double rot = 0.5 * (inertia[0] * w[0] * w[0] + inertia[1] * w[1] * w[1] + inertia[2] * w[2] * w[2] + 2 * (inertia[3] * w[0] * w[1] + inertia[4] * w[0] * w[2] + inertia[5] * w[1] * w[2]));
         return 0.5 * (vx * vx + vy * vy + vz * vz) / invMass + rot;
     }
@@ -391,7 +406,7 @@ public final class RigidBody {
      * @param out receives the result
      */
     public void angularMomentum(double[] out) {
-        double[] w = bodyAngularVelocity(new double[3]);
+        double[] w = bodyAngularVelocity(scratch3);
         double lx = inertia[0] * w[0] + inertia[3] * w[1] + inertia[4] * w[2];
         double ly = inertia[3] * w[0] + inertia[1] * w[1] + inertia[5] * w[2];
         double lz = inertia[4] * w[0] + inertia[5] * w[1] + inertia[2] * w[2];
@@ -457,7 +472,7 @@ public final class RigidBody {
     }
 
     private double[] bodyAngularVelocity(double[] out) {
-        double[] r = rotationMatrix(new double[9]);
+        double[] r = rotationMatrix(scratch9);
         // R^T w
         out[0] = r[0] * wx + r[3] * wy + r[6] * wz;
         out[1] = r[1] * wx + r[4] * wy + r[7] * wz;
@@ -466,7 +481,7 @@ public final class RigidBody {
     }
 
     private void toWorld(double x, double y, double z, double[] out) {
-        double[] r = rotationMatrix(new double[9]);
+        double[] r = rotationMatrix(scratch9);
         out[0] = r[0] * x + r[1] * y + r[2] * z;
         out[1] = r[3] * x + r[4] * y + r[5] * z;
         out[2] = r[6] * x + r[7] * y + r[8] * z;
@@ -517,9 +532,11 @@ public final class RigidBody {
         double d0 = (r0 * (j11 * j22 - j12 * j21) - j01 * (r1 * j22 - j12 * r2) + j02 * (r1 * j21 - j11 * r2)) / det;
         double d1 = (j00 * (r1 * j22 - j12 * r2) - r0 * (j10 * j22 - j12 * j20) + j02 * (j10 * r2 - r1 * j20)) / det;
         double d2 = (j00 * (j11 * r2 - r1 * j21) - j01 * (j10 * r2 - r1 * j20) + r0 * (j10 * j21 - j11 * j20)) / det;
-        w0 += d0;
-        w1 += d1;
-        w2 += d2;
+        if (det != 0) { // a singular Jacobian leaves the angular velocity as it is instead of turning it into NaN
+            w0 += d0;
+            w1 += d1;
+            w2 += d2;
+        }
         // back to the world frame
         wx = r[0] * w0 + r[1] * w1 + r[2] * w2;
         wy = r[3] * w0 + r[4] * w1 + r[5] * w2;

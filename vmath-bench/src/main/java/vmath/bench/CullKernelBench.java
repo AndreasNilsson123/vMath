@@ -14,6 +14,7 @@ import org.openjdk.jmh.annotations.Setup;
 import org.openjdk.jmh.annotations.State;
 import org.openjdk.jmh.annotations.Warmup;
 import vmath.bulk.BoundsArray;
+import vmath.core.ClipSpace;
 import vmath.core.Mat4f;
 import vmath.core.Vec3f;
 import vmath.geo.DepthRange;
@@ -66,7 +67,7 @@ public class CullKernelBench {
             b.add(cx - h, cy - h, cz - h, cx + h, cy + h, cz + h);
         }
         Mat4f view = Mat4f.lookAt(Vec3f.ZERO, new Vec3f(0.3f, 0.1f, -1f), Vec3f.UNIT_Y);
-        Frustumf f = Frustumf.fromViewProjection(Mat4f.perspective(1.0f, 16f / 9f, 0.1f, 750f, true).mul(view),
+        Frustumf f = Frustumf.fromViewProjection(Mat4f.perspective(1.0f, 16f / 9f, 0.1f, 750f, ClipSpace.D3D).mul(view),
                 DepthRange.ZERO_TO_ONE);
         f.writeTo(planes, 0);
         allSlack = new float[N];

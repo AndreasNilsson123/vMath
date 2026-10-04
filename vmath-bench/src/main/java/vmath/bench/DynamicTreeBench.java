@@ -16,6 +16,7 @@ import org.openjdk.jmh.annotations.Warmup;
 import vmath.bulk.BoundsArray;
 import vmath.bulk.IntList;
 import vmath.bulk.VisibilitySet;
+import vmath.core.ClipSpace;
 import vmath.core.Mat4f;
 import vmath.core.Vec3f;
 import vmath.geo.Aabbf;
@@ -90,7 +91,7 @@ public class DynamicTreeBench {
         visible = new VisibilitySet(count);
         results = new IntList(4096);
         Mat4f view = Mat4f.lookAt(Vec3f.ZERO, new Vec3f(0.3f, 0.1f, -1f), Vec3f.UNIT_Y);
-        frustum = Frustumf.fromViewProjection(Mat4f.perspective(1.0f, 16f / 9f, 0.1f, 750f, true).mul(view), DepthRange.ZERO_TO_ONE);
+        frustum = Frustumf.fromViewProjection(Mat4f.perspective(1.0f, 16f / 9f, 0.1f, 750f, ClipSpace.D3D).mul(view), DepthRange.ZERO_TO_ONE);
         probe = Aabbf.fromCenterHalfExtent(new Vec3f(10f, 10f, 10f), Vec3f.splat(15f));
 
         // the same scene in a static BVH, as the reference for the dynamic tree's query cost
@@ -113,7 +114,7 @@ public class DynamicTreeBench {
     @Benchmark
     public int diagAcceptAllDynamic() {
         if (everything == null) {
-            everything = Frustumf.fromViewProjection(Mat4f.perspective(3.0f, 1f, 0.1f, 1e6f, true)
+            everything = Frustumf.fromViewProjection(Mat4f.perspective(3.0f, 1f, 0.1f, 1e6f, ClipSpace.D3D)
                     .mul(Mat4f.lookAt(new Vec3f(0f, 0f, 2000f), Vec3f.ZERO, Vec3f.UNIT_Y)), DepthRange.ZERO_TO_ONE);
         }
         visible.clearAll();
@@ -123,7 +124,7 @@ public class DynamicTreeBench {
     @Benchmark
     public int diagAcceptAllStatic() {
         if (everything == null) {
-            everything = Frustumf.fromViewProjection(Mat4f.perspective(3.0f, 1f, 0.1f, 1e6f, true)
+            everything = Frustumf.fromViewProjection(Mat4f.perspective(3.0f, 1f, 0.1f, 1e6f, ClipSpace.D3D)
                     .mul(Mat4f.lookAt(new Vec3f(0f, 0f, 2000f), Vec3f.ZERO, Vec3f.UNIT_Y)), DepthRange.ZERO_TO_ONE);
         }
         visible.clearAll();

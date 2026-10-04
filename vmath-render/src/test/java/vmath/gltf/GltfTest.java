@@ -816,6 +816,21 @@ class GltfTest {
     }
 
     @Test
+    void aLinkInsideTheDirectoryCannotLeadOutOfIt(@TempDir Path dir) throws IOException {
+        Path outside = Files.createDirectory(dir.resolve("outside"));
+        Path models = Files.createDirectory(dir.resolve("models"));
+        Files.write(outside.resolve("tri.bin"), triangleBuffer());
+        try {
+            Files.createSymbolicLink(models.resolve("link.bin"), outside.resolve("tri.bin"));
+        } catch (UnsupportedOperationException | IOException | SecurityException e) {
+            org.junit.jupiter.api.Assumptions.abort("this machine does not allow symbolic links: " + e); // not an environment CI requires: Windows needs a privilege for links
+        }
+        String json = "{\"asset\":{\"version\":\"2.0\"},\"buffers\":[{\"byteLength\":104,\"uri\":\"link.bin\"}]," + TRIANGLE_REST + "}";
+        Files.writeString(models.resolve("tri.gltf"), json);
+        assertThrows(GltfException.class, () -> Gltf.load(models.resolve("tri.gltf")));
+    }
+
+    @Test
     void aBufferUriCannotLeaveTheDirectory(@TempDir Path dir) throws IOException {
         Path sub = Files.createDirectory(dir.resolve("models"));
         Files.write(dir.resolve("secret.bin"), triangleBuffer());

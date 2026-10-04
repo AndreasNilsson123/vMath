@@ -87,13 +87,28 @@ These are much lower than `vmath.core` (98.4%): the tests of these packages comp
 
 **Gaps closed after these runs** (re-run on the changed classes only): `CascadeCasters` now has a test that compares every keep and cull decision with an independent double-precision light-space computation, in both directions, including near-vertical lights where the light view's basis has different zero entries: 52.5% to 79.2% killed (the survivors are the tolerance slack, comparison boundaries and entries that are structurally zero); `FastMaps` has a test against `HashMap` (and `TripleIntMap.put` now refuses negative values like `LongIntMap`): `TripleIntMap` 28.6% to 72.7%, `LongIntMap` 80.9% to 91.5%, the rest being the hash mixer, whose changes only alter the distribution; `FloatElements` (the new base of the containers) 82.1% to 96.4% and `FrameDirtyRanges` 66.7% to 93.3% with `FloatElementsTest` and a `FrameDirtyRanges` test. **Not closed, and what they are:** about 1 750 survivors remain in the four packages. The ones I looked at are of three kinds: (1) pruning and ordering arithmetic in the nearest-neighbour and overlap queries of `LooseOctree`, `UniformGrid`, `DynamicAabbTree` and `BvhQuery` (the extent of a loose box, the sort of children by distance), where a wrong value only makes a query visit more nodes and returns the same, correct, result, so only a visit counter could see it; (2) the heuristics of `Overdraw.optimize` and the mesh simplifier, which are guarded by "never worse" checks, so a mutated heuristic gives a different but still acceptable order or reduction (the tests check quality properties, not a golden result); (3) hash mixing (`FastMaps.mix`), whose changes only alter the distribution. The classes where a real gap may still hide are `MeshSimplifier$Run` (71%), `ClusterHierarchy` (71%), `MeshOptimizer` (72%), `LooseOctree$Query` (55%), `LightCull` (74%) and `SegmentFloatArray` (77%); I did not go through them mutant by mutant.
 
+**The remaining packages (2026-10-04, 4 threads, the package's own test package as the tests, production classes only; timed-out mutants count as killed):**
+
+| Package | Mutants | Killed | Survived | No coverage | Where the survivors are |
+|---|---|---|---|---|---|
+| `vmath.physics` | 2 400 | 79.9% | 463 | 19 | `RigidBody` 166, `ManifoldBuilder` 127 (18 uncovered), `MassProperties` 77, `ContactSolver` 67 |
+| `vmath.pack` | 564 | 89.4% | 51 | 9 | |
+| `vmath.tex` | 181 | 82.9% | 25 | 6 | |
+| `vmath.color` | 418 | 92.1% | 28 | 5 | |
+| `vmath.mem` | 432 | 85.9% | 39 | 22 | `FreeListAllocator` 12 survived and 12 uncovered |
+| `vmath.gpucull` | 434 | 79.3% | 83 | 7 | `GpuCullReference` 39, `HiZPyramid` 16 |
+| `vmath.camera` (measured before the split into `camera`, `lighting` and `sky`) | 1 559 | 80.4% | 172 | 132 | `ClusterLights` 62 and `ClusterGrid` 21 (now `vmath.lighting`), `SolarPosition` 55 (now `vmath.sky`) |
+| `vmath.geo` (the `geo` package only) | 8 875 | 83.4% | 1 244 | 228 | `Gjk` 196 (29 uncovered), `TileSelector` 123, `Intersectionf` and its twin 119 each, `Polygons` 101, `ConvexHull` 100, `BoundingVolumes` 60 (20 uncovered), `SurfaceNets` 57 |
+
+The first thing the run found was in `Gjk`: the compaction of the face table of the expanding polytope (`compactFaces`, called when the table is nearly full) was not executed by any test. `GjkDegenerateTest` now drives it with two finely sampled spheres (a re-run of `Gjk` with only that test shows the compaction lines covered; the guard for an empty polytope and the second capacity check are still not reached by any input found). The `Gjk` survivors are mostly boundary and arithmetic mutants in `closestTriangle`, `independence` and `closestOfEdges`; these have not been looked at one by one, and nothing was changed for them. The numbers are from one run each: see the note on run-to-run variation below.
+
 ### How to read the numbers
 
 - Run-to-run variation is real: the same code gave 7 and 16 surviving mutants in `Vec3f` in two runs, because a mutant that makes a loop run forever is killed by a timeout, and which tests run first
   depends on timing. Compare totals, not individual mutants.
 - A killed mutant means *some* test failed, not that the right test did. The generated tests compare against JOML; they killed most of the arithmetic, and the survivors are where JOML has no opinion
   (conventions, thresholds, argument checks).
-- `vmath.core`, `spatial`, `mesh`, `bulk` and `gltf` were mutation tested (tables above); the other packages have coverage numbers and nothing more: no claim is made about their tests' strength. `-Pmutation.classes='vmath.bulk.*'`
+- `vmath.core`, `spatial`, `mesh`, `bulk`, `gltf` and the packages of the last table were mutation tested; `vmath.anim`, `gl`, `occlusion` and `util` have coverage numbers and nothing more: no claim is made about their tests' strength. `-Pmutation.classes='vmath.bulk.*'`
   and the like run the same analysis; the packages with oracle tests of their own (`vmath.spatial`, `vmath.mesh`) are the interesting ones.
 - The first run mutated test classes that live in the same package as production code (`vmath.core.*` matches `Vec3fTest`); that inflated the first attempt's count and was fixed by restricting PIT to the main
   output directories. Those numbers were discarded.

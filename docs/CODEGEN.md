@@ -75,6 +75,10 @@ result, with an empty batch and with arrays that are too short.
 and 206 us (+-19) with the hand-written scalar kernel of `Vec3fArray`, so the generated loop is as fast as the hand-written one. For the vector sum and the cross product the planar form is *not* faster
 (287 us +-131 against 154 us +-42, and 271 us +-117 against 144 us +-24; the error bars are wide); the planar methods are there for data that is already split, not as a speed-up.
 
+## What is not generated
+
+The integer vectors `Vec2i`, `Vec3i` and `Vec4i` (in `vmath.core`) are hand-written and have no generated twin: the generator makes the `double` twin of a `float` template, and there is no template for the integer family. Their operations are not the float set (no normalising or square roots, but integer ones: `pack` and `unpack` keys, `floorDiv` and `floorMod`, Manhattan and Chebyshev distances, conversions to `float` and `double`), and a normalised comparison of the three files found that about 60% of their lines have the same shape. A template with `int` substituted for `float` would be one more generator family to keep; it has not been needed so far, and a change to the vector conventions has to be made in the three files by hand.
+
 ## Diagnostics
 
 Mistakes fail the build with `Template.java:LINE: message`:

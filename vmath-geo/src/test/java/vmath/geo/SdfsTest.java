@@ -341,6 +341,21 @@ class SdfsTest {
     }
 
     @Test
+    void raycastWithAnObjectGivesTheResultOfTheFlatOverload() {
+        Sdf sphere = Sdfs.sphere(0, 0, 0, 1);
+        Sdfs.Hit flat = new Sdfs.Hit(), boxed = new Sdfs.Hit();
+        boolean a = Sdfs.raycast(sphere, -5, 0.2f, 0, 2, 0, 0, 0f, 100f, 64, 1e-4f, flat);
+        boolean b = Sdfs.raycast(sphere, new Rayf(-5, 0.2f, 0, 2, 0, 0), new Sdfs.MarchLimits(0f, 100f, 64, 1e-4f), boxed);
+        assertTrue(a && b);
+        assertEquals(flat.t, boxed.t);
+        assertEquals(flat.nx, boxed.nx);
+        assertEquals(flat.steps, boxed.steps);
+        assertThrows(IllegalArgumentException.class, () -> new Sdfs.MarchLimits(0f, 1f, 0, 1e-3f));
+        assertThrows(IllegalArgumentException.class, () -> new Sdfs.MarchLimits(0f, 1f, 8, -1f));
+        assertThrows(IllegalArgumentException.class, () -> new Sdfs.MarchLimits(Float.NaN, 1f, 8, 1e-3f));
+    }
+
+    @Test
     void raycastLimitsInsideStartsAndAlternativeSolids() {
         Sdfs.Hit hit = new Sdfs.Hit();
         Sdf sphere = Sdfs.sphere(0, 0, 0, 1);
