@@ -1,5 +1,5 @@
 <component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="Sample - MillionInstances" type="GradleRunConfiguration" factoryName="Gradle" folderName="Samples">
+  <configuration default="false" name="Demos - smoke" type="GradleRunConfiguration" factoryName="Gradle" folderName="Demos">
     <ExternalSystemSettings>
       <option name="executionName" />
       <option name="externalProjectPath" value="$PROJECT_DIR$" />
@@ -10,7 +10,7 @@
       </option>
       <option name="taskNames">
         <list>
-              <option value=":vmath-samples:run" />
+              <option value=":vmath-samples:smoke" />
         </list>
       </option>
       <option name="vmOptions" />

@@ -11,7 +11,7 @@ Gradle (the properties `idea.active` and `idea.sync.active`) and sets itself up.
 | the generated types (`Vec3d`, `Mat4d`, the `*Bulk` classes, the `*Gpu` writers) resolve, also on a fresh checkout or after `gradlew clean` | after every Gradle sync the IDE runs `generateSources` of the four library modules (`gradle/idea.gradle.kts`, which uses JetBrains' `idea-ext` plugin; the command line never reads that script), and `build/generated/sources/vmath` is marked as generated |
 | the Gradle daemon has enough memory | `org.gradle.jvmargs=-Xmx3g` in `gradle.properties` |
 | formatting | `.editorconfig`: UTF-8, four spaces, 160 columns for code (the 100-column wrap is the rule for Javadoc prose) |
-| run configurations | `.run/*.run.xml`, shared through git (the `.idea` folder is not) |
+| run configurations | `.run/*.run.xml`, shared through git (the `.idea` folder is not); the demo configurations are written by `python vmath-samples/tools/make_run_configs.py` after a demo is added |
 
 The first sync downloads LWJGL and the `idea-ext` plugin, once.
 
@@ -29,9 +29,12 @@ They appear in the run dropdown, grouped in folders.
 
 | Folder | Name | What it runs |
 |---|---|---|
-| Samples | Sample - MillionInstances | the interactive city (`:vmath-samples:run`) |
-| | Sample - MillionInstances benchmark | the scripted flight of 600 frames, then the timings (`--args="--frames 600"`) |
-| | Sample - MillionInstances (debug) | the same as an Application configuration with the JVM flags it needs, for the debugger |
+| Demos | Demos - menu | the launcher with its menu (`:vmath-samples:run`) |
+| | Demos - smoke | every demo for a few frames, checked (`:vmath-samples:smoke`) |
+| | Demos - list | prints the demos |
+| | Demo - city | the interactive demo (`--args="--demo city"`); every demo has three configurations |
+| | Demo - city benchmark | the scripted run of 600 frames, then the timings (`--frames 600`) |
+| | Demo - city (debug) | an Application configuration with the JVM flags it needs, for the debugger |
 | Build and tests | Build | `build`: generate, compile, test, javadoc, API check, coverage |
 | | Test - core, geo, scene, render, codegen | the tests of one module |
 | | Test - seed sweep | all tests, again (`--rerun-tasks`), with `-Dvmath.seed=1 -Dvmath.trials=6000` |

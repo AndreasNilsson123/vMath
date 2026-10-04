@@ -115,7 +115,7 @@ Running the validator against a real compiler (it takes reflection data as input
 
 ## End-to-end sample
 
-The version that draws is `MillionInstances` in the `vmath-samples` module (OpenGL through LWJGL, `docs/SAMPLES.md`); this is the headless one that needs no driver.
+The version that draws is the demo `city` in the `vmath-samples` module (OpenGL through LWJGL, `docs/SAMPLES.md`); this is the headless one that needs no driver.
 
 `vmath-bench/.../sample/CullAndDrawSample.java` (run with `./gradlew :vmath-bench:sample`) is the CPU half of a GPU-driven frame, headless: 1 000 000 instances
 are frustum culled with the best available kernel (Vulkan clip space), the survivors are written into an instance buffer with

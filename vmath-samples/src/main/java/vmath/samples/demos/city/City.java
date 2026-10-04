@@ -1,11 +1,11 @@
-package vmath.samples;
+package vmath.samples.demos.city;
 
 import vmath.bulk.BoundsArray;
 import vmath.util.Noise;
 import vmath.util.Rng;
 
 /**
- * The scene of {@link MillionInstances}: a square grid of boxes whose heights follow fractal
+ * The scene of {@link CityDemo}: a square grid of boxes whose heights follow fractal
  * noise, so that there are hills of tall towers and flat quarters, with a little variation from
  * box to box.
  *

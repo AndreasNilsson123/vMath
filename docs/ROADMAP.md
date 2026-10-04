@@ -16,6 +16,8 @@ twins), 15 packages in one JPMS module (`vmath.core`, `geo`, `bulk`, `spatial`, 
 an API-compatibility check against the tagged baseline. What is measured is in `docs/PERFORMANCE.md`, `BULK.md`, `MEMORY.md`, `GPU.md`, `COLOR.md`; what is known to be weak is in `docs/technical-debt.md`. The findings of the first review of the code, which this backlog was written
 to answer, are in `docs/history.md`.
 
+The demos have their own backlog and structure in [DEMOS.md](DEMOS.md).
+
 **What is not proven yet:** nothing in the GPU-facing layer (shader text, layout validation against drivers, the persistent upload ring) has run against a real graphics API (`docs/technical-debt.md` TD-01).
 
 ---
@@ -359,7 +361,7 @@ can be chained and composed, and they run on SoA bounds.
       *Done: `CHANGELOG.md`, `docs/VERSIONING.md`, `vmath.annotations.Experimental` (class retention, excluded from japicmp). The framework side does not exist yet.*
 - [x] **DOC-5 (P3, M)** Sample app (LWJGL) that renders and culls 1M instances; doubles as an end-to-end benchmark.  
       *Partial: headless `CullAndDrawSample` (cull 1M, write instance buffer + indirect draw, numbers in `docs/GPU.md`); an LWJGL window that actually draws is open; `FrameBench` compares serial/parallel/BVH frames; `InstanceWriteBench` tuned the instance write (word-wise set walk, about 25% faster; packed centres and staged bulk copy rejected, numbers in `docs/GPU.md`).*
-      *Done: `vmath-samples` (a separate module, part of the build only with `-Psamples`) with `MillionInstances`: a city of a million boxes drawn with OpenGL 4.5 through LWJGL 3.3.6, using the frustum culling (SIMD and parallel), `InstanceWriter.writeVisibleBoxes`, the `PersistentBufferRing` with real fences, `DrawCommandBuffer` and the vertex layout; interactive, or a scripted flight with `--frames N` that prints the time of each stage. About 9.4 ms per frame (106 fps) with half the boxes visible on an RTX 3060 Laptop GPU, 14.9 ms with culling off. Run on one NVIDIA GPU only. See `docs/SAMPLES.md`.*
+      *Done: `vmath-samples` (a separate module, part of the build only with `-Psamples`) with `MillionInstances`: a city of a million boxes drawn with OpenGL 4.5 through LWJGL 3.3.6, using the frustum culling (SIMD and parallel), `InstanceWriter.writeVisibleBoxes`, the `PersistentBufferRing` with real fences, `DrawCommandBuffer` and the vertex layout; interactive, or a scripted flight with `--frames N` that prints the time of each stage. About 9.4 ms per frame (106 fps) with half the boxes visible on an RTX 3060 Laptop GPU, 14.9 ms with culling off. Run on one NVIDIA GPU only. See `docs/SAMPLES.md`. Since then the sample is the first demo of the demo framework (`docs/DEMOS.md`), whose backlog continues it.*
 
 ---
 

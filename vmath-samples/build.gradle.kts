@@ -1,8 +1,10 @@
 // Samples that use vmath with a real graphics API (LWJGL: GLFW and OpenGL). Part of the build only with -Psamples (settings.gradle.kts), because Gradle downloads LWJGL
 // for it and running it needs a graphics driver; docs/SAMPLES.md describes the samples and how to run them.
 //
-//   ./gradlew -Psamples :vmath-samples:run                           the million-instance city, interactive
-//   ./gradlew -Psamples :vmath-samples:run --args="--frames 600"     a scripted flight over the city, then the numbers, then exit
+//   ./gradlew -Psamples :vmath-samples:run                                      the launcher with its menu
+//   ./gradlew -Psamples :vmath-samples:run --args="--demo city"                 one demo, interactive
+//   ./gradlew -Psamples :vmath-samples:run --args="--demo city --frames 600"    a scripted run, the numbers, then exit
+//   ./gradlew -Psamples :vmath-samples:smoke                                    every demo for a few frames, checked
 
 plugins {
     application
@@ -36,6 +38,9 @@ dependencies {
     runtimeOnly("org.lwjgl:lwjgl::$lwjglNatives")
     runtimeOnly("org.lwjgl:lwjgl-glfw::$lwjglNatives")
     runtimeOnly("org.lwjgl:lwjgl-opengl::$lwjglNatives")
+    testImplementation(platform(libs.junit.bom))
+    testImplementation(libs.junit.jupiter)
+    testRuntimeOnly(libs.junit.launcher)
 }
 
 tasks.withType<JavaCompile>().configureEach {
@@ -43,7 +48,29 @@ tasks.withType<JavaCompile>().configureEach {
     options.compilerArgs.add("-Xlint:all")
 }
 
+val demoJvmArgs = listOf("--add-modules=jdk.incubator.vector", "--enable-native-access=ALL-UNNAMED", "-Xmx2g")
+
 application {
-    mainClass.set("vmath.samples.MillionInstances")
-    applicationDefaultJvmArgs = listOf("--add-modules=jdk.incubator.vector", "--enable-native-access=ALL-UNNAMED", "-Xmx2g")
+    mainClass.set("vmath.samples.Launcher")
+    applicationDefaultJvmArgs = demoJvmArgs
+}
+
+tasks.test {
+    useJUnitPlatform()
+    // the tests of the pieces that need no window; the demos themselves are checked by the smoke task
+    jvmArgs("--add-modules=jdk.incubator.vector", "--enable-native-access=ALL-UNNAMED")
+    systemProperty("java.awt.headless", "true")
+    // docs/DEMOS.md and .run/ are read by the registry test
+    systemProperty("vmath.repoRoot", rootProject.projectDir.absolutePath)
+}
+
+// Runs every registered demo for a few scripted frames and fails on an OpenGL error, on allocation above the budget of the demo, or on a blank
+// frame. Needs a display and an OpenGL 4.5 driver, so it is not part of any other task.
+tasks.register<JavaExec>("smoke") {
+    group = "verification"
+    description = "Runs every demo for a few frames and checks it (needs a display and OpenGL 4.5)."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("vmath.samples.Launcher")
+    jvmArgs(demoJvmArgs)
+    args("--smoke")
 }

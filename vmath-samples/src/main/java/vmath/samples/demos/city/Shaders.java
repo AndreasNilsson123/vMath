@@ -1,10 +1,10 @@
-package vmath.samples;
+package vmath.samples.demos.city;
 
 import vmath.gl.InstanceWriter;
 import vmath.mesh.VertexLayout;
 
 /**
- * The GLSL of {@link MillionInstances}.
+ * The GLSL of {@link CityDemo}.
  *
  * <p>Internal: part of the samples, not of the library. The vertex inputs are generated from the
  * vertex layout of the mesh by the library ({@code VertexBufferLayout.glslInputs()}), and the
