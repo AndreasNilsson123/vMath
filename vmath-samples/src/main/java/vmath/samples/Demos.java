@@ -8,6 +8,8 @@ import vmath.samples.demos.physics.PileDemo;
 import vmath.samples.demos.portals.PortalsDemo;
 import vmath.samples.demos.sculpt.SculptDemo;
 import vmath.samples.demos.skinning.SkinningDemo;
+import vmath.samples.demos.sky.SkyDemo;
+import vmath.samples.demos.terrain.TerrainDemo;
 import vmath.samples.framework.DemoEntry;
 
 /**
@@ -35,6 +37,7 @@ public final class Demos {
     public static List<DemoEntry> all() {
         return List.of(new DemoEntry(CityDemo.INFO, CityDemo::new), new DemoEntry(CullingLabDemo.INFO, CullingLabDemo::new),
                 new DemoEntry(PortalsDemo.INFO, PortalsDemo::new), new DemoEntry(OcclusionDemo.INFO, OcclusionDemo::new), new DemoEntry(PileDemo.INFO, PileDemo::new), new DemoEntry(SkinningDemo.INFO, SkinningDemo::new),
-                new DemoEntry(SculptDemo.INFO, SculptDemo::new));
+                new DemoEntry(SculptDemo.INFO, SculptDemo::new), new DemoEntry(TerrainDemo.INFO, TerrainDemo::new),
+                new DemoEntry(SkyDemo.INFO, SkyDemo::new));
     }
 }

@@ -28,6 +28,7 @@ public final class Input {
     private final boolean[] pressed = new boolean[GLFW_KEY_LAST + 1];
     private final boolean[] pendingPressed = new boolean[GLFW_KEY_LAST + 1];
     private final boolean[] buttons = new boolean[GLFW_MOUSE_BUTTON_LAST + 1];
+    private final boolean[] previousButtons = new boolean[GLFW_MOUSE_BUTTON_LAST + 1];
     private final double[] cursorX = new double[1];
     private final double[] cursorY = new double[1];
     private double lastX;
@@ -96,6 +97,7 @@ public final class Input {
         java.util.Arrays.fill(pendingPressed, false);
         scroll = pendingScroll;
         pendingScroll = 0f;
+        System.arraycopy(buttons, 0, previousButtons, 0, buttons.length);
         if (window != 0L) {
             glfwGetCursorPos(window, cursorX, cursorY);
             for (int b = 0; b < buttons.length; b++) {
@@ -153,6 +155,17 @@ public final class Input {
      */
     public boolean mouseDown(int button) {
         return button >= 0 && button < buttons.length && buttons[button];
+    }
+
+    /**
+     * Tells whether a mouse button went down since the previous frame, which is what a click on a
+     * control wants.
+     *
+     * @param button the GLFW button code
+     * @return {@code true} in the one frame in which the button was pressed
+     */
+    public boolean mousePressed(int button) {
+        return button >= 0 && button < buttons.length && buttons[button] && !previousButtons[button];
     }
 
     /**

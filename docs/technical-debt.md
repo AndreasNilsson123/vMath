@@ -15,10 +15,10 @@ Scope uses the roadmap's sizes: S ≈ hours, M ≈ days, L ≈ 1–2 weeks, XL =
 |---|---|---|
 | Critical | 0 | No known wrong result, no unsafe memory access, no open security finding. See section 2 for what was checked to say that. |
 | High | 4 | The GPU-facing layer has never met a GPU; the release identity (group, version, licence holder) is unsettled; 35% of the public API has no documentation; thread-safety contracts are mostly unwritten and two hazards are untested. |
-| Medium | 18 | Experimental surface, test strength outside `vmath.core`, duplicated container and traversal code, oversized classes, package layering, stale README/ROADMAP text, dependency lag, loaders without fuzzing. |
+| Medium | 19 | Experimental surface, test strength outside `vmath.core`, duplicated container and traversal code, oversized classes, package layering, stale README/ROADMAP text, dependency lag, loaders without fuzzing. |
 | Low | 9 | Warnings, dead code, error-signalling style, suppressed lints, small gaps. |
 
-**Progress, 2026-10-02:** 24 of 31 items are ticked (TD-29, TD-30 and TD-31 were added on 2026-10-04 by the occlusion, rigid-pile and sdf-sculpt demos). The 7 open ones: four are only partly done, and each says exactly what is left in its **Status** line: TD-01, TD-06, TD-11, TD-22 (TD-01 needs a GPU, TD-11 needs a decision about modules, TD-22 needs a pinned early-access JDK build, TD-06 is open-ended). The numbers in the table above and the Explanation paragraphs are those of the audit and are not rewritten.
+**Progress, 2026-10-02:** 24 of 32 items are ticked (TD-29 to TD-32 were added on 2026-10-04 by the occlusion, rigid-pile, sdf-sculpt and terrain demos). The 8 open ones: four are only partly done, and each says exactly what is left in its **Status** line: TD-01, TD-06, TD-11, TD-22 (TD-01 needs a GPU, TD-11 needs a decision about modules, TD-22 needs a pinned early-access JDK build, TD-06 is open-ended). The numbers in the table above and the Explanation paragraphs are those of the audit and are not rewritten.
 
 Index (tick when fixed):
 
@@ -50,6 +50,7 @@ Index (tick when fixed):
 - [x] **TD-26** Low: live backing arrays exposed by the containers and `Mesh`
 - [x] **TD-27** Low: suppressed lints and unchecked casts
 - [x] **TD-28** Low: known functional gaps recorded in prose only
+- [ ] **TD-32** Medium: the SIMD frustum kernel is slower than the scalar one and allocates on a few hundred boxes (found by the terrain demo)
 - [ ] **TD-30** Medium: the box-box narrow phase costs 10 us per pair and allocates about 9 kB per body per frame (found by the rigid-pile demo)
 - [ ] **TD-31** Low: `SurfaceNets` can make edges that more than two triangles share where the surface has a feature thinner than a cell (found by the sdf-sculpt demo)
 - [ ] **TD-29** Medium: the occlusion test costs 107 ns per box, so occlusion culling does not pay for cheap geometry (found by the occlusion demo)
@@ -468,6 +469,21 @@ None found. The closest calls are listed as High (TD-01, TD-04) with the reason 
 - **Testing required:** a test with the sphere-over-a-hole field above that counts shared edges (the demo's `MeshCheck` is the checker).
 - **Depends on:** none.
 - **Status:** Open. Found 2026-10-04 by the sdf-sculpt demo (DEMOS.md P2).
+
+### TD-32 — The SIMD frustum kernel loses to the scalar one on a few hundred boxes, and allocates
+
+- **Severity:** Medium. The results are right; the default kernel (`FrustumKernels.best()`) is the slow one for small inputs, and it allocates in a method that the library documents as allocation-free.
+- **Affected files:** `simd/SimdFrustumCuller.java` and `spatial/FrustumKernels.java` (`best`).
+- **Explanation:** The terrain demo (`docs/DEMOS.md` P4) culls 256 chunks per frame. With the kernel that `best()` picks (the SIMD one) the cull took 0.096 ms and the render thread allocated 156,414 B per frame over 1,200 frames after 100 of warm-up; on 144 chunks 0.07 to 0.12 ms and about 101,000 B per frame. With the scalar kernel the same cull takes
+  0.010 ms (256 chunks) and 0.024 ms (144 chunks) and the whole frame allocates 2,401 B. It is not only a cold start: the numbers did not change over 1,300 frames. The other demos saw the same on a small scene (3,000 boxes: 1.2 MB per frame for hundreds of frames in `interior-portals`), while on 250,000 boxes the SIMD
+  kernel is 2.5 times faster than the scalar one and allocates nothing once it is compiled (`culling-lab`); and a cold SIMD kernel allocated 9.5 MB per frame over its first 100 frames. The Vector API allocates a vector object per operation where the JIT does not compile the loop to vector instructions, which is the likely cause (the loop may stay
+  outside C2 for a short input or exit early on deoptimisation), but it was not diagnosed.
+- **Recommended fix:** (1) diagnose with `-XX:+PrintCompilation` and `-XX:+UnlockDiagnosticVMOptions -XX:+PrintInlining` whether the vector loop is compiled for a short array and why not; (2) whatever the cause, make `best()` return a kernel that uses the scalar one below a measured size (the crossover is somewhere between 256 and 250,000 boxes; measure it with
+  `FrameBench`); (3) a test in `AllocationContractTest` that runs the default kernel on a few hundred boxes for a thousand calls and asserts the allocation.
+- **Estimated scope:** S for step 2 once the crossover is measured, M with the diagnosis.
+- **Testing required:** the existing frustum kernel tests, a JMH benchmark at 64, 256, 1,000, 10,000 and 250,000 boxes for both kernels, the allocation test above.
+- **Depends on:** none. Related: `docs/technical-debt.md` TD-17 (allocation in paths that read as allocation-free).
+- **Status:** Open. Found 2026-10-04 by the terrain demo, which uses the scalar kernel for its 256 chunks for this reason.
 
 ---
 

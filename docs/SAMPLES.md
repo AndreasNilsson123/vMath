@@ -30,6 +30,8 @@ the `arm64` variants); the version is in `gradle/libs.versions.toml`. The run ta
 | `dq-vs-lbs` | a twisted arm skinned two ways in the shaders, checked against the library's CPU skinning | [DEMOS.md](DEMOS.md) |
 | `rigid-pile` | thousands of boxes and spheres in a pit, simulated with the library's broad phase, manifolds and solver | [DEMOS.md](DEMOS.md) |
 | `sdf-sculpt` | sculpting a distance field with a brush and meshing it with surface nets | [DEMOS.md](DEMOS.md) |
+| `terrain` | a terrain of 256 chunks with levels of detail, flown along a spline at constant speed | [DEMOS.md](DEMOS.md) |
+| `sky-sun` | a day of sun, sky, camera exposure and tone mapping, with sliders | [DEMOS.md](DEMOS.md) |
 
 ## The demo `city`
 
@@ -88,5 +90,5 @@ The older headless `vmath-bench/.../sample/CullAndDrawSample` stays as the CPU-o
 
 ## Layout of the module
 
-`vmath-samples/src/main/java/vmath/samples`: `Launcher` (the entry point), `Demos` (the registry), `framework/` (the shared pieces, listed in [DEMOS.md](DEMOS.md)) and `demos/city/`, `demos/culling/`, `demos/portals/`, `demos/occlusion/`, `demos/skinning/`, `demos/physics/` and `demos/sculpt/` (one package per demo: the `...Demo` class, its options and what only it needs, such as `CullMethod` or `Building`). To add a demo, follow "Adding a demo" in [DEMOS.md](DEMOS.md).
+`vmath-samples/src/main/java/vmath/samples`: `Launcher` (the entry point), `Demos` (the registry), `framework/` (the shared pieces, listed in [DEMOS.md](DEMOS.md)) and `demos/city/`, `demos/culling/`, `demos/portals/`, `demos/occlusion/`, `demos/skinning/`, `demos/physics/`, `demos/sculpt/`, `demos/terrain/` and `demos/sky/` (one package per demo: the `...Demo` class, its options and what only it needs, such as `CullMethod` or `Building`). To add a demo, follow "Adding a demo" in [DEMOS.md](DEMOS.md).
 The measurements of the demos are in their cards there; the table above is the first version's and is kept because the framework changed what a frame includes (the HUD, the per-frame timing).

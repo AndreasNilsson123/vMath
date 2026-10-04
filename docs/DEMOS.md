@@ -10,11 +10,11 @@ library build.
 
 ## 1. Where we are
 
-The framework (phase F) and seven demos are done: `city`, `culling-lab`, `interior-portals`, `occlusion`, `dq-vs-lbs`, `rigid-pile` and `sdf-sculpt`. Everything else in section 4 is the backlog. A card has numbers only for a demo that has run.
+The framework (phase F) and nine demos are done: `city`, `culling-lab`, `interior-portals`, `occlusion`, `dq-vs-lbs`, `rigid-pile`, `sdf-sculpt`, `terrain` and `sky-sun`. Everything else in section 4 is the backlog. A card has numbers only for a demo that has run.
 
 | | |
 |---|---|
-| Demos | 7 of 25 (`city`, `culling-lab`, `interior-portals`, `occlusion`, `dq-vs-lbs`, `rigid-pile`, `sdf-sculpt`) |
+| Demos | 9 of 25 (`city`, `culling-lab`, `interior-portals`, `occlusion`, `dq-vs-lbs`, `rigid-pile`, `sdf-sculpt`, `terrain`, `sky-sun`) |
 | Framework | launcher with a menu, runner, HUD, camera, instance stream, box renderer, debug lines, depth-buffer inset, shared scenes, warm-up, statistics and report, screenshot, smoke check |
 | Verified on | NVIDIA GeForce RTX 3060 Laptop GPU, driver 546.30, OpenGL 4.5, Windows 11, JDK 25 (one machine; other vendors and systems are unchecked) |
 
@@ -66,6 +66,7 @@ vmath-samples/tools/make_run_configs.py   writes .run/Demo_<id>*.run.xml
 | `Scenes` | the shared procedural scenes: `city` (noise heights) and `blocks` (buildings with props in the streets) | `BoundsArray`, `Noise`, `Rng` |
 | `OrbitCamera` | orbit around a point with the left mouse button, zoom with the wheel, a scripted turn | `Cameraf` |
 | `FlyCamera` | free flight, a scripted circle, and `place` for a demo's own scripted path | `Cameraf`, `DepthRange` |
+| `Sliders` | mouse-driven sliders, checkboxes and button rows in the HUD, in the immediate-mode style; tells the demo when the pointer is over a control | |
 | `Hud`, `FontAtlas` | text, backdrops and value bars in window pixels, one draw call; the font is baked with Java 2D | |
 | `DebugRenderer` | draws a `DebugLines` buffer (boxes, spheres, frusta, skeletons, ...) | `DebugLines` |
 | `DepthInset` | one level of a depth buffer drawn as a picture in the window | `DepthBuffer.invDepth` |
@@ -131,7 +132,7 @@ Does not prove: what the demo cannot tell you.
 - [x] **F10 (P1, S)** `Scenes`: reusable generators. *Done:* `city` (moved out of the first demo) and `blocks`, used by `culling-lab` and `occlusion`; a terrain grid waits for P4.
 - [x] **F14 (P1, M)** Pieces the animation, physics and geometry demos needed. *Done:* `OrbitCamera`, `Hud.bar`, `Gl.computeProgram`, `InstanceStream.writeInstance` for rotated instances.
 - [x] **F13 (P1, M)** Pieces the first culling demos needed. *Done:* `BoxRenderer` (the cube and its draw), `DepthInset` (a depth buffer as a picture), `Warmup`, `FlyCamera.place`.
-- [ ] **F11 (P2, M)** Mouse-driven sliders and toggles in the HUD (picking on the bars) for the demos that want a parameter slider (R1). A2 did not need them: it turns its parameter with the arrow keys and shows it with `Hud.bar`. → F4
+- [x] **F11 (P2, M)** Mouse-driven sliders and toggles in the HUD. *Done: `Sliders` (slider, checkbox, button row; hit tests and value mapping are static and unit-tested) and `Input.mousePressed`; first used by R1. A2 keeps its arrow keys.* → F4
 - [ ] **F12 (P2, M)** Compute-shader and texture helpers in `Gl` (compute program, image textures, a framebuffer object for inset views). → needed by C6, R3 (C4 needed only the texture inset, `DepthInset`)
 
 ### Phase C: culling and scale
@@ -162,12 +163,14 @@ Does not prove: what the demo cannot tell you.
 - [x] **P2 (P1, L)** `sdf-sculpt`: signed distance fields with smooth CSG, re-meshed with `SurfaceNets` every frame, a brush that adds and subtracts; vertices and triangles per second. Shows: SDF modelling and meshing.
       *Done: a starting shape made with `Sdfs` CSG, a grid field that the brush edits with `smoothUnion` and `smoothSubtract`, `Sdfs.raycast` for the pointer, `SurfaceNets` after every stroke, `--verify` for open meshes. It found that the mesh can have edges shared by more than two triangles: TD-31.*
 - [ ] **P3 (P2, L)** `character-controller`: a capsule walks a triangle-soup level using the sweeps (`sweepCapsuleTriangle`, `sweepSphereAabb`) and a `StaticBvh`; slides along walls, steps up. Shows: the exact and conservative-advancement sweeps.
-- [ ] **P4 (P2, M)** `terrain`: fractal terrain (`Noise.fbm2`) with `MeshLod` chains and `LodSelector`; a camera on a `Curves` spline rail with arc-length speed. Shows: procedural geometry and LOD selection.
+- [x] **P4 (P2, M)** `terrain`: fractal terrain (`Noise.fbm2`) with `MeshLod` chains and `LodSelector`; a camera on a `Curves` spline rail with arc-length speed. Shows: procedural geometry and LOD selection.
+      *Done: 256 chunks of 256 m, a `MeshLod` chain per chunk with the border locked, `LodSelector` with hysteresis and thresholds from a pixel budget, one `glMultiDrawElementsIndirect` for all visible chunks, a closed Catmull-Rom rail with `ArcLengthTable`, camera speed measured. It found TD-32 (the SIMD frustum kernel on a few hundred boxes).*
 - [ ] **P5 (P3, M)** `convex-lab`: two convex shapes dragged with the mouse; `Gjk` distance, `Epa` penetration depth, closest points and the contact normal drawn. Shows: the narrow phase.
 
 ### Phase R: rendering math and large worlds
 
-- [ ] **R1 (P1, M)** `sky-sun`: `PreethamSky` and `SolarPosition` with a time-of-day slider, `PhysicalCamera` exposure and `ToneMap` operators switched live. Shows: the lighting and camera math. → F11
+- [x] **R1 (P1, M)** `sky-sun`: `PreethamSky` and `SolarPosition` with a time-of-day slider, `PhysicalCamera` exposure and `ToneMap` operators switched live. Shows: the lighting and camera math.
+      *Done: sliders for the hour, the day, the latitude, the turbidity, the focal length, the aperture, the sensitivity and the shutter time or exposure compensation, an automatic shutter, six curves; the sun, sky, atmosphere and exposure numbers are on the screen, and the shader's curves are checked against `ToneMap` and `Srgb` (`--verify`).*
 - [ ] **R2 (P1, L)** `globe`: the whole Earth as a WGS-84 ellipsoid (`Wgs84`, `Geodetic`), a flight from orbit to street level with a `FloatingOrigin`; a key turns camera-relative rendering off and shows the jitter that it removes (`Rebase`, `FrameTransformf`). Shows: large worlds in single-precision rendering. Measures the vertex error with and without rebasing.
 - [ ] **R3 (P2, L)** `cascaded-shadows`: `Cascades` fit and `CascadeCasters` culling per slice, four shadow maps, the splits and the casters drawn. Shows: shadow-cascade math and caster culling. → F12
 - [ ] **R4 (P2, M)** `ibl-spheres`: a grid of material spheres lit by `SphericalHarmonics` irradiance and `Ibl` GGX prefiltering of the procedural sky. Shows: image-based lighting. → F12, R1
@@ -182,8 +185,7 @@ Does not prove: what the demo cannot tell you.
 
 ### Order
 
-1. Done: F1-F10, F13, F14, C1-C4, A2, P1, P2.
-2. The last of the five that show the widest range: **R1** `sky-sun` (wants sliders, F11).
+1. Done: F1-F11, F13, F14, C1-C4, A2, P1, P2, P4, R1: the five that show the widest range, and the terrain.
 3. **R2** `globe` and **A1** `crowd`: the two that look most like a product.
 4. The GPU demos **C6**, **C7**, **C5**, **R3** (with F12): they also close the open validation items of TD-01 (shader text and layouts against a driver).
 5. The rest by interest.
@@ -424,3 +426,79 @@ With `--verify` the mesh had no edge without a partner at any of the 43 checks.
 **Findings.** (1) TD-31: 42 of the 43 checks found a few edges (at most 128 of about 54,000) that more than two triangles share; the starting shape has none, and one added sphere that is wider than a hole in the shape gives eight. (2) A torus that touched the body along a thin lens did the same before it was moved away from it.
 
 **Does not prove.** A whole-grid re-mesh of 64³ to 128³: a tool with a larger field would mesh only the chunks that the brush touched, which `SurfaceNets` does not offer (it meshes a box). The field is a grid of samples, so the brush is as sharp as a cell; the library's `Sdf` composition is used only for the stamp.
+
+### terrain: Terrain with levels of detail on a camera rail
+
+**Claim.** A terrain of 256 chunks, each with a chain of levels of detail, drawn with the levels that `LodSelector` picks from the size of each chunk on the screen, in one indirect draw call, while the camera flies along a spline at a constant speed that an arc-length table
+keeps constant to within 2.4% (68.4 to 71.6 m/s for 70).
+
+**Uses.** `Noise.fbm2` (the heights, in `Terrain`), `Mesh`, `MeshLod.build` (a chain per chunk with the border locked) and `Chain.selectorThresholds`, `LodSelector` (with hysteresis), `CullPipeline` with `CullStages.Frustum`, `BoundsArray`, `VisibilitySet`, `DrawCommandBuffer` with
+`glMultiDrawElementsIndirect`, `Curves.catmullRom` and `ArcLengthTable` (`Rail`), `Cameraf`.
+
+**Controls.** `F` leaves the rail for a free camera (`W A S D`, `Space`, `Left Control`, `Left Shift`, left mouse button to look), `[` and `]` change the error budget, `L` tints the chunks by their level, `N` draws everything in view at full detail, `U` moves along the rail by equal
+steps of the spline parameter, `T` draws wireframes.
+
+**Options.** `--chunks N` (16), `--cells N` (48), `--budget PIXELS` (2), `--no-lod`, `--free`, `--parameter-speed`.
+
+**Measured.** JDK 25, NVIDIA GeForce RTX 3060 Laptop GPU, window 1600 × 900, vsync off, 16 × 16 chunks of 256 m (a 4 km square) with 48 × 48 cells (4,608 triangles) at full detail, 1,200 frames after 100 of warm-up along the 7,403 m rail (12 control points) at 70 m/s, about 46 of the 256 chunks
+in view. The chains were built in 5 to 7 seconds on the common pool (27 ms of one thread per chunk) and have 4 levels (the simplifier was asked for 5 and stopped at 4 on every chunk; with the border locked a chunk cannot go below its 192 border vertices, so the coarsest level has about 192 triangles); over
+all chunks the levels have 1,179,648, 353,792, 105,984 and 49,180 triangles; 943,630 vertices and 5,065,812 indices were uploaded.
+
+| error budget | triangles drawn | of the triangles at full detail | GPU time of the draw |
+|---|---|---|---|
+| 0.5 px | 214,245 | 100% | 0.080 ms |
+| 2 px (default) | 114,115 | 53% | 0.069 ms |
+| 8 px | 55,213 | 26% | 0.059 ms |
+| 32 px | 22,545 | 10.5% | 0.055 ms |
+
+The frustum cull of the chunks takes 0.010 ms, the level selection 0.003 ms and the 46 indirect commands 0.003 ms; the frame is 0.5 to 0.6 ms in all of the runs, which is the runner's own work, and the render thread allocates 2,401 B per frame.
+The camera speed, measured between frames: 68.4 to 71.6 m/s with equal steps of arc length, 36.5 to 109.4 m/s with equal steps of the spline parameter (`--parameter-speed`). `TerrainTest` checks the same properties on a small terrain: neighbouring chunks share their edge vertices, the chains have fewer triangles at every level and
+keep every border vertex of the chunk, and steps of arc length are equal to within 3% while steps of the parameter vary by more than 30%.
+
+**Findings.** (1) TD-32: the demo culls its 256 chunks with the scalar kernel because the SIMD one that `best()` picks took 0.096 ms against 0.010 ms and allocated 156 kB per frame. (2) The levels of detail save triangles but hardly time here: 47% fewer triangles at the default budget save 0.011 ms of GPU time, because 214,000
+triangles of flat-shaded terrain cost the GPU 0.08 ms; the saving is real for a heavier shader or a larger world, and the card does not claim more. (3) A chunk of 48 cells cannot be simplified below its border (192 triangles), which is the price of cracks-free neighbours with a locked border.
+
+**Does not prove.** One terrain function, one GPU, a camera that stays 90 m above the ground, flat shading with derivative normals (so the shape of the levels shows), no texturing, no streaming (all chains are built at the start and live on the GPU), and no cross-fade between levels (the selector can output a fade, the demo does not draw it).
+
+### sky-sun: Sky, sun, camera exposure and tone mapping
+
+**Claim.** A day of sunlight from the library's models, on a lawn with four spheres: the sun is 54.1 degrees up at noon at the solstice at 59.3 degrees north (the geometry says 54.1), it lights a surface with 101,584 lux and the sky with 31,178 lux, and the camera's automatic exposure lands at EV100 15.7, which is the photographers'
+"sunny 16" rule; every number is on the screen and every control is a slider.
+
+**Uses.** `SolarPosition` (`julianDay`, `position`, `direction`), `PreethamSky` (`rgb`, `zenithLuminance`), `Atmosphere` (`sunTransmittanceRgb`, `TYPICAL_ANGSTROM_ALPHA`), `PhysicalCamera` (`fullFrame`, `fNumberOfStops`, `ev100ForLuminance`, `shutterTimeFor`, `ev100`, `exposure`, `verticalFov`), `ToneMap` and `Srgb` (as the reference for the shader's
+port), `Cameraf` for the view directions. The tables and the light of a moment are in `SkyModel`; the GLSL is in `SkyShaders`.
+
+**Controls.** Drag the sliders with the left mouse button: the hour (UT, at longitude 0), the day of 2026, the latitude, the turbidity, the focal length, the aperture (in stops from f/1), the sensitivity (ISO 100 to 6400) and the shutter time or, with the automatic shutter, an exposure compensation of ±4 EV. The checkbox switches the
+automatic shutter, the buttons choose the curve (clamp, Reinhard, extended Reinhard, ACES, Hable, 1-exp), the left mouse button elsewhere looks around, `Space` runs the clock, `R` resets the view.
+
+**Options.** `--verify`: the shader's curves and sRGB encoding are evaluated in a compute shader for 2,048 values from 0.001 to 1,000 (and 0) for the five curves of the library, read back and compared with `ToneMap.apply` and `Srgb.fromLinear`; a difference above 2e-5 fails the run. The largest difference was 9.5e-7.
+
+**Measured.** JDK 25, NVIDIA GeForce RTX 3060 Laptop GPU, window 1600 × 900, vsync off, a scripted day of 1,200 frames (24 hours) at the solstice at 59.3 degrees north, turbidity 3, automatic shutter, ACES, 24 mm, f/11.3, ISO 100; 1,200 frames after 60 of warm-up, `--demo sky-sun --verify --frames 1200 --warmup 60`:
+
+| | |
+|---|---|
+| the sky table (256 × 64 texels, one `PreethamSky.rgb` each) and the light of the moment on the CPU | 2.98 ms |
+| the upload of the table | 0.05 ms |
+| the GPU time of the full-screen pass | 0.18 ms |
+| the frame | 3.38 ms |
+| allocated on the render thread | 1,072 B per frame (budget 4,096 B) |
+
+Two moments of the same day, from the screen at frames 599 and 879 (hours 12.0 and 17.6):
+
+| | noon | evening |
+|---|---|---|
+| sun elevation | 54.1° | 23.4° |
+| direct sunlight on a surface facing the sun | 101,584 lux | 80,359 lux |
+| sky on an upward surface | 31,178 lux | 21,367 lux |
+| luminance of the zenith | 9,042 cd/m² | 4,329 cd/m² |
+| luminance of a mid-grey card lying flat | 6,511 cd/m² | 3,074 cd/m² |
+| automatic exposure | EV100 15.7: f/11.3, 1/407 s | EV100 14.6: f/11.3, 1/192 s |
+
+`SkyModelTest` checks the model without a window: the sun is nearly overhead at the equator at the equinox, the direct sun is 80,000 to 127,500 lux and nearly white at noon, a low sun is redder and dimmer, haze dims the direct sun, the night sky is below 0.01 cd/m², and the automatic exposure of noon is between EV 13 and 17.5 and that of
+night more than 10 stops lower.
+
+**Findings.** (1) `PreethamSky` is not defined for a sun below the horizon, so the demo clamps the sun to the horizon for the sky and fades the day sky out over six degrees of civil twilight into a constant night sky (0.0006 to 0.0014 cd/m²): the fade and the night floor are the demo's, not the library's. (2) The library has no mapping from the turbidity of
+the sky model to the haze of the transmittance; the demo uses `0.02 (T - 1)` for the optical depth at 1 µm, a rough choice. (3) The library's sun, sky and exposure models agree with the photographers' rule without any tuning: the automatic exposure at the solstice noon is EV100 15.7, and the sun's elevation is the geometric 54.1 degrees.
+
+**Does not prove.** A clear-sky model with a sun disc and no clouds, single scattering, a flat lawn and four diffuse spheres lit by the sun and the sky irradiance only (no light between the objects), per-channel curves, one display (sRGB), and a sky that is a 256 × 64 table sampled bilinearly (the horizon band is 1.4 degrees per row). The sliders' hit tests and value mapping are unit-tested
+(`SlidersTest`), but the dragging itself was not tried with a mouse in this check; only the scripted run and its screenshots were.
