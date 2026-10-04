@@ -2,6 +2,9 @@ package vmath.samples;
 
 import java.util.List;
 import vmath.samples.demos.city.CityDemo;
+import vmath.samples.demos.culling.CullingLabDemo;
+import vmath.samples.demos.occlusion.OcclusionDemo;
+import vmath.samples.demos.portals.PortalsDemo;
 import vmath.samples.framework.DemoEntry;
 
 /**
@@ -27,6 +30,7 @@ public final class Demos {
      * @return an unmodifiable list; never {@code null} or empty
      */
     public static List<DemoEntry> all() {
-        return List.of(new DemoEntry(CityDemo.INFO, CityDemo::new));
+        return List.of(new DemoEntry(CityDemo.INFO, CityDemo::new), new DemoEntry(CullingLabDemo.INFO, CullingLabDemo::new),
+                new DemoEntry(PortalsDemo.INFO, PortalsDemo::new), new DemoEntry(OcclusionDemo.INFO, OcclusionDemo::new));
     }
 }

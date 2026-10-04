@@ -19,6 +19,15 @@ property of the project; IntelliJ needs nothing, see [IDE.md](IDE.md)). LWJGL 3.
 the `arm64` variants); the version is in `gradle/libs.versions.toml`. The run task passes `--add-modules=jdk.incubator.vector` so that the SIMD frustum kernel is found, and
 `--enable-native-access=ALL-UNNAMED`. Gradle runs the program in the module's directory, so a relative path for `--screenshot` or `--report` is relative to `vmath-samples`.
 
+## The demos
+
+| id | what it shows | card |
+|---|---|---|
+| `city` | a million boxes culled and drawn with one indirect call | below, and [DEMOS.md](DEMOS.md) |
+| `culling-lab` | seven ways to cull the same boxes, timed and checked against each other | [DEMOS.md](DEMOS.md) |
+| `interior-portals` | portal culling in a building of 400 rooms with doors that open and shut | [DEMOS.md](DEMOS.md) |
+| `occlusion` | software occlusion culling in a dense city, with a ray check that nothing visible is removed | [DEMOS.md](DEMOS.md) |
+
 ## The demo `city`
 
 A city of a million boxes whose heights follow fractal noise (`vmath.util.Noise`), drawn with OpenGL 4.5. It needs a driver with OpenGL 4.5 (so not macOS, which stops at 4.1); it
@@ -76,6 +85,5 @@ The older headless `vmath-bench/.../sample/CullAndDrawSample` stays as the CPU-o
 
 ## Layout of the module
 
-`vmath-samples/src/main/java/vmath/samples`: `Launcher` (the entry point), `Demos` (the registry), `framework/` (the shared pieces, listed in [DEMOS.md](DEMOS.md)) and `demos/city/` (`CityDemo`,
-`CityOptions`, `City` for the scene and `Shaders` for the GLSL, whose vertex inputs are generated from the vertex layout). To add a demo, follow "Adding a demo" in [DEMOS.md](DEMOS.md).
+`vmath-samples/src/main/java/vmath/samples`: `Launcher` (the entry point), `Demos` (the registry), `framework/` (the shared pieces, listed in [DEMOS.md](DEMOS.md)) and `demos/city/`, `demos/culling/`, `demos/portals/` and `demos/occlusion/` (one package per demo: the `...Demo` class, its options and what only it needs, such as `CullMethod` or `Building`). To add a demo, follow "Adding a demo" in [DEMOS.md](DEMOS.md).
 The measurements of the demos are in their cards there; the table above is the first version's and is kept because the framework changed what a frame includes (the HUD, the per-frame timing).

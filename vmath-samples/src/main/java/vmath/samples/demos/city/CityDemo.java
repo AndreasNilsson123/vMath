@@ -2,10 +2,6 @@ package vmath.samples.demos.city;
 
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_C;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_X;
-import static org.lwjgl.opengl.GL45.glDeleteProgram;
-import static org.lwjgl.opengl.GL45.glGetUniformLocation;
-import static org.lwjgl.opengl.GL45.glProgramUniform1ui;
-import static org.lwjgl.opengl.GL45.glUseProgram;
 
 import java.util.List;
 import java.util.Locale;
@@ -17,19 +13,16 @@ import vmath.camera.Cameraf;
 import vmath.core.Vec3f;
 import vmath.geo.DepthRange;
 import vmath.gl.InstanceWriter;
-import vmath.mesh.Mesh;
-import vmath.mesh.MeshOptimizer;
-import vmath.mesh.Primitives;
-import vmath.mesh.VertexLayout;
+import vmath.samples.framework.BoxRenderer;
 import vmath.samples.framework.Demo;
 import vmath.samples.framework.DemoContext;
 import vmath.samples.framework.DemoInfo;
 import vmath.samples.framework.FlyCamera;
 import vmath.samples.framework.FrameInfo;
-import vmath.samples.framework.Gl;
 import vmath.samples.framework.GpuMesh;
 import vmath.samples.framework.Hud;
 import vmath.samples.framework.InstanceStream;
+import vmath.samples.framework.Scenes;
 import vmath.samples.framework.Stats;
 import vmath.spatial.CullContext;
 import vmath.spatial.CullPipeline;
@@ -68,18 +61,13 @@ public final class CityDemo implements Demo {
             List.of("culling", "scale"), 4096, List.of("--instances", "50000"),
             "left mouse + move: look | W A S D: fly | Space, Ctrl: up, down | Shift: fast | C: culling on/off | X: freeze the culling camera | R: reset");
 
-    private static final float UNIT_CUBE_HALF = 0.5f;
-
     private final CityOptions options;
     private BoundsArray bounds;
     private VisibilitySet visible;
     private ExecutorService executor;
     private FrustumKernel kernel;
     private CullPipeline pipeline;
-    private int program;
-    private int viewProjectionLocation;
-    private int groundIdLocation;
-    private GpuMesh mesh;
+    private BoxRenderer boxes;
     private InstanceStream stream;
     private FlyCamera fly;
     private float side;
@@ -113,7 +101,7 @@ public final class CityDemo implements Demo {
     public void create(DemoContext ctx) {
         this.ctx = ctx;
         System.out.printf(Locale.ROOT, "building the city of %,d boxes ...%n", options.instances());
-        bounds = City.build(options.instances());
+        bounds = Scenes.city(options.instances());
         visible = new VisibilitySet(bounds.size());
         if (options.threads() > 1) {
             executor = Executors.newFixedThreadPool(options.threads(), r -> {
@@ -128,13 +116,8 @@ public final class CityDemo implements Demo {
         pipeline = CullPipeline.of(new CullStages.Frustum(kernel));
         System.out.println("frustum kernel: " + kernel.name());
 
-        VertexLayout layout = VertexLayout.builder().position().normal().build();
-        program = Gl.program(Shaders.vertex(layout), Shaders.fragment());
-        viewProjectionLocation = glGetUniformLocation(program, "viewProjection");
-        groundIdLocation = glGetUniformLocation(program, "groundId");
-        Mesh cube = Primitives.box(UNIT_CUBE_HALF, UNIT_CUBE_HALF, UNIT_CUBE_HALF);
-        MeshOptimizer.optimizeVertexCache(cube, 32);
-        mesh = GpuMesh.upload(ctx.arena(), cube, layout);
+        boxes = new BoxRenderer(ctx);
+        GpuMesh mesh = boxes.mesh();
         System.out.printf("mesh: %d vertices, %d indices, %d bytes per vertex%n", mesh.vertexCount(), mesh.indexCount(), mesh.stride());
         stream = new InstanceStream(ctx.arena(), bounds.size(), options.framesInFlight());
         System.out.printf(Locale.ROOT, "instance buffer: %d regions of %,d bytes (%.0f MB mapped)%n", stream.framesInFlight(), stream.regionBytes(),
@@ -148,7 +131,7 @@ public final class CityDemo implements Demo {
         visibleSeries = stats.series("visible", "", 0, "instances that passed the culling, of " + bounds.size());
         dataSeries = stats.series("instance data", "MB", 1, "written per frame");
 
-        side = (float) Math.ceil(Math.sqrt(bounds.size())) * City.SPACING;
+        side = (float) Math.ceil(Math.sqrt(bounds.size())) * Scenes.CITY_SPACING;
         fly = new FlyCamera(new Vec3f(0f, side * 0.06f + 40f, -side * 0.5f), 0f, -0.1f, 1.0f, 0.5f, 6000f, 120f, 600f);
         culling = options.culling();
         ctx.clearColor(0.55f, 0.7f, 0.88f);
@@ -211,12 +194,7 @@ public final class CityDemo implements Demo {
     @Override
     public void render(FrameInfo frame) {
         long t0 = System.nanoTime();
-        ctx.gpu().begin();
-        glUseProgram(program);
-        Gl.uniform(program, viewProjectionLocation, camera.viewProjection());
-        glProgramUniform1ui(program, groundIdLocation, bounds.size() - 1);
-        stream.draw(mesh);
-        ctx.gpu().end();
+        boxes.draw(camera, stream, bounds.size() - 1, 0, 0.00045f);
         if (frozen != null) {
             ctx.debug().draw(frozenLines, camera.viewProjection());
         }
@@ -242,8 +220,7 @@ public final class CityDemo implements Demo {
     @Override
     public void dispose() {
         stream.close();
-        mesh.delete();
-        glDeleteProgram(program);
+        boxes.dispose();
         if (executor != null) {
             executor.shutdownNow();
         }

@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import vmath.bulk.BoundsArray;
+import vmath.samples.framework.Scenes;
 
 /**
  * Tests of the options of the city demo and of the scene it builds.
@@ -44,8 +45,8 @@ class CityOptionsTest {
 
     @Test
     void theCityHasTheBoxesAndOneGroundAndIsTheSameEveryTime() {
-        BoundsArray a = City.build(100);
-        BoundsArray b = City.build(100);
+        BoundsArray a = Scenes.city(100);
+        BoundsArray b = Scenes.city(100);
         assertEquals(101, a.size());
         for (int i = 0; i < a.size(); i++) {
             assertEquals(a.maxY(i), b.maxY(i));

@@ -42,7 +42,7 @@ public record RunOptions(List<String> demos, boolean list, boolean smoke, boolea
               --sequence A,B,C     run the demos one after the other
               --smoke              run every demo for a few frames and check it (OpenGL errors, allocation, a blank frame)
               --frames N           scripted run: N frames along the demo's fixed path, print the numbers and go on (default: interactive)
-              --warmup N           frames left out of the numbers (default 60)
+              --warmup N           frames left out of the numbers (default 60; 300 with --smoke)
               --width W --height H window size (default 1600 x 900)
               --vsync | --no-vsync wait for the display (default: on interactively, off with --frames)
               --no-hud             leave the text out of the window and of the screenshots
@@ -111,7 +111,7 @@ public record RunOptions(List<String> demos, boolean list, boolean smoke, boolea
         if (frames > 0 && demos.isEmpty() && !smoke) {
             throw new IllegalArgumentException("--frames needs a demo: add --demo ID (see --list)");
         }
-        return new RunOptions(List.copyOf(demos), list, smoke, help, width, height, frames, warmup != null ? warmup : 60,
+        return new RunOptions(List.copyOf(demos), list, smoke, help, width, height, frames, warmup != null ? warmup : smoke ? 300 : 60,
                 vsync != null ? vsync : frames == 0 && !smoke, hud, checkGl || smoke, screenshot, report, List.copyOf(rest));
     }
 

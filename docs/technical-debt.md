@@ -15,10 +15,10 @@ Scope uses the roadmap's sizes: S ≈ hours, M ≈ days, L ≈ 1–2 weeks, XL =
 |---|---|---|
 | Critical | 0 | No known wrong result, no unsafe memory access, no open security finding. See section 2 for what was checked to say that. |
 | High | 4 | The GPU-facing layer has never met a GPU; the release identity (group, version, licence holder) is unsettled; 35% of the public API has no documentation; thread-safety contracts are mostly unwritten and two hazards are untested. |
-| Medium | 16 | Experimental surface, test strength outside `vmath.core`, duplicated container and traversal code, oversized classes, package layering, stale README/ROADMAP text, dependency lag, loaders without fuzzing. |
+| Medium | 17 | Experimental surface, test strength outside `vmath.core`, duplicated container and traversal code, oversized classes, package layering, stale README/ROADMAP text, dependency lag, loaders without fuzzing. |
 | Low | 8 | Warnings, dead code, error-signalling style, suppressed lints, small gaps. |
 
-**Progress, 2026-10-02:** 24 of 28 items are ticked. The 4 open ones are only partly done, and each says exactly what is left in its **Status** line: TD-01, TD-06, TD-11, TD-22 (TD-01 needs a GPU, TD-11 needs a decision about modules, TD-22 needs a pinned early-access JDK build, TD-06 is open-ended). The numbers in the table above and the Explanation paragraphs are those of the audit and are not rewritten.
+**Progress, 2026-10-02:** 24 of 29 items are ticked (TD-29 was added on 2026-10-04 by the occlusion demo). The 5 open ones: four are only partly done, and each says exactly what is left in its **Status** line: TD-01, TD-06, TD-11, TD-22 (TD-01 needs a GPU, TD-11 needs a decision about modules, TD-22 needs a pinned early-access JDK build, TD-06 is open-ended). The numbers in the table above and the Explanation paragraphs are those of the audit and are not rewritten.
 
 Index (tick when fixed):
 
@@ -50,6 +50,7 @@ Index (tick when fixed):
 - [x] **TD-26** Low: live backing arrays exposed by the containers and `Mesh`
 - [x] **TD-27** Low: suppressed lints and unchecked casts
 - [x] **TD-28** Low: known functional gaps recorded in prose only
+- [ ] **TD-29** Medium: the occlusion test costs 107 ns per box, so occlusion culling does not pay for cheap geometry (found by the occlusion demo)
 
 ---
 
@@ -423,6 +424,21 @@ None found. The closest calls are listed as High (TD-01, TD-04) with the reason 
 - **Testing required:** none.
 - **Depends on:** TD-12.
 - **Status:** Done 2026-10-02: the README has a Limitations table that links each gap to its document; four stale "not built" statements found while writing it were corrected (`docs/CULLING.md`, `docs/ROBUSTNESS.md`, `docs/MEMORY.md`, `docs/ANIMATION.md`).
+
+### TD-29 — The occlusion test is too slow to pay for itself on cheap geometry
+
+- **Severity:** Medium. Nothing is wrong: the culling is conservative and the demo's ray check found no visible box removed in 172,855 samples. It is the speed that limits where the feature is useful.
+- **Affected files:** `occlusion/DepthBuffer.java` (`isHidden`), `occlusion/OcclusionStage.java`.
+- **Explanation:** In the occlusion demo (`docs/DEMOS.md`, 10,000 buildings and 400,000 props, 143,000 boxes in the frustum, 256 x 128 depth buffer, RTX 3060 Laptop, JDK 25), testing the boxes that the frustum leaves takes 15.3 ms on one thread, about 107 ns per box, to remove 98% of them. The GPU
+  draws the 143,000 unit cubes in 2.2 ms, (2.2 ms with no occlusion culling, 0.5 ms with it), so the test costs nine times the GPU time it saves: the frame is 19.8 ms with occlusion culling against 3.2 ms without. On four threads (the demo splits the visibility set into word-aligned ranges; `isHidden` is documented as thread-safe after `finish()`) the test takes 4.8 ms and
+  the frame 8.9 ms, still above 3.2 ms. The culling pays when the objects are expensive to draw (many triangles, heavy shaders), which this scene is not, but the library should not need a heavy scene to break even. `isHidden` projects all eight corners in `double` with three dot products and a division each, and
+  reads a handful of texels.
+- **Recommended fix:** (1) a batch entry point, `DepthBuffer.cull(BoundsArray, VisibilitySet)` or an `OcclusionStage` that tests the set in one call, doing the corner projection in `float` and in struct-of-arrays form so that it can use the SIMD kernels' machinery; (2) early outs: test the box's centre and extent with
+  one projection first (a conservative screen rectangle from the projected centre and the projected extent), and only project eight corners when that is inconclusive; (3) an optional parallel `OcclusionStage` using the ranges the demo uses. Keep the conservative guarantee: the demo's `--verify` is the regression test.
+- **Estimated scope:** M.
+- **Testing required:** the existing `OcclusionTest` (brute-force oracle), the demo's `--verify` run, and a JMH benchmark of the stage over 100,000 boxes before and after.
+- **Depends on:** none. Pairs with CULL-7 (the orthographic variant) and the Hi-Z work.
+- **Status:** Open. Found 2026-10-04 by the occlusion demo (DEMOS.md C4).
 
 ---
 

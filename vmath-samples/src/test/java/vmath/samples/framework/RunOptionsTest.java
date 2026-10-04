@@ -52,7 +52,7 @@ class RunOptionsTest {
         assertTrue(o.smoke());
         assertTrue(o.checkGl());
         assertFalse(o.vsync());
-        assertEquals(60, o.warmup());
+        assertEquals(300, o.warmup());
     }
 
     @Test

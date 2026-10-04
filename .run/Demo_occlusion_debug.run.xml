@@ -1,0 +1,11 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Demo - occlusion (debug)" type="Application" factoryName="Application" folderName="Demos">
+    <option name="MAIN_CLASS_NAME" value="vmath.samples.Launcher" />
+    <module name="vmath.vmath-samples.main" />
+    <option name="VM_PARAMETERS" value="--add-modules=jdk.incubator.vector --enable-native-access=ALL-UNNAMED -Xmx2g" />
+    <option name="PROGRAM_PARAMETERS" value="--demo occlusion" />
+    <method v="2">
+      <option name="Make" enabled="true" />
+    </method>
+  </configuration>
+</component>

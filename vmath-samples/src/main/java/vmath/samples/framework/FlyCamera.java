@@ -141,6 +141,23 @@ public final class FlyCamera {
     }
 
     /**
+     * Puts the camera at a position and direction, for a demo's own scripted flight.
+     *
+     * @param x the x coordinate
+     * @param y the y coordinate
+     * @param z the z coordinate
+     * @param yaw the heading in radians, 0 looking along {@code -z}
+     * @param pitch the elevation in radians, positive looking up
+     */
+    public void place(float x, float y, float z, float yaw, float pitch) {
+        this.x = x;
+        this.y = y;
+        this.z = z;
+        this.yaw = yaw;
+        this.pitch = pitch;
+    }
+
+    /**
      * Builds the camera for the current position and direction.
      *
      * @param aspect the aspect ratio of the viewport, width over height
