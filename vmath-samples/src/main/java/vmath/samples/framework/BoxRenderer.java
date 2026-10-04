@@ -57,9 +57,20 @@ public final class BoxRenderer {
         neutralBelowLocation = glGetUniformLocation(program, "neutralBelow");
         fogDensityLocation = glGetUniformLocation(program, "fogDensity");
         fogColorLocation = glGetUniformLocation(program, "fogColor");
+        mesh = createCube(ctx);
+    }
+
+    /**
+     * Builds the unit cube with a position and a normal per vertex, optimised for the vertex cache,
+     * for demos that draw boxes with their own program.
+     *
+     * @param ctx the demo's context, which supplies the arena; must not be {@code null}
+     * @return the uploaded cube, centred on the origin with edges of length 1
+     */
+    public static GpuMesh createCube(DemoContext ctx) {
         Mesh cube = Primitives.box(UNIT_CUBE_HALF, UNIT_CUBE_HALF, UNIT_CUBE_HALF);
         MeshOptimizer.optimizeVertexCache(cube, 32);
-        mesh = GpuMesh.upload(ctx.arena(), cube, layout);
+        return GpuMesh.upload(ctx.arena(), cube, VertexLayout.builder().position().normal().build());
     }
 
     /**

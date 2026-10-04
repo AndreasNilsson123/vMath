@@ -16,9 +16,9 @@ Scope uses the roadmap's sizes: S ≈ hours, M ≈ days, L ≈ 1–2 weeks, XL =
 | Critical | 0 | No known wrong result, no unsafe memory access, no open security finding. See section 2 for what was checked to say that. |
 | High | 4 | The GPU-facing layer has never met a GPU; the release identity (group, version, licence holder) is unsettled; 35% of the public API has no documentation; thread-safety contracts are mostly unwritten and two hazards are untested. |
 | Medium | 19 | Experimental surface, test strength outside `vmath.core`, duplicated container and traversal code, oversized classes, package layering, stale README/ROADMAP text, dependency lag, loaders without fuzzing. |
-| Low | 9 | Warnings, dead code, error-signalling style, suppressed lints, small gaps. |
+| Low | 10 | Warnings, dead code, error-signalling style, suppressed lints, small gaps. |
 
-**Progress, 2026-10-02:** 24 of 32 items are ticked (TD-29 to TD-32 were added on 2026-10-04 by the occlusion, rigid-pile, sdf-sculpt and terrain demos). The 8 open ones: four are only partly done, and each says exactly what is left in its **Status** line: TD-01, TD-06, TD-11, TD-22 (TD-01 needs a GPU, TD-11 needs a decision about modules, TD-22 needs a pinned early-access JDK build, TD-06 is open-ended). The numbers in the table above and the Explanation paragraphs are those of the audit and are not rewritten.
+**Progress, 2026-10-02:** 24 of 33 items are ticked (TD-29 to TD-33 were added on 2026-10-04 by the occlusion, rigid-pile, sdf-sculpt, terrain and gpu-culling demos). The 9 open ones: four are only partly done, and each says exactly what is left in its **Status** line: TD-01, TD-06, TD-11, TD-22 (TD-01 needs a GPU, TD-11 needs a decision about modules, TD-22 needs a pinned early-access JDK build, TD-06 is open-ended). The numbers in the table above and the Explanation paragraphs are those of the audit and are not rewritten.
 
 Index (tick when fixed):
 
@@ -50,6 +50,7 @@ Index (tick when fixed):
 - [x] **TD-26** Low: live backing arrays exposed by the containers and `Mesh`
 - [x] **TD-27** Low: suppressed lints and unchecked casts
 - [x] **TD-28** Low: known functional gaps recorded in prose only
+- [ ] **TD-33** Low: the Hi-Z pyramid of the GPU culling shader needs a power-of-two base and normalised device depth on OpenGL, which no document says (found by the gpu-culling demo)
 - [ ] **TD-32** Medium: the SIMD frustum kernel is slower than the scalar one and allocates on a few hundred boxes (found by the terrain demo)
 - [ ] **TD-30** Medium: the box-box narrow phase costs 10 us per pair and allocates about 9 kB per body per frame (found by the rigid-pile demo)
 - [ ] **TD-31** Low: `SurfaceNets` can make edges that more than two triangles share where the surface has a feature thinner than a cell (found by the sdf-sculpt demo)
@@ -97,7 +98,7 @@ None found. The closest calls are listed as High (TD-01, TD-04) with the reason 
 - **Estimated scope:** step 1 S, step 3 S, step 2 L to XL (needs a GPU runner or a software rasterizer such as Mesa llvmpipe/lavapipe on the CI machine).
 - **Testing required:** shader compilation as a test; GPU-versus-reference comparison on random scenes in all three depth conventions; reflection-versus-`LayoutValidator` for every `@GpuStruct` in the repository; a fence-ordering test against the real API.
 - **Depends on:** DOC-5 (sample app) overlaps step 2. TD-04 for the ring's threading contract.
-- **Status:** Partly done 2026-10-02: step 1 is done and was run: `gl/ShaderCompileTest` compiles the object and cluster culling shaders (several work group sizes), `ClusterGrid.glslLookup` and `DualParaboloid.glsl`, and with glslang 16.6.0 (the official Windows release, downloaded to a scratch folder with the owner's permission, not added to the repository) all four test methods passed, while glslang rejects a deliberately broken shader with exit status 2, so the test can fail; the shaders are valid GLSL 450. CI installs glslang (apt) too. Step 3 is partly done: `FormatNumbersTest` checks that `PackedFormat`, `VertexFormat` and `TextureFormat` agree on the size wherever two of them carry the same Vulkan number, and the Javadoc no longer says the numbers were checked against the Khronos headers (they were entered by hand); no test reads the headers. **Open:** step 2 (running the shaders on a GPU or a software rasterizer against the references, which needs LWJGL natives and a driver) and the header comparison.
+- **Status:** Partly done 2026-10-02: step 1 is done and was run: `gl/ShaderCompileTest` compiles the object and cluster culling shaders (several work group sizes), `ClusterGrid.glslLookup` and `DualParaboloid.glsl`, and with glslang 16.6.0 (the official Windows release, downloaded to a scratch folder with the owner's permission, not added to the repository) all four test methods passed, while glslang rejects a deliberately broken shader with exit status 2, so the test can fail; the shaders are valid GLSL 450. CI installs glslang (apt) too. Step 3 is partly done: `FormatNumbersTest` checks that `PackedFormat`, `VertexFormat` and `TextureFormat` agree on the size wherever two of them carry the same Vulkan number, and the Javadoc no longer says the numbers were checked against the Khronos headers (they were entered by hand); no test reads the headers. **Step 2 is done for three of the shaders (2026-10-04):** the demos `cluster-lod`, `gpu-culling` and `clustered-lights` ran the cluster culling shader, the object culling shader (both of `GpuCullGlsl`) and the lookup of `ClusterGrid.glslLookup` on an NVIDIA GeForce RTX 3060 Laptop GPU under OpenGL 4.5 and compared them with the CPU references: the cluster shader chose the same clusters as `ClusterCullReference` at four distances (16,084 clusters compared, none differing); the object shader's survivors were identical to `GpuCullReference.cullSinglePass` on 13 checked frames (6,696 survivors, none differing) with a Hi-Z pyramid that was identical texel for texel to `HiZPyramid` (36 million texels); the clustered image was identical to a loop over every light on three views (largest difference 0 of 255). **Open:** `DualParaboloid.glsl`, other vendors and operating systems, Vulkan, and the header comparison. Running it found one contract that the Javadoc leaves out (TD-33).
 
 ### TD-02 — Release identity is unresolved
 
@@ -484,6 +485,20 @@ None found. The closest calls are listed as High (TD-01, TD-04) with the reason 
 - **Testing required:** the existing frustum kernel tests, a JMH benchmark at 64, 256, 1,000, 10,000 and 250,000 boxes for both kernels, the allocation test above.
 - **Depends on:** none. Related: `docs/technical-debt.md` TD-17 (allocation in paths that read as allocation-free).
 - **Status:** Open. Found 2026-10-04 by the terrain demo, which uses the scalar kernel for its 256 chunks for this reason.
+
+### TD-33 — The depth pyramid of the culling shader has two contracts that the documents leave out
+
+- **Severity:** Low. Nothing is wrong in the library; a user who builds the pyramid the obvious way gets garbage or a GL error.
+- **Affected files:** `gpucull/GpuCullGlsl.java` (class Javadoc, "the Hi-Z pyramid is an R32F sampler2D with all its mip levels"), `gpucull/HiZPyramid.java`, `occlusion/HiZ.java` (`mipSize`).
+- **Explanation:** (1) The shader and `HiZPyramid` halve the size of a level rounding up (`HiZ.mipSize`: 1600, 800, ..., 25, 13, 7, 4, 2, 1), while OpenGL halves a mip chain rounding down (1600, ..., 25, 12, 6, 3, 1) and allows one level fewer. For a base that is not a power of two the two disagree, and
+  `glTextureStorage2D` with the library's level count fails with `GL_INVALID_OPERATION` at 1600 x 900 (12 levels against 11); even with the right count the shader would read texel 12 of a 12-wide level. The gpu-culling demo therefore builds a pyramid whose base is the next power of two above the depth image (2048 x 1024) by taking the farthest pixel under each
+  texel, and builds the CPU model from the same resampled image to compare. (2) The shader compares texels with the normalised device depth of the box corners, so with `DepthRange.NEGATIVE_ONE_TO_ONE` the texels must hold {@code 2 d - 1} of the window depth `d` that OpenGL writes, not `d`; `HiZPyramid` keeps "farness" (`(z + 1) / 2` for that range), so a
+  comparison of the GPU's texels with the CPU pyramid must convert one of them. (3) After the compute passes that build the pyramid, the culling shader's `texelFetch` and a `glGetTextureImage` each need their own barrier bit (`GL_TEXTURE_FETCH_BARRIER_BIT`, `GL_TEXTURE_UPDATE_BARRIER_BIT`); a barrier for image access alone is not enough.
+- **Recommended fix:** write the three points into the Javadoc of `GpuCullGlsl` (and `docs/GPU.md`), with the size rule stated as "the base of the pyramid must be a power of two on OpenGL; resample the depth image to it taking the farthest value", and consider a helper in `HiZ` that gives the base size for an image size.
+- **Estimated scope:** S.
+- **Testing required:** none beyond the demo, which is the executable example (`docs/DEMOS.md` C6).
+- **Depends on:** none.
+- **Status:** Open. Found 2026-10-04 by the gpu-culling demo.
 
 ---
 

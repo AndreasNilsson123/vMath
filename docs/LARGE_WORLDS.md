@@ -60,4 +60,39 @@ Vec3d building = localToEcef.transformPosition(new Vec3d(120.0, -35.0, 12.0));
 Vec3f onScreen = building.relativeTo(cameraEcef);                  // subtract in double, then narrow
 ```
 
-Not built: geodesic distances on the ellipsoid (Vincenty, Karney), map projections (UTM, Web Mercator), geoid heights, and datum transformations other than WGS-84.
+Not built: geodesic distances on the ellipsoid (Vincenty, Karney), map projections other than Web Mercator (UTM and the like), geoid heights, and datum transformations other than WGS-84.
+
+## Map tiles: `WebMercator`, `TileId`, `TileBounds`, `HorizonCuller`, `Ellipsoids`, `TerrainRgb`, `TileSelector`
+
+The pieces for a globe that is drawn from a pyramid of map tiles (package `vmath.geo`, all in `double`, none `@Experimental`). The `globe` demo (`docs/DEMOS.md`) uses every one of them.
+
+- `WebMercator`: the spherical EPSG:3857 projection that tile servers use (radius `Wgs84.A`, fed with the geodetic latitude): longitude and latitude to the tile square `(u, v)` and to projected
+  metres and back, `MAX_LATITUDE` (85.0511 degrees), `metersPerPixel`. It is a tile addressing scheme, not a measuring projection; positions in 3D come from `Wgs84`.
+- `TileId(zoom, x, y)`: XYZ numbering (rows count south from the northern limit; `fromTms` and `tmsY` convert), `containing(zoom, lon, lat)`, `parent`, `child`, `neighbour` (wraps east-west, ends
+  at the poles of the map), the edges in radians, a `long` key that is unique over all zooms (a marker bit above the Morton code) and the quadkey string.
+- `TileBounds`: the oriented box of the patch of the ellipsoid that a tile covers between two heights, in ECEF, oriented like the local East-North-Up frame at the middle of the tile; also its sphere
+  and axis-aligned box, and a compact form (`compute` into a `double[16]`) for code that tests thousands of tiles. It is built from a 5 by 5 grid of samples at both heights grown by the
+  largest distance the surface can leave a chord (`s^2 / 8r`), so it never excludes a point of the volume; it is not the smallest box.
+- `HorizonCuller`: whether a bounding sphere is certainly hidden behind the ellipsoid from a camera, in the scaled space where the ellipsoid is the unit sphere. Conservative: a sphere just behind the
+  limb can be reported as visible. The occluder is the ellipsoid at height 0.
+- `Ellipsoids.raySpheroid` and `rayWgs84`: the first hit of a ray with a spheroid of revolution, in the units of the ray's direction like `Intersectiond.raySphere`.
+- `TerrainRgb`: the Terrarium and Mapbox terrain-RGB codecs (`encode`, `decode`, whole tiles), the lowest and highest height of a grid, bilinear sampling of a node-registered grid and normals from
+  central differences. A node-registered grid has the first and last samples on the tile's edges, so neighbouring tiles share their border heights exactly.
+- `TileSelector`: the quadtree walk. A tile is split while the distance between the vertices of its mesh, projected at the distance to its box, is more than an allowed number of pixels; tiles outside
+  the frustum or behind the horizon are skipped; after the walk, neighbouring tiles are brought within one zoom level of each other (so that a skirt of half a cell hides every crack). The boxes are
+  cached; the result is in arrays (`count`, `zoom(i)`, `x(i)`, `y(i)`) and the same arguments always give the same result. Limits (`capacity` tiles, `6 * capacity` nodes) stop the refinement and
+  say so (`truncated`, `overflowed`).
+
+Tested against brute force: `TileBounds` contains every point of a dense grid of the volume (about 750,000 points over 400 tiles from zoom 0 to 15, including the polar rows and the antimeridian
+columns); `HorizonCuller` never hides a sphere that has a point in view (4,000 random cameras from 30 m to 30,000 km up, 60 random points in each hidden sphere, each one behind the ellipsoid by a ray
+test); `Ellipsoids` against the analytic hits along the axes and a hit height of zero; `TileId` round trips (keys, quadkeys, TMS) at every zoom; the codecs to half a step; `TileSelector` selects tiles
+that do not overlap, neighbouring tiles differ by at most one level (and the test checks that it does see tiles one level apart), the result is the same for the same input, a finer allowance selects more tiles, the tile under
+a low camera is at the finest level and a small capacity stops the refinement.
+
+Measured (a loop on the build machine, JDK 25, after warm-up, not JMH): `TileBounds.compute` 3.5 us, `HorizonCuller.isHidden` 40 ns, `WebMercator.v` 29 ns; `TileSelector.select` with the boxes cached
+over five views from 20,000 km to 5 m, with the zoom range 2 to 17, 32 cells and 6 pixels: 20 to 637 tiles, 56 to 1,248 nodes tested, 23 to 284 us. A call allocates the horizon culler and, for a tile
+whose box is not cached, the temporaries of `TileBounds.compute`; nothing else.
+
+Not built: geodesic distances on the ellipsoid (Vincenty, Karney), the ellipsoidal variant of Web Mercator, geoid heights and datum transformations other than WGS-84 (geodetic heights are heights
+above the ellipsoid, not above sea level), an elevation-dependent horizon (terrain that rises above the ellipsoid hides more than the culler assumes, which is conservative), tile data itself, and a
+decoder for the image formats of tile servers (the JDK's `ImageIO` reads PNG and JPEG).

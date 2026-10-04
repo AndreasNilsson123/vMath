@@ -10,11 +10,11 @@ library build.
 
 ## 1. Where we are
 
-The framework (phase F) and nine demos are done: `city`, `culling-lab`, `interior-portals`, `occlusion`, `dq-vs-lbs`, `rigid-pile`, `sdf-sculpt`, `terrain` and `sky-sun`. Everything else in section 4 is the backlog. A card has numbers only for a demo that has run.
+The framework (phase F) and thirteen demos are done: `city`, `culling-lab`, `interior-portals`, `occlusion`, `dq-vs-lbs`, `rigid-pile`, `sdf-sculpt`, `terrain`, `sky-sun`, `cluster-lod`, `gpu-culling`, `clustered-lights` and `globe`. Everything else in section 4 is the backlog. A card has numbers only for a demo that has run.
 
 | | |
 |---|---|
-| Demos | 9 of 25 (`city`, `culling-lab`, `interior-portals`, `occlusion`, `dq-vs-lbs`, `rigid-pile`, `sdf-sculpt`, `terrain`, `sky-sun`) |
+| Demos | 13 of 25 (`city`, `culling-lab`, `interior-portals`, `occlusion`, `dq-vs-lbs`, `rigid-pile`, `sdf-sculpt`, `terrain`, `sky-sun`, `cluster-lod`, `gpu-culling`, `clustered-lights`, `globe`) |
 | Framework | launcher with a menu, runner, HUD, camera, instance stream, box renderer, debug lines, depth-buffer inset, shared scenes, warm-up, statistics and report, screenshot, smoke check |
 | Verified on | NVIDIA GeForce RTX 3060 Laptop GPU, driver 546.30, OpenGL 4.5, Windows 11, JDK 25 (one machine; other vendors and systems are unchecked) |
 
@@ -61,7 +61,9 @@ vmath-samples/tools/make_run_configs.py   writes .run/Demo_<id>*.run.xml
 | `DemoContext` | arena, statistics, GPU timer, debug renderer, the demo's arguments, the clear colour | |
 | `Gl`, `GpuMesh` | program and compute program build with numbered errors, matrix uniforms, `glGetError` checks; a mesh exported with its vertex layout | `MeshExport`, `VertexLayout`, `VertexBufferLayout.glFormats()` and `glslInputs()` |
 | `InstanceStream` | persistently mapped instance buffer in regions with fences, the indirect command; instances from the visible set or written one by one with a rotation | `PersistentBufferRing`, `InstanceWriter`, `DrawCommandBuffer` |
-| `GpuTimer` | `GL_TIME_ELAPSED` read a few frames late | |
+| `GpuTimer` | `GL_TIME_ELAPSED` read a few frames late; a demo may make more than one | |
+| `SceneTarget` | an offscreen frame with colour and a sampleable, readable depth texture, blitted to the window | |
+| `ReadbackRing` | reads a GPU counter back two or three frames late through a fenced copy, without stalling | |
 | `BoxRenderer` | the unit cube, its program, and the instanced draw of an `InstanceStream` | `Primitives.box`, `MeshOptimizer`, `VertexLayout` |
 | `Scenes` | the shared procedural scenes: `city` (noise heights) and `blocks` (buildings with props in the streets) | `BoundsArray`, `Noise`, `Rng` |
 | `OrbitCamera` | orbit around a point with the left mouse button, zoom with the wheel, a scripted turn | `Cameraf` |
@@ -133,7 +135,7 @@ Does not prove: what the demo cannot tell you.
 - [x] **F14 (P1, M)** Pieces the animation, physics and geometry demos needed. *Done:* `OrbitCamera`, `Hud.bar`, `Gl.computeProgram`, `InstanceStream.writeInstance` for rotated instances.
 - [x] **F13 (P1, M)** Pieces the first culling demos needed. *Done:* `BoxRenderer` (the cube and its draw), `DepthInset` (a depth buffer as a picture), `Warmup`, `FlyCamera.place`.
 - [x] **F11 (P2, M)** Mouse-driven sliders and toggles in the HUD. *Done: `Sliders` (slider, checkbox, button row; hit tests and value mapping are static and unit-tested) and `Input.mousePressed`; first used by R1. A2 keeps its arrow keys.* → F4
-- [ ] **F12 (P2, M)** Compute-shader and texture helpers in `Gl` (compute program, image textures, a framebuffer object for inset views). → needed by C6, R3 (C4 needed only the texture inset, `DepthInset`)
+- [x] **F12 (P2, M)** Compute-shader and texture helpers. *Done: `Gl.computeProgram`, `SceneTarget` (colour and depth textures, readback, blit), `ReadbackRing`, `GpuTimer` usable several times; the pyramid builder is the gpu-culling demo's own (`HizBuilder`).*
 
 ### Phase C: culling and scale
 
@@ -144,9 +146,12 @@ Does not prove: what the demo cannot tell you.
       *Done: a maze of 400 rooms and 508 doors (a random spanning tree plus a quarter of the other walls) with 150 pieces of furniture per room, the portals found by `autoPortals` (two per door), a slab that fills a shut door. `SectorVisibility` and `PvsMatrix` are not used: for a graph without a baked PVS the connectivity matrix lets everything connected see everything connected, so it filters nothing here.*
 - [x] **C4 (P1, M)** `occlusion`: a dense city with tall occluders; `DepthBuffer`, `OcclusionStage`; the depth buffer and its Hi-Z levels shown as an inset; a ray-test check running beside the culling that proves nothing visible is removed (conservative). Shows: software occlusion that never culls what is seen.
       *Done: 10,000 buildings and 400,000 props, the nearest 143 buildings rasterised, a ray check of up to 200 removed boxes per frame at nine points each, a multi-threaded test (`--threads`). It also found that the test is too slow to pay for itself on cheap boxes: TD-29 in `technical-debt.md`.*
-- [ ] **C5 (P2, L)** `cluster-lod`: a dense generated mesh with `Meshlets`, `ClusterHierarchy`, `ConeCull` and `MeshSimplifier`; the cut of the hierarchy chosen by screen-space error; clusters coloured; triangle count against pixel error. Shows: Nanite-style continuous LOD with the library's data structures and a CPU cut. → F12
-- [ ] **C6 (P2, L)** `gpu-culling`: the compute culling shader of `vmath.gpucull` with a `HiZPyramid`, indirect commands built on the GPU, the result compared with `GpuCullReference` every frame. Shows: GPU-driven culling, and closes the shader-text part of TD-01. → F12
-- [ ] **C7 (P2, L)** `clustered-lights`: ten thousand point lights assigned with `ClusterGrid` and `ClusterLights`, shaded forward-plus, the grid drawn on demand. Shows: the light-culling math, and checks `glslLookup` against a driver. → F12
+- [x] **C5 (P2, L)** `cluster-lod`: a dense generated mesh with `Meshlets`, `ClusterHierarchy`, `ConeCull` and `MeshSimplifier`; the cut of the hierarchy chosen by screen-space error; clusters coloured; triangle count against pixel error. Shows: Nanite-style continuous LOD with the library's data structures and a CPU cut.
+      *Done: a noise-displaced icosphere (81,920 triangles by default, up to 1.3 million), `ClusterHierarchy.build`, the cut on the CPU by `select` or on the GPU by `GpuCullGlsl.clusterShader`, one multi-draw, clusters coloured by id or by level. `--verify` runs the shader against `ClusterCullReference`: the same clusters at four distances. `Meshlets`, `ConeCull` and `MeshSimplifier` are used through the hierarchy (and the shader's cone test).*
+- [x] **C6 (P2, L)** `gpu-culling`: the compute culling shader of `vmath.gpucull` with a `HiZPyramid`, indirect commands built on the GPU, the result compared with `GpuCullReference` every frame. Shows: GPU-driven culling, and closes the shader-text part of TD-01.
+      *Done: 410,001 boxes, `GpuCullGlsl.computeShader`, a pyramid built on the GPU from the depth of the previous frame, `glDrawElementsIndirect` with the survivors read through an instanced attribute, the survivors compared with `GpuCullReference` and the pyramid with `HiZPyramid` (`--verify`). It found TD-33.*
+- [x] **C7 (P2, L)** `clustered-lights`: ten thousand point lights assigned with `ClusterGrid` and `ClusterLights`, shaded forward-plus, the grid drawn on demand. Shows: the light-culling math, and checks `glslLookup` against a driver.
+      *Done: 4,096 lights by default (the card measures up to 10,000), the assignment redone every frame on the CPU with `ClusterLights`, the lookup of `glslLookup` in the fragment shader, a loop over every light and a heat map as alternatives, and a check that the clustered image equals the loop's (`--verify`).*
 
 ### Phase A: animation and characters
 
@@ -171,7 +176,8 @@ Does not prove: what the demo cannot tell you.
 
 - [x] **R1 (P1, M)** `sky-sun`: `PreethamSky` and `SolarPosition` with a time-of-day slider, `PhysicalCamera` exposure and `ToneMap` operators switched live. Shows: the lighting and camera math.
       *Done: sliders for the hour, the day, the latitude, the turbidity, the focal length, the aperture, the sensitivity and the shutter time or exposure compensation, an automatic shutter, six curves; the sun, sky, atmosphere and exposure numbers are on the screen, and the shader's curves are checked against `ToneMap` and `Srgb` (`--verify`).*
-- [ ] **R2 (P1, L)** `globe`: the whole Earth as a WGS-84 ellipsoid (`Wgs84`, `Geodetic`), a flight from orbit to street level with a `FloatingOrigin`; a key turns camera-relative rendering off and shows the jitter that it removes (`Rebase`, `FrameTransformf`). Shows: large worlds in single-precision rendering. Measures the vertex error with and without rebasing.
+- [x] **R2 (P1, L)** `globe`: the whole Earth as a WGS-84 ellipsoid (`Wgs84`, `Geodetic`), a flight from orbit to street level with a `FloatingOrigin`; a key turns camera-relative rendering off and shows the jitter that it removes (`Rebase`, `FrameTransformf`). Shows: large worlds in single-precision rendering. Measures the vertex error with and without rebasing.
+      *Done, and extended with map tiles: a Web Mercator pyramid of height and image tiles on the ellipsoid, chosen by the screen size of their meshes, streamed in on worker threads and drawn camera-relative, from 20,000 km to 2 m. It needed new library classes (`WebMercator`, `TileId`, `TileBounds`, `HorizonCuller`, `Ellipsoids`, `TerrainRgb`, `TileSelector`; `docs/LARGE_WORLDS.md`). The tiles are procedural, because the demos download nothing.*
 - [ ] **R3 (P2, L)** `cascaded-shadows`: `Cascades` fit and `CascadeCasters` culling per slice, four shadow maps, the splits and the casters drawn. Shows: shadow-cascade math and caster culling. → F12
 - [ ] **R4 (P2, M)** `ibl-spheres`: a grid of material spheres lit by `SphericalHarmonics` irradiance and `Ibl` GGX prefiltering of the procedural sky. Shows: image-based lighting. → F12, R1
 - [ ] **R5 (P3, M)** `mirrors-stereo`: a planar reflection and a portal view (`PlanarViews`) and a side-by-side stereo pair (`Stereo`). Shows: the view-matrix constructions. → F12
@@ -185,9 +191,9 @@ Does not prove: what the demo cannot tell you.
 
 ### Order
 
-1. Done: F1-F11, F13, F14, C1-C4, A2, P1, P2, P4, R1: the five that show the widest range, and the terrain.
-3. **R2** `globe` and **A1** `crowd`: the two that look most like a product.
-4. The GPU demos **C6**, **C7**, **C5**, **R3** (with F12): they also close the open validation items of TD-01 (shader text and layouts against a driver).
+1. Done: F1-F14, C1-C7, A2, P1, P2, P4, R1, R2: the five that show the widest range, the terrain, the three GPU demos and the globe.
+3. **A1** `crowd`, the other one that looks like a product.
+4. **R3** `cascaded-shadows`, the last of the GPU demos (the other three closed most of TD-01).
 5. The rest by interest.
 
 ---
@@ -502,3 +508,149 @@ the sky model to the haze of the transmittance; the demo uses `0.02 (T - 1)` for
 
 **Does not prove.** A clear-sky model with a sun disc and no clouds, single scattering, a flat lawn and four diffuse spheres lit by the sun and the sky irradiance only (no light between the objects), per-channel curves, one display (sRGB), and a sky that is a 256 × 64 table sampled bilinearly (the horizon band is 1.4 degrees per row). The sliders' hit tests and value mapping are unit-tested
 (`SlidersTest`), but the dragging itself was not tried with a mouse in this check; only the scripted run and its screenshots were.
+
+### cluster-lod: Cluster hierarchy with continuous level of detail
+
+**Claim.** A dense rock is cut into clusters of 64 vertices and 124 triangles that are grouped and simplified level by level, and the clusters whose error is just small enough on the screen are drawn, chosen on the CPU by `ClusterHierarchy.select` or by the library's compute shader, which chose the same
+clusters as the library's CPU reference of it at four distances (16,084 clusters compared, none differing): the first run of that shader on a GPU.
+
+**Uses.** `Primitives.icoSphere`, `Noise.fbm3`, `ClusterHierarchy` (`build`, `select`, `level`, `indices`, `lodError` and the bounds that `ClusterCullObject.of` reads), `ClusterCullObject`, `ClusterCullView` and their `Gpu` writers, `GpuCullGlsl.clusterShader` (the level test, the frustum test, the normal-cone test), `ClusterCullReference`,
+`DrawCommandBuffer`, `glMultiDrawElementsIndirect`, `OrbitCamera`, `ReadbackRing`.
+
+**Controls.** Left mouse button and move to orbit, wheel to zoom, `G` switches between the CPU cut and the GPU cut, `[` and `]` change the error budget, `L` colours the clusters by level, `X` freezes the camera that the cut and the culling use (fly away to see what was chosen), `T` draws wireframes.
+
+**Options.** `--detail N` (subdivisions of the icosphere, 6 by default: 81,920 triangles; 2 to 8), `--budget PIXELS` (1), `--gpu`, `--verify`.
+
+**Measured.** JDK 25, NVIDIA GeForce RTX 3060 Laptop GPU, window 1600 × 900, vsync off, a scripted flight from 1.6 to 29.6 radii away (a quadratic approach and retreat every 240 frames) while orbiting, 480 frames after 60 of warm-up. The rock has 81,920 triangles in 4,021 clusters in 20 levels (58,427 pool vertices);
+`ClusterHierarchy.build` took 1.4 to 1.8 s (it is a load-time step). With `--detail 7`: 327,680 triangles, 16,256 clusters, 231,593 vertices, 5.0 s.
+
+| error budget | clusters drawn | triangles drawn | of the rock |
+|---|---|---|---|
+| 1 px (default) | 981 | 67,521 | 82% |
+| 4 px | 831 | 49,927 | 61% |
+| 16 px | 624 | 28,115 | 34% |
+
+The cut: 0.095 ms on the CPU (`select` over 4,021 clusters; 0.44 ms over the 16,256 of `--detail 7`) against 0.021 ms for the shader, which also tests the frustum and the normal cone (it drew 915 clusters at 1 px against the CPU's 981). The GPU time of the multi-draw is 0.05 to 0.11 ms, the frame 0.5 to 0.8 ms, and the render thread
+allocates 1,250 B per frame with the CPU cut and 3,721 B with the GPU cut (the smoke budget is 16,384 B). `ClusterSceneTest` checks the same on the CPU without a window: a larger budget chooses fewer clusters and triangles, and the library's reference of the shader chooses the clusters that `select` chooses among the ones in view.
+
+**Verification.** At 1.5, 3, 6 and 20 radii the shader chose 962, 1,006, 1,015 and 770 clusters, the CPU reference the same sets: the level test selects 1,074, 1,074, 1,074 and 831 of 4,021, the frustum keeps 1,035, 1,074, 1,074 and 831 of them, and the normal cone removes up to 10% more (back-facing).
+
+**Findings.** (1) `glMultiDrawElementsIndirectCount` is OpenGL 4.6, so under 4.5 the commands that the shader does not write have to be zero (the buffer is cleared every frame) and the multi-draw is issued with every slot: 4,021 mostly empty commands cost about 0.03 ms, which the GPU time above includes. (2) With a 1-pixel budget the
+rock at 82,000 triangles only drops 18% of its triangles on this flight, because the simplifier's error estimate is conservative (documented in `MeshLod` as 3 to 12 times the measured distance); the savings begin at larger budgets or larger meshes.
+
+**Does not prove.** One object (no instancing: the shader's eye is the camera in the space of the cluster data), no depth pyramid (a one-texel pyramid that hides nothing; occlusion is the next demo), flat shading with derivative normals, one GPU, and `glMultiDrawElementsIndirect` instead of the count variant of 4.6.
+
+### gpu-culling: GPU-driven culling with a Hi-Z pyramid
+
+**Claim.** The library's compute shader culls 410,001 boxes against the frustum and a depth pyramid built on the GPU in 0.08 ms, an indirect draw follows without the CPU looking at an object, 1,716 of the 142,945 boxes in the frustum are drawn, and the survivors equal those of the library's CPU model of the shader on every checked frame.
+
+**Uses.** `GpuCullGlsl.computeShader`, `CullObject`, `CullView` and their `Gpu` writers, `GpuCullReference.cullSinglePass` and `HiZPyramid` (as the reference), `HiZ.mipSize`, `DrawCommandBuffer`, `Scenes.blocks`, `CullPipeline` with the SIMD frustum kernel (the comparison column), `SceneTarget`, `ReadbackRing`,
+`GpuTimer`.
+
+**Controls.** Left mouse button and move to look, `W A S D` to fly, `Space` and `Left Control` up and down, `Left Shift` fast, `O` switches the depth pyramid off (frustum culling only), `X` freezes the camera of the culling.
+
+**Options.** `--blocks N` (100), `--props N` (40), `--no-occlusion`, `--verify` (every 20 frames: the depth is read back, the library's pyramid is built from it and compared with every level of the GPU's; the shader is run again with that pyramid and the matrix that made it and its survivors are compared with `cullSinglePass` on the same bytes; a difference fails the run).
+
+**How it works.** The pyramid is built from the depth of the previous frame: a compute shader resamples the depth image to a base that is a power of two (2048 × 1024 for 1600 × 900) as normalised device depth, taking the farthest pixel under each texel, and a second one reduces each level into the next with `max`. The cull of a frame uses
+its own frustum planes and the view projection of the frame that made the pyramid, appends survivors to one indirect command with `atomicAdd`, and the vertex shader reads the object index of each instance from the survivor list through an instanced attribute. The draw goes to an offscreen target so that its depth can be sampled.
+
+**Measured.** JDK 25, NVIDIA GeForce RTX 3060 Laptop GPU, window 1600 × 900, vsync off, a scripted walk along a street, 800 frames after 100 of warm-up, 10,000 buildings and 400,000 props:
+
+| | pyramid on | pyramid off (`--no-occlusion`) |
+|---|---|---|
+| boxes in the frustum (CPU count) | 142,945 | 142,945 |
+| boxes drawn | 1,716 | 142,938 |
+| GPU: culling shader | 0.077 ms | 0.059 ms |
+| GPU: the draw | 0.067 ms | 0.924 ms |
+| GPU: building the pyramid | 0.176 ms | 0.182 ms |
+| CPU: the library's frustum kernel over all boxes, for comparison (no depth test) | 0.904 ms | 0.872 ms |
+| frame | 1.431 ms | 1.747 ms |
+| allocated on the render thread | 4,849 B per frame (smoke budget 16,384 B) | 4,848 B |
+
+The culling with a depth test costs 0.25 ms of GPU time in all (shader and pyramid) and saves 0.86 ms of drawing; the CPU's frustum culling alone costs 0.9 ms and removes nothing that is hidden. This is the opposite of the CPU occlusion test of the `occlusion` demo (TD-29), which costs more than the draw it saves.
+
+**Verification.** `--verify --blocks 40 --props 30`, 200 frames after 60, 49,601 objects: 13 frames checked, the GPU pyramid identical to `HiZPyramid` at every one of 36,350,639 texels, 6,696 survivors compared with `GpuCullReference.cullSinglePass`, 0 only on the GPU and 0 only on the CPU. `CullDataTest` checks the data and the reference
+on the CPU: the layout of the records, that an empty pyramid keeps what the frustum kernel keeps, that a wall in the depth image hides the box behind it and a huge `nearW` switches the test off.
+
+**Findings.** TD-33: the library's shader and `HiZPyramid` halve level sizes rounding up and OpenGL rounds down, so the pyramid needs a power-of-two base on OpenGL (`glTextureStorage2D` with the library's 12 levels failed with `GL_INVALID_OPERATION` at 1600 × 900); the shader wants normalised device depth, so OpenGL's window depth is converted `2 d - 1`; and the pyramid needs
+`GL_TEXTURE_FETCH_BARRIER_BIT` and `GL_TEXTURE_UPDATE_BARRIER_BIT` after the compute passes. The first run on hardware otherwise matched the CPU model exactly.
+
+**Does not prove.** One pass with last frame's depth (the known risk: an object uncovered by a fast turn can be wrongly removed for a frame; the two-phase scheme of the library's Javadoc is not built), one draw (one mesh for all objects), boxes drawn as boxes, one GPU of one vendor, and the verification rendering the same frame's pyramid (it compares the shader and the model on identical inputs, not last-frame reuse).
+
+### clustered-lights: Clustered forward lighting with thousands of lights
+
+**Claim.** Thousands of point lights are assigned to the clusters of a frustum grid by the library and the fragment shader looks up its own cluster with the text of `ClusterGrid.glslLookup`: at 4,096 lights the lighting costs 0.9 ms of GPU time against 61.7 ms for a loop over every light, and the image is the same as the loop's (largest difference 0 of 255 on three views).
+
+**Uses.** `ClusterGrid` (`of`, `glslLookup`, `clusterCount`, `tanHalfFovX`), `ClusterLights` (`addPoint`, `assign`, `count`, `offset`, `contains`, `totalAssignments`, `writeRanges`, `writeIndices`), `Mat4f` (the view matrix), `Scenes.blocks`, `CullPipeline` (scalar kernel), `InstanceStream`, `SceneTarget`.
+
+**Controls.** Left mouse button and move to look, `W A S D` to fly, `Space` and `Left Control` up and down, `Left Shift` fast, `M` cycles the clusters, the loop over every light and the heat map of the lights per cluster, `[` and `]` halve and double the number of lights.
+
+**Options.** `--lights N` (4,096), `--blocks N` (16), `--brute`, `--heat`, `--verify` (at the start, three views at 640 × 360 are rendered both ways and read back; a colour value that differs by more than 2 fails the run).
+
+**Measured.** JDK 25, NVIDIA GeForce RTX 3060 Laptop GPU, window 1600 × 900, vsync off, a scripted walk down a street of a city of 256 buildings and 5,120 props (5,377 boxes), 64-pixel tiles and 24 depth slices (9,000 clusters), lights of range 5 to 11 m moving on circles, 400 frames after 100 of warm-up:
+
+| lights | assignments | per cluster (mean, worst) | assignment on the CPU | GPU time of the draw | frame |
+|---|---|---|---|---|---|
+| 1,024 | 16,252 | 1.8, 33 | 2.90 ms | 0.12 ms | 3.4 ms |
+| 4,096 | 50,929 | 5.7, 124 | 12.1 ms | 0.89 ms | 12.9 ms |
+| 10,000 | 140,017 | 15.6, 291 | 28.3 ms | 3.27 ms | 29.2 ms |
+| 1,024, loop over every light | | | 3.18 ms | | 13.0 ms |
+| 4,096, loop over every light | | | 12.1 ms | 61.7 ms | 52.5 ms |
+
+The CPU assignment is the cost, as the library says of it (a reference and an oracle, not a production path): at 10,000 lights it is 28 ms of the 29 ms frame, while the GPU needs 3.3 ms. The upload is 0.05 to 0.25 ms. The render thread allocated 6,319 B per frame at 2,048 lights (the smoke budget is 16,384 B). `LightFieldTest` checks without a window that every light that reaches a
+random point is listed in that point's cluster (4,000 points, 300 lights).
+
+**Verification.** At 2,048 lights, three views at 640 × 360: 1,382,400 colour values per view compared, none differing by more than 0 (the clustered lists are in ascending light order, so the sums are made in the same order as the loop's).
+
+**Findings.** (1) `ClusterGrid.glslLookup` ran on a GPU for the first time and indexes the right cluster (a wrong index would show as a different image). (2) The cluster of a fragment is found from `gl_FragCoord` with the grid built for the window's origin (`yDown = false` for OpenGL); a window resize makes the demo rebuild the grid and recompile the program, since the grid's constants are baked into the text.
+
+**Does not prove.** Point lights only (spot lights are in `ClusterLights`, not used), no shadows, a CPU assignment (a compute-shader assignment would remove the cost that the table shows and is not in the library), diffuse shading only, one GPU, and a scene of boxes whose heavy overdraw is not what a real scene looks like.
+
+### globe: The whole Earth as map tiles
+
+**Claim.** The Earth is drawn from a Web Mercator pyramid of height tiles and image tiles placed on the WGS-84 ellipsoid, from 20,000 km up to 2 m above the ground, with about 320 tiles on the screen at a time chosen by `TileSelector`: 0.21 ms of selection and 0.8 ms for the frame, and the vertex positions of the floating-origin pipeline are within a millimetre of the exact ones from 100 m to 10 km above the ground, where the naive float pipeline is off by 0.05 to 0.27 m.
+
+**Uses.** `Wgs84` and `Geodetic` (every vertex, the local frames of the camera and of the normals), `WebMercator` and `TileId` (the pyramid, the tile edges), `TileBounds` (the boxes), `TileSelector` with `HorizonCuller` (the walk, the culling, the balance), `Frustumd` and `Mat4d` (the culling in `double` in ECEF), `TerrainRgb` (the Terrarium decode, the grid normals), `Ellipsoids.rayWgs84` (the point that the camera looks at), `FloatingOrigin` (the origin of the camera-relative positions), `Noise.fbm3` (the planet), `DrawCommandBuffer` with `glMultiDrawElementsIndirect`, `GpuTimer`, `Stats`.
+
+**Controls.** `G` switches between the scripted descent and the free camera (mouse to look, `W A S D` to move along the view, `Space` and `Ctrl` up and down, `Shift` four times faster, the wheel scales the speed; the speed is half the height above the ground per second), `J` switches between the floating origin and the naive pipeline, `H` the horizon culling, `F` freezes the camera that the selection uses (fly away to see what was chosen), `C` colours the tiles by zoom level, `T` draws wireframes, `[` and `]` change the allowed distance between vertices.
+
+**Options.** `--max-zoom N` (17), `--min-zoom N` (2, always resident), `--cells N` (32 quads along a tile), `--image N` (128 pixels per tile image), `--pixels P` (6), `--resident N` (3072 tiles in the GPU buffers, at most 4095), `--flight SECONDS` (12), `--threads N`, `--naive`, `--free`, `--no-horizon`, `--verify`.
+
+**The data.** Procedural, because no demo downloads anything: `Planet` makes the height and the colour of every point from noise on the unit sphere (seamless across the antimeridian and the poles, the same at every zoom), and `ProceduralTileSource` delivers it the way a tile set would: heights as Terrarium bytes on a node-registered grid, images as RGBA. The geometry is exact (the ellipsoid, the EPSG:3857 tile grid, the Terrarium encoding); the continents are not the real ones. A source of real tiles implements `TileSource`.
+
+**How it works.** The selector walks from the 16 tiles of zoom 2. A tile that is missing is requested from the worker threads (coarsest missing ancestor first), and until it arrives the nearest resident ancestor is drawn instead, once and only until all the tiles that replace it are there. Every resident tile owns a block of one vertex buffer and a layer of an image array (four arrays of 1,024 layers, because the driver limits an array texture to 2,048); the least recently used tile that has not been used for two frames is evicted. A tile mesh is 33 by 33 nodes with a skirt along each edge, positions relative to the point of the ellipsoid under the middle of the tile, narrowed to `float` after the subtraction in `double`. The vertex shader forms `position + (tileOffset - cameraLocal)` with the tile offset and the camera relative to a `FloatingOrigin` (or, with `J`, the ECEF positions narrowed to `float`). The caps beyond the 85.05 degrees of the projection are two fans.
+
+**Measured.** JDK 25, NVIDIA GeForce RTX 3060 Laptop GPU, window 1600 x 900, vsync off, no HUD, the scripted descent of 12 s (720 frames; 700 measured after 60 of warm-up). The tiles of the whole flight are loaded before the first frame so that the numbers do not depend on how fast the workers are: 2,510 tiles in 15.2 s on 10 threads, 0 evicted, and 0 tiles were loaded while measuring.
+
+| | 6 px (default) | 12 px |
+|---|---|---|
+| tiles selected (mean over the flight) | 321 | 134 |
+| tiles drawn (with substitutes and the two caps) | 323 | 136 |
+| nodes tested | 634 | 327 |
+| outside the frustum, mean per frame | 156.8 | |
+| behind the horizon, mean per frame | 1.63 | |
+| split by the balance, mean per frame | 59.3 | |
+| selection | 0.210 ms | 0.111 ms |
+| GPU, the draw | 0.245 ms | 0.135 ms |
+| frame | 0.81 ms | 0.66 ms |
+| tiles needed over the flight | 2,510 | 928 |
+| allocated on the render thread | 6,778 B per frame | 6,780 B |
+
+With the horizon test off the selection was 322 tiles and 637 nodes; with the naive pipeline the frame took the same time (0.76 ms against 0.81 ms in the runs made). A run with `--pixels 3` needs 8,490 tiles over the flight, more than the 3,072 slots, so it reloads tiles all the time and is not a measurement of drawing (52 ms per frame, almost all of it generating tiles).
+
+Vertex position error (`Jitter`, 400 vertices on the ground within three times the height, at most 3 km, of the point below the camera; the shader's float arithmetic against the exact difference in `double`):
+
+| height of the camera | naive | floating origin |
+|---|---|---|
+| 100 m | 0.219 m | 0.00003 m |
+| 1 km | 0.049 m | 0.0002 m |
+| 10 km | 0.266 m | 0.0006 m |
+| 1,000 km | 0.322 m | 0.057 m |
+
+Far from the surface the gain disappears (the HUD showed 1.17 m for the naive pipeline and 1.51 m for the floating origin at 19,154 km), which does not matter there: a metre is a small fraction of a pixel at that distance.
+
+**Verification.** `--verify` runs at seven views from 20,000 km to 5 m (the default zoom range): 22,175 pixels of the view were each traced to the ground with `Ellipsoids.rayWgs84` and every one lies in a selected tile (0 holes); neighbouring selected tiles differ by at most one level at every view; and ten vertices of resident tiles at each view were read back from the GPU and compared with `Wgs84.toEcef` of the height in the tile's data: the largest error was 0.075 m in the tiles of zoom 2 to 4 (2,500 to 10,000 km wide; 3.4e-8 of the distance from their reference point, which is the resolution of a `float`) and 0.015 m or less in every other view. `GlobeTest` and the library's tests check the same pieces without a window.
+
+**Findings.** (1) With the selection by screen size the horizon test removes almost nothing (1.6 nodes per frame): the tiles behind the horizon are far away and so are coarse, the frustum has already removed most of the rest, and the few big tiles that straddle the horizon cannot be culled by a test that has to be conservative. It is cheap (40 ns a node) and correct, but on a descent like this one it saves one tile in 320. (2) The balance splits 59 tiles per frame on average, and tiles one level apart do occur next to each other (the library's test sees them), so the skirts have work to do. (3) Camera-relative rendering takes the position error near the camera from 0.05 to 0.27 m down to under a millimetre; far from the surface it gains nothing, and does not need to. (4) A descent from orbit needs 2,500 tiles of this size and a free flight much more, so the cache and its eviction are part of the demo, not an extra: `--pixels 3` shows what happens when the working set exceeds the slots. (5) The image arrays are limited to 2,048 layers by the driver, which is why there are four of 1,024.
+
+**Does not prove.** That the maths is right for the real Earth's data (the tiles are noise on an exact geometry), a download or a decode path for real tiles (the codecs are exercised, a network and a PNG decoder are not), geoid heights (the heights are above the ellipsoid), an atmosphere (a haze and a rim glow only), depth precision from orbit to the ground in one depth buffer (the near and far planes follow the height, but there is no logarithmic depth), shadows, water, and anything about other GPUs or the speed of the workers while flying (a scripted run waits for the tiles).

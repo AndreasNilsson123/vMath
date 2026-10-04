@@ -2,7 +2,11 @@ package vmath.samples;
 
 import java.util.List;
 import vmath.samples.demos.city.CityDemo;
+import vmath.samples.demos.clusters.ClusterLodDemo;
 import vmath.samples.demos.culling.CullingLabDemo;
+import vmath.samples.demos.globe.GlobeDemo;
+import vmath.samples.demos.gpucull.GpuCullDemo;
+import vmath.samples.demos.lights.LightsDemo;
 import vmath.samples.demos.occlusion.OcclusionDemo;
 import vmath.samples.demos.physics.PileDemo;
 import vmath.samples.demos.portals.PortalsDemo;
@@ -38,6 +42,10 @@ public final class Demos {
         return List.of(new DemoEntry(CityDemo.INFO, CityDemo::new), new DemoEntry(CullingLabDemo.INFO, CullingLabDemo::new),
                 new DemoEntry(PortalsDemo.INFO, PortalsDemo::new), new DemoEntry(OcclusionDemo.INFO, OcclusionDemo::new), new DemoEntry(PileDemo.INFO, PileDemo::new), new DemoEntry(SkinningDemo.INFO, SkinningDemo::new),
                 new DemoEntry(SculptDemo.INFO, SculptDemo::new), new DemoEntry(TerrainDemo.INFO, TerrainDemo::new),
-                new DemoEntry(SkyDemo.INFO, SkyDemo::new));
+                new DemoEntry(SkyDemo.INFO, SkyDemo::new),
+                new DemoEntry(LightsDemo.INFO, LightsDemo::new),
+                new DemoEntry(ClusterLodDemo.INFO, ClusterLodDemo::new),
+                new DemoEntry(GpuCullDemo.INFO, GpuCullDemo::new),
+                new DemoEntry(GlobeDemo.INFO, GlobeDemo::new));
     }
 }

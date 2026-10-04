@@ -95,6 +95,19 @@ public final class OrbitCamera {
     }
 
     /**
+     * Puts the camera at given angles and distance, for a demo's own scripted path.
+     *
+     * @param yawAngle the heading around the target in radians
+     * @param pitchAngle the elevation above the target in radians
+     * @param dist the distance from the target; positive
+     */
+    public void place(float yawAngle, float pitchAngle, float dist) {
+        yaw = yawAngle;
+        pitch = pitchAngle;
+        distance = dist;
+    }
+
+    /**
      * Builds the camera for the current angles and distance.
      *
      * @param aspect the aspect ratio of the viewport, width over height
