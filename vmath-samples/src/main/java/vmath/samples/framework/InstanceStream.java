@@ -30,6 +30,7 @@ import static org.lwjgl.opengl.GL45.glUnmapNamedBuffer;
 
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
+import java.lang.foreign.ValueLayout;
 import java.nio.ByteBuffer;
 import vmath.bulk.BoundsArray;
 import vmath.bulk.VisibilitySet;
@@ -131,6 +132,36 @@ public final class InstanceStream implements AutoCloseable {
     public int write(VisibilitySet visible, BoundsArray bounds) {
         written = InstanceWriter.writeVisibleBoxes(mapped, ring.regionOffset() / InstanceWriter.STRIDE, visible, bounds);
         return written;
+    }
+
+    /**
+     * Writes one instance with a general transform into this frame's region, for scenes whose
+     * instances are rotated (the boxes of a physics simulation), where the visibility-driven
+     * {@link #write} would give scaled and translated boxes only. Call {@link #setCount} after
+     * the last one.
+     *
+     * @param slot the position of the instance in the region, from 0
+     * @param rows the transform as three rows of four floats, row-major: the linear part in the
+     *     first three columns and the translation in the fourth; at least 12 floats; must not be
+     *     {@code null}
+     * @param userData the user data word of the record, which the shader reads as the id
+     */
+    public void writeInstance(int slot, float[] rows, int userData) {
+        long base = ring.regionOffset() + slot * InstanceWriter.STRIDE;
+        for (int k = 0; k < 12; k++) {
+            mapped.set(ValueLayout.JAVA_FLOAT_UNALIGNED, base + 4L * k, rows[k]);
+        }
+        mapped.set(ValueLayout.JAVA_INT_UNALIGNED, base + InstanceWriter.OFFSET_USER_DATA, userData);
+    }
+
+    /**
+     * Sets the number of instances that {@link #draw} draws, after they were written with
+     * {@link #writeInstance}.
+     *
+     * @param count the number of instances written in this frame
+     */
+    public void setCount(int count) {
+        written = count;
     }
 
     /**

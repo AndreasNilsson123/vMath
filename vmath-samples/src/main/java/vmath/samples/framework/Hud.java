@@ -220,6 +220,15 @@ public final class Hud {
     }
 
     /**
+     * Reads the vertical position of the cursor, where the next line of text goes.
+     *
+     * @return the distance from the top of the window in pixels
+     */
+    public float cursorY() {
+        return cursorY;
+    }
+
+    /**
      * Moves the cursor down by a gap, to separate groups of lines.
      *
      * @param pixels the gap in pixels
@@ -276,6 +285,28 @@ public final class Hud {
         int cell = FontAtlas.solidCell();
         float u = (atlas.u0(cell) + atlas.u1(cell)) * 0.5f, v = (atlas.v0(cell) + atlas.v1(cell)) * 0.5f;
         quad(x, y, w, h, u, v, u, v, red, green, blue, alpha);
+        return this;
+    }
+
+    /**
+     * Adds a horizontal bar that shows a value between 0 and 1: a dark track with a coloured fill,
+     * which is how a demo shows the parameter that the keys change.
+     *
+     * @param x the left edge in pixels
+     * @param y the top edge in pixels
+     * @param w the width in pixels
+     * @param h the height in pixels
+     * @param fraction the filled part of the bar, clamped to 0 to 1
+     * @param red the red component of the fill in 0 to 1
+     * @param green the green component of the fill in 0 to 1
+     * @param blue the blue component of the fill in 0 to 1
+     * @return this display, for chaining
+     */
+    public Hud bar(float x, float y, float w, float h, float fraction, float red, float green, float blue) {
+        float f = Math.max(0f, Math.min(1f, fraction));
+        rect(x - 2f, y - 2f, w + 4f, h + 4f, 0f, 0f, 0f, 0.7f);
+        rect(x, y, w, h, 0.25f, 0.25f, 0.28f, 0.9f);
+        rect(x, y, w * f, h, red, green, blue, 0.95f);
         return this;
     }
 

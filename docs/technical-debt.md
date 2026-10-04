@@ -15,10 +15,10 @@ Scope uses the roadmap's sizes: S ≈ hours, M ≈ days, L ≈ 1–2 weeks, XL =
 |---|---|---|
 | Critical | 0 | No known wrong result, no unsafe memory access, no open security finding. See section 2 for what was checked to say that. |
 | High | 4 | The GPU-facing layer has never met a GPU; the release identity (group, version, licence holder) is unsettled; 35% of the public API has no documentation; thread-safety contracts are mostly unwritten and two hazards are untested. |
-| Medium | 17 | Experimental surface, test strength outside `vmath.core`, duplicated container and traversal code, oversized classes, package layering, stale README/ROADMAP text, dependency lag, loaders without fuzzing. |
-| Low | 8 | Warnings, dead code, error-signalling style, suppressed lints, small gaps. |
+| Medium | 18 | Experimental surface, test strength outside `vmath.core`, duplicated container and traversal code, oversized classes, package layering, stale README/ROADMAP text, dependency lag, loaders without fuzzing. |
+| Low | 9 | Warnings, dead code, error-signalling style, suppressed lints, small gaps. |
 
-**Progress, 2026-10-02:** 24 of 29 items are ticked (TD-29 was added on 2026-10-04 by the occlusion demo). The 5 open ones: four are only partly done, and each says exactly what is left in its **Status** line: TD-01, TD-06, TD-11, TD-22 (TD-01 needs a GPU, TD-11 needs a decision about modules, TD-22 needs a pinned early-access JDK build, TD-06 is open-ended). The numbers in the table above and the Explanation paragraphs are those of the audit and are not rewritten.
+**Progress, 2026-10-02:** 24 of 31 items are ticked (TD-29, TD-30 and TD-31 were added on 2026-10-04 by the occlusion, rigid-pile and sdf-sculpt demos). The 7 open ones: four are only partly done, and each says exactly what is left in its **Status** line: TD-01, TD-06, TD-11, TD-22 (TD-01 needs a GPU, TD-11 needs a decision about modules, TD-22 needs a pinned early-access JDK build, TD-06 is open-ended). The numbers in the table above and the Explanation paragraphs are those of the audit and are not rewritten.
 
 Index (tick when fixed):
 
@@ -50,6 +50,8 @@ Index (tick when fixed):
 - [x] **TD-26** Low: live backing arrays exposed by the containers and `Mesh`
 - [x] **TD-27** Low: suppressed lints and unchecked casts
 - [x] **TD-28** Low: known functional gaps recorded in prose only
+- [ ] **TD-30** Medium: the box-box narrow phase costs 10 us per pair and allocates about 9 kB per body per frame (found by the rigid-pile demo)
+- [ ] **TD-31** Low: `SurfaceNets` can make edges that more than two triangles share where the surface has a feature thinner than a cell (found by the sdf-sculpt demo)
 - [ ] **TD-29** Medium: the occlusion test costs 107 ns per box, so occlusion culling does not pay for cheap geometry (found by the occlusion demo)
 
 ---
@@ -439,6 +441,33 @@ None found. The closest calls are listed as High (TD-01, TD-04) with the reason 
 - **Testing required:** the existing `OcclusionTest` (brute-force oracle), the demo's `--verify` run, and a JMH benchmark of the stage over 100,000 boxes before and after.
 - **Depends on:** none. Pairs with CULL-7 (the orthographic variant) and the Hi-Z work.
 - **Status:** Open. Found 2026-10-04 by the occlusion demo (DEMOS.md C4).
+
+### TD-30 — The narrow phase for boxes is slow and allocates per body
+
+- **Severity:** Medium. The results are right (the pile of 3,000 bodies stays in its pit, `PileSimulationTest`); the cost limits what a user can simulate.
+- **Affected files:** `geo/ConvexPolytope.java` (`transformed`), `physics/ManifoldBuilder.java` (`polytopes`).
+- **Explanation:** In the rigid-pile demo (`docs/DEMOS.md` P1: boxes and spheres in a pit, JDK 25, RTX 3060 Laptop machine, one thread) the step of 1,000 bodies takes 54 ms and of 3,000 bodies 229 ms. The narrow phase is 71% of that: 41 ms for the 3,609 pairs of the broad phase at 1,000 bodies, about 11 us per pair
+  (163 ms for 17,280 pairs at 3,000, 9.4 us), which is the general separating-axis test over faces and edge pairs of two polytopes of 8 vertices and 12 triangles. The broad phase (dynamic AABB tree) is 5% and the solver (ten sweeps) 19%. A box needs a `ConvexPolytope.transformed` per step to enter the narrow phase, which allocates its
+  vertices and triangles and a `Vec3f` per vertex: 8.9 MB per frame at 1,000 bodies, 27 MB at 3,000 (about 9 kB per body).
+- **Recommended fix:** (1) a box-box special case in `ManifoldBuilder` (a `ConvexBox` shape: centre, half extents and rotation matrix, with the 15-axis test and the face clipping written for it), which should need about a tenth of the time and no allocation; (2) a `ConvexPolytope.transformInto(Quatd, Vec3d, ConvexPolytope target)` that reuses the
+  target's arrays, for the general case; (3) warm starting in `ContactSolver` from the previous step's manifolds (the demo does not use it, and the pile never comes to rest).
+- **Estimated scope:** M for step 1, S for step 2.
+- **Testing required:** the existing physics tests against the new path with random poses (the old general path is the oracle), `PileSimulationTest`, the demo's `--verify`, and a JMH benchmark of a pair before and after.
+- **Depends on:** none.
+- **Status:** Open. Found 2026-10-04 by the rigid-pile demo (DEMOS.md P1).
+
+### TD-31 — `SurfaceNets` is closed but not always manifold
+
+- **Severity:** Low. The mesh stays closed (every edge has a partner) in every frame that the demo checked, and the visible effect is nil; the Javadoc promises more than that.
+- **Affected files:** `geo/SurfaceNets.java` (class Javadoc: "a closed, consistently wound triangle mesh").
+- **Explanation:** The sdf-sculpt demo meshes a field that a brush edits and checks the mesh every ten frames. The starting shape (two blended spheres with a hole through them and a separate torus, 64 cells per axis) is clean: 0 edges shared by more than two triangles. Adding one sphere of radius 0.35 on top of the hole (the sphere
+  is wider than the hole, so the surface meets itself in creases smaller than a cell) gives 8 directed edges that two triangles run along, and the same happens with a hard union of the same two analytic shapes, so it is not the grid or the brush: the naive method makes one vertex per cell, and a cell that holds two sheets of the surface gets
+  one vertex for both. In the scripted run 42 of 43 checks found some (at most 128 of the 54,000 edges), and none found an edge without a partner. A union of a body and a torus that touch each other along a thin lens did the same (24 to 32 repeated edges) before the demo moved the torus away.
+- **Recommended fix:** say in the Javadoc what holds: closed and consistently wound where the surface is thicker than a cell, and edges shared by more than two triangles possible where it is thinner; optionally add a post-pass that splits a vertex that two sheets share (as in the "manifold surface nets" variants), behind a flag.
+- **Estimated scope:** S for the Javadoc, M for the splitting pass.
+- **Testing required:** a test with the sphere-over-a-hole field above that counts shared edges (the demo's `MeshCheck` is the checker).
+- **Depends on:** none.
+- **Status:** Open. Found 2026-10-04 by the sdf-sculpt demo (DEMOS.md P2).
 
 ---
 

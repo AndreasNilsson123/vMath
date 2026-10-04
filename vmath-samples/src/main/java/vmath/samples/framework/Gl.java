@@ -1,6 +1,7 @@
 package vmath.samples.framework;
 
 import static org.lwjgl.opengl.GL45.GL_COMPILE_STATUS;
+import static org.lwjgl.opengl.GL45.GL_COMPUTE_SHADER;
 import static org.lwjgl.opengl.GL45.GL_FRAGMENT_SHADER;
 import static org.lwjgl.opengl.GL45.GL_LINK_STATUS;
 import static org.lwjgl.opengl.GL45.GL_NO_ERROR;
@@ -60,6 +61,27 @@ public final class Gl {
             String log = glGetProgramInfoLog(program);
             glDeleteProgram(program);
             throw new IllegalStateException("cannot link the program: " + log);
+        }
+        return program;
+    }
+
+    /**
+     * Builds a program from one compute shader.
+     *
+     * @param computeSource the GLSL of the compute shader; must not be {@code null}
+     * @return the program object; the caller deletes it with {@code glDeleteProgram}
+     * @throws IllegalStateException if the shader does not compile or the program does not link
+     */
+    public static int computeProgram(String computeSource) {
+        int cs = compile(GL_COMPUTE_SHADER, computeSource);
+        int program = glCreateProgram();
+        glAttachShader(program, cs);
+        glLinkProgram(program);
+        glDeleteShader(cs);
+        if (glGetProgrami(program, GL_LINK_STATUS) == 0) {
+            String log = glGetProgramInfoLog(program);
+            glDeleteProgram(program);
+            throw new IllegalStateException("cannot link the compute program: " + log);
         }
         return program;
     }

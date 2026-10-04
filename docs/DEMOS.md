@@ -10,11 +10,11 @@ library build.
 
 ## 1. Where we are
 
-The framework (phase F) and four demos are done: `city`, `culling-lab`, `interior-portals` and `occlusion`. Everything else in section 4 is the backlog. A card has numbers only for a demo that has run.
+The framework (phase F) and seven demos are done: `city`, `culling-lab`, `interior-portals`, `occlusion`, `dq-vs-lbs`, `rigid-pile` and `sdf-sculpt`. Everything else in section 4 is the backlog. A card has numbers only for a demo that has run.
 
 | | |
 |---|---|
-| Demos | 4 of 25 (`city`, `culling-lab`, `interior-portals`, `occlusion`) |
+| Demos | 7 of 25 (`city`, `culling-lab`, `interior-portals`, `occlusion`, `dq-vs-lbs`, `rigid-pile`, `sdf-sculpt`) |
 | Framework | launcher with a menu, runner, HUD, camera, instance stream, box renderer, debug lines, depth-buffer inset, shared scenes, warm-up, statistics and report, screenshot, smoke check |
 | Verified on | NVIDIA GeForce RTX 3060 Laptop GPU, driver 546.30, OpenGL 4.5, Windows 11, JDK 25 (one machine; other vendors and systems are unchecked) |
 
@@ -59,13 +59,14 @@ vmath-samples/tools/make_run_configs.py   writes .run/Demo_<id>*.run.xml
 | `DemoRunner`, `RunOptions` | window and OpenGL 4.5 context, main loop, menu, live switching, scripted runs, smoke run | |
 | `FrameInfo`, `Input` | time, size, keys, mouse; a fixed step in scripted runs | |
 | `DemoContext` | arena, statistics, GPU timer, debug renderer, the demo's arguments, the clear colour | |
-| `Gl`, `GpuMesh` | program build with numbered errors, matrix uniforms, `glGetError` checks; a mesh exported with its vertex layout | `MeshExport`, `VertexLayout`, `VertexBufferLayout.glFormats()` and `glslInputs()` |
-| `InstanceStream` | persistently mapped instance buffer in regions with fences, the indirect command | `PersistentBufferRing`, `InstanceWriter`, `DrawCommandBuffer` |
+| `Gl`, `GpuMesh` | program and compute program build with numbered errors, matrix uniforms, `glGetError` checks; a mesh exported with its vertex layout | `MeshExport`, `VertexLayout`, `VertexBufferLayout.glFormats()` and `glslInputs()` |
+| `InstanceStream` | persistently mapped instance buffer in regions with fences, the indirect command; instances from the visible set or written one by one with a rotation | `PersistentBufferRing`, `InstanceWriter`, `DrawCommandBuffer` |
 | `GpuTimer` | `GL_TIME_ELAPSED` read a few frames late | |
 | `BoxRenderer` | the unit cube, its program, and the instanced draw of an `InstanceStream` | `Primitives.box`, `MeshOptimizer`, `VertexLayout` |
 | `Scenes` | the shared procedural scenes: `city` (noise heights) and `blocks` (buildings with props in the streets) | `BoundsArray`, `Noise`, `Rng` |
+| `OrbitCamera` | orbit around a point with the left mouse button, zoom with the wheel, a scripted turn | `Cameraf` |
 | `FlyCamera` | free flight, a scripted circle, and `place` for a demo's own scripted path | `Cameraf`, `DepthRange` |
-| `Hud`, `FontAtlas` | text and backdrops in window pixels, one draw call; the font is baked with Java 2D | |
+| `Hud`, `FontAtlas` | text, backdrops and value bars in window pixels, one draw call; the font is baked with Java 2D | |
 | `DebugRenderer` | draws a `DebugLines` buffer (boxes, spheres, frusta, skeletons, ...) | `DebugLines` |
 | `DepthInset` | one level of a depth buffer drawn as a picture in the window | `DepthBuffer.invDepth` |
 | `Warmup` | runs a piece of work until the JIT has compiled it and it stops allocating | |
@@ -128,8 +129,9 @@ Does not prove: what the demo cannot tell you.
 - [x] **F8 (P0, S)** `MillionInstances` ported to the demo `city`.
 - [x] **F9 (P0, S)** Run configurations from `tools/make_run_configs.py`, the card template and `DemosRegistryTest`.
 - [x] **F10 (P1, S)** `Scenes`: reusable generators. *Done:* `city` (moved out of the first demo) and `blocks`, used by `culling-lab` and `occlusion`; a terrain grid waits for P4.
+- [x] **F14 (P1, M)** Pieces the animation, physics and geometry demos needed. *Done:* `OrbitCamera`, `Hud.bar`, `Gl.computeProgram`, `InstanceStream.writeInstance` for rotated instances.
 - [x] **F13 (P1, M)** Pieces the first culling demos needed. *Done:* `BoxRenderer` (the cube and its draw), `DepthInset` (a depth buffer as a picture), `Warmup`, `FlyCamera.place`.
-- [ ] **F11 (P2, M)** A UI for sliders and toggles in the HUD (mouse picking on the text backdrops) for the demos that want a parameter slider (A2, R1). → F4
+- [ ] **F11 (P2, M)** Mouse-driven sliders and toggles in the HUD (picking on the bars) for the demos that want a parameter slider (R1). A2 did not need them: it turns its parameter with the arrow keys and shows it with `Hud.bar`. → F4
 - [ ] **F12 (P2, M)** Compute-shader and texture helpers in `Gl` (compute program, image textures, a framebuffer object for inset views). → needed by C6, R3 (C4 needed only the texture inset, `DepthInset`)
 
 ### Phase C: culling and scale
@@ -148,14 +150,17 @@ Does not prove: what the demo cannot tell you.
 ### Phase A: animation and characters
 
 - [ ] **A1 (P1, L)** `crowd`: thousands of skinned characters from the generated glTF assets (or procedural tubes with a skeleton); `Gltf.load`, `ClipSampler`, `Pose` blending, joint matrices in a buffer, LOD by distance; microseconds per character per frame. Shows: animation at crowd scale with no per-frame allocation. → F10
-- [ ] **A2 (P1, M)** `dq-vs-lbs`: an arm twisted by a slider, linear blend skinning on the left and dual-quaternion skinning on the right (both in GPU shaders), the candy-wrapper collapse visible; the CPU `Skinning` as the oracle for both. Shows: `DualQuatf`, `Skinning.skinPositionsDualQuat`. → F11
+- [x] **A2 (P1, M)** `dq-vs-lbs`: an arm twisted by a slider, linear blend skinning on the left and dual-quaternion skinning on the right (both in GPU shaders), the candy-wrapper collapse visible; the CPU `Skinning` as the oracle for both. Shows: `DualQuatf`, `Skinning.skinPositionsDualQuat`.
+      *Done: a tube skinned to two joints, the twist turned with the arrow keys or automatically, both methods in the vertex shader, the GLSL of both checked against the library's CPU reference in a compute shader at ten angles (`--verify`: largest error 3.6e-7), the radius of the blended ring measured on the CPU for both. The tube is not a character: the glTF assets are for A1.*
 - [ ] **A3 (P2, M)** `ik-playground`: two-bone leg IK on uneven ground, a look-at head, a FABRIK tentacle that follows the mouse; the remaining distance shown. Shows: `IkSolver`.
 - [ ] **A4 (P3, M)** `morph-faces`: `MorphTargets` with weights from sliders; the dense and the sparse form side by side with their byte sizes. Shows: sparse blend shapes. → F11
 
 ### Phase P: physics and geometry
 
-- [ ] **P1 (P1, L)** `rigid-pile`: thousands of boxes and spheres dropped into a pit; `DynamicAabbTree` as the broadphase, `ManifoldBuilder`, `ContactSolver`, `RigidBody`; contact points drawn; step time per body. Shows: the physics building blocks, honestly a toy engine, not a competitor to one.
-- [ ] **P2 (P1, L)** `sdf-sculpt`: signed distance fields with smooth CSG, re-meshed with `SurfaceNets` every frame, a brush that adds and subtracts; vertices and triangles per second. Shows: SDF modelling and meshing.
+- [x] **P1 (P1, L)** `rigid-pile`: thousands of boxes and spheres dropped into a pit; `DynamicAabbTree` as the broadphase, `ManifoldBuilder`, `ContactSolver`, `RigidBody`; contact points drawn; step time per body. Shows: the physics building blocks, honestly a toy engine, not a competitor to one.
+      *Done: up to 3,000 boxes and spheres in a pit, the step broken into broad phase, narrow phase, solver and integration, contacts drawn, `--verify` for bodies that leave the pit. The cost of the narrow phase and its allocation are TD-30.*
+- [x] **P2 (P1, L)** `sdf-sculpt`: signed distance fields with smooth CSG, re-meshed with `SurfaceNets` every frame, a brush that adds and subtracts; vertices and triangles per second. Shows: SDF modelling and meshing.
+      *Done: a starting shape made with `Sdfs` CSG, a grid field that the brush edits with `smoothUnion` and `smoothSubtract`, `Sdfs.raycast` for the pointer, `SurfaceNets` after every stroke, `--verify` for open meshes. It found that the mesh can have edges shared by more than two triangles: TD-31.*
 - [ ] **P3 (P2, L)** `character-controller`: a capsule walks a triangle-soup level using the sweeps (`sweepCapsuleTriangle`, `sweepSphereAabb`) and a `StaticBvh`; slides along walls, steps up. Shows: the exact and conservative-advancement sweeps.
 - [ ] **P4 (P2, M)** `terrain`: fractal terrain (`Noise.fbm2`) with `MeshLod` chains and `LodSelector`; a camera on a `Curves` spline rail with arc-length speed. Shows: procedural geometry and LOD selection.
 - [ ] **P5 (P3, M)** `convex-lab`: two convex shapes dragged with the mouse; `Gjk` distance, `Epa` penetration depth, closest points and the contact normal drawn. Shows: the narrow phase.
@@ -177,9 +182,8 @@ Does not prove: what the demo cannot tell you.
 
 ### Order
 
-1. Done: F1-F10, F13, C1-C4.
-2. The rest of the five that show the widest range, in this order: **A2** `dq-vs-lbs` (with F11), **R1** `sky-sun`, **P1** `rigid-pile`, **P2** `sdf-sculpt`. P1 and P2 need nothing but what exists; A2 and R1 want
-   sliders (F11).
+1. Done: F1-F10, F13, F14, C1-C4, A2, P1, P2.
+2. The last of the five that show the widest range: **R1** `sky-sun` (wants sliders, F11).
 3. **R2** `globe` and **A1** `crowd`: the two that look most like a product.
 4. The GPU demos **C6**, **C7**, **C5**, **R3** (with F12): they also close the open validation items of TD-01 (shader text and layouts against a driver).
 5. The rest by interest.
@@ -339,3 +343,84 @@ undefined, and the street's position was corrected.
 
 **Does not prove.** A synthetic city of boxes, one machine, and only the occluders the demo chooses (buildings within 300 m, at most 3,000): which occluders to rasterise, and how to rasterise them front to back, is
 where a real engine spends its effort. The depth buffer is low resolution on purpose; a higher one (`--depth`) culls more and costs more in the rasterisation.
+
+### dq-vs-lbs: Dual quaternion against linear blend skinning
+
+**Claim.** An arm twisted by one joint, skinned in the vertex shader by linear blending on the left and by dual quaternions on the right: at half a turn the linear blend pinches the blended ring to a point (0.003 m
+against a bind radius of 0.500 m) and the dual quaternion keeps it at 0.500 m, and the shaders' skinning is the same as the library's CPU reference to 3.6e-7.
+
+**Uses.** `Skeleton`, `Pose`, `Skinning.jointMatrices`, `Skinning.jointDualQuaternions` for the joints; `Skinning.skinPositions`, `skinNormals`, `skinPositionsDualQuat` and `skinNormalsDualQuat` as the reference and for the
+waist radius; `Mat4fArray`; `Cameraf.toScreen` for the labels. The GLSL (`SkinningShaders`) is a port of the two dual quaternion methods.
+
+**Controls.** Left mouse button and move to orbit, wheel to zoom, `Left` and `Right` to turn the joint from 0 to 360 degrees, `Space` for the automatic twist back and forth, `L` for wireframe, `R` to reset the camera.
+
+**Options.** `--verify`: at ten angles (0, 45, 90, 135, 170, 180, 190, 270, 359 and 360 degrees) the same GLSL function runs in a compute shader over all 1,312 vertices, the skinned positions and normals are read back, and the run
+fails if any differs from the CPU reference by more than 2e-4 (positions) or 2e-3 (normals).
+
+**Measured.** JDK 25, NVIDIA GeForce RTX 3060 Laptop GPU, window 1600 × 900, vsync off, 720 frames after 60 of warm-up, the twist sweeping from 0 to 200 degrees and back every 240 frames, `--demo dq-vs-lbs --verify --frames 720 --warmup 60`:
+
+| | linear blend | dual quaternion |
+|---|---|---|
+| radius of the ring in the middle, average over the run (bind pose 0.500 m) | 0.287 m | 0.500 m |
+| smallest radius over the run | 0.003 m | 0.500 m |
+
+The largest difference between the shaders and the CPU reference at the ten angles was 3.58e-07. The frame took 0.42 ms with 0.019 ms on the GPU, and the render thread allocated 1,249 B per frame (the smoke budget is 4,096 B).
+`TwistRigTest` checks the same numbers on the CPU: a full turn is the bind pose for both methods, the waist stays within 0.005 of 0.500 at every tenth degree for dual quaternions and collapses below 0.02 for linear blending.
+
+**Does not prove.** A tube, not a character: two joints, one twist axis, weights that blend over a band of 1.6 m, and no scale (dual quaternions are for rigid joints only, as the library says). It does not compare the cost of the two methods on a real mesh (the frame time of 1,312 vertices says nothing), and it checks the
+shader on one GPU of one vendor.
+
+### rigid-pile: A pile of boxes and spheres
+
+**Claim.** Up to 3,000 boxes and spheres dropped into a pit and simulated with the library's rigid-body pieces, none of which leaves the pit, at a cost that the card measures per part of the step.
+
+**Uses.** `RigidBody`, `MassProperties` (`box`, `sphere`), `DynamicAabbTree` (`insert`, `move`, `Query.overlapAabb`), `ConvexPolytope` (`of`, `transformed`), `ManifoldBuilder` (`polytopes` for box pairs, `shapes` for anything with a sphere, through GJK), `ContactManifold`,
+`ContactSolver` (`Params`, `solveAll`), `Rng`; `InstanceStream.writeInstance` and a shader that reads rotated instances for the drawing, `DebugLines` for the contacts.
+
+**Controls.** Left mouse button and move to orbit, wheel to zoom, `C` to draw the contact points (red) and normals (yellow), `N` to add a thousand bodies, `R` to reset the camera.
+
+**Options.** `--bodies N` (1,000), `--per-frame N` (4 bodies added per frame), `--contacts`, `--verify` (every 30 frames, fail if a body is below the floor, outside the walls or not a number).
+
+**Measured.** JDK 25, NVIDIA GeForce RTX 3060 Laptop GPU, one thread, a pit of 32 × 32 m with 8 m walls, bodies of half extents 0.3 to 0.7 m dropped from 8 to 22 m, 20 bodies per frame until all are in, 300 frames after 200 of warm-up,
+`--demo rigid-pile --bodies N --per-frame 20 --verify --frames 300 --warmup 200`:
+
+| bodies | pairs | contact points | broad phase | narrow phase | solver | step | per body | allocated per frame |
+|---|---|---|---|---|---|---|---|---|
+| 250 | 426 | 803 | 0.37 ms | 5.5 ms | 1.9 ms | 7.8 ms | 31 us | 2.2 MB |
+| 1 000 | 3 609 | 4 179 | 2.8 ms | 41.3 ms | 10.1 ms | 54.3 ms | 54 us | 8.9 MB |
+| 2 000 | 10 203 | 9 508 | 10.4 ms | 105.8 ms | 27.4 ms | 143.8 ms | 72 us | 18.1 MB |
+| 3 000 | 17 280 | 14 978 | 18.9 ms | 163.2 ms | 46.5 ms | 228.9 ms | 76 us | 27.0 MB |
+
+No body left the pit at any check, and the kinetic energy at the end was 7.3, 16.3, 42.7 and 111.9 J (the pile never comes fully to rest: there is no sleeping and no warm starting). The smoke configuration (150 bodies) allocates 1.4 MB per frame against a budget of 4 MB.
+The narrow phase is 71% of the step at 1,000 bodies: about 11 us per box pair, and the polytope that each box needs per step is where the allocation comes from (TD-30). `PileSimulationTest` runs 120 bodies for 1,200 steps without a window and checks the same properties.
+
+**Findings.** (1) TD-30. (2) With drops from up to 40 m, 1 m thick walls and no speed limit, a box was thrown out of the pit at frame 240 of a 3,000-body run (the engine has no continuous collision detection); the demo drops from at most 22 m, clamps the speed to 25 m/s and has
+4 m thick walls. (3) A pit that is too small overflows: 3,000 bodies filled a 24 × 24 m pit to the top of 7 m walls and bodies sat on the wall; the pit is 32 × 32 m.
+
+**Does not prove.** A toy engine: boxes and spheres only, no islands, no sleeping, no joints, no warm starting, no continuous collision detection, and a fixed step of 1/60 s with one solver pass. It shows the building blocks working together and what they cost, and it is not a measure of what a physics engine does.
+
+### sdf-sculpt: Sculpting with signed distance fields
+
+**Claim.** A shape built with the library's CSG is sampled onto a grid, a brush adds and carves with smooth operations where a sphere-traced ray from the pointer hits the field, and the surface is re-meshed with surface nets after every stroke: 27,000 triangles in 10 ms on a 64³ grid.
+
+**Uses.** `Sdfs` (`sphere`, `cylinder`, `torus`, `smoothUnion`, `subtract`, `union`, `smoothSubtract`, `raycast`), `Sdf`, `SurfaceNets` (`mesh`, `normals`, `projection`), `Cameraf.pickRay`, `DebugLines` for the brush.
+
+**Controls.** Hold the right mouse button to add material, with `Left Shift` to carve; the left mouse button orbits, the wheel zooms, `[` and `]` change the brush size, `T` draws the wireframe, `Z` goes back to the starting shape, `R` resets the camera.
+
+**Options.** `--grid N` (64; from 16 to 192), `--no-normals` (flat shading), `--projection N` (Newton steps per vertex), `--verify` (every 10 frames: fail if an edge of the mesh has no partner; count the frames with edges that more than two triangles share).
+
+**Measured.** JDK 25, NVIDIA GeForce RTX 3060 Laptop GPU, window 1600 × 900, vsync off, one thread, a scripted brush path on the screen (adding for 150 frames, carving for the next 150), the ray cast and the stamp and the meshing and the upload in every frame in which the ray hits the shape (406 of 900 frames at 64³).
+The mesh and upload rows are averages over the frames that re-meshed:
+
+| grid | vertices | triangles | pick | stamp | mesh | meshing rate | upload |
+|---|---|---|---|---|---|---|---|
+| 64³ (`--verify`, 900 frames after 100) | 13,613 | 27,350 | 0.006 ms | 0.18 ms | 10.5 ms | 2.6 Mtri/s | 0.21 ms |
+| 96³ (600 frames after 100) | 29,708 | 59,527 | 0.008 ms | 0.46 ms | 34.8 ms | 1.7 Mtri/s | 0.42 ms |
+| 128³, flat shading (600 frames after 100) | 54,232 | 108,593 | 0.010 ms | 0.91 ms | 72.0 ms | 1.5 Mtri/s | 0.61 ms |
+
+The meshing of the whole grid is the cost (it samples every corner of every cell, with a trilinear read of the stored field), the stroke itself is a fifth of a millisecond, and the GPU draw is 0.05 ms. The 64³ run allocated 18,374 B per frame (the composed `Sdf` of each stamp and the new mesh arrays; the smoke budget is 32,768 B).
+With `--verify` the mesh had no edge without a partner at any of the 43 checks.
+
+**Findings.** (1) TD-31: 42 of the 43 checks found a few edges (at most 128 of about 54,000) that more than two triangles share; the starting shape has none, and one added sphere that is wider than a hole in the shape gives eight. (2) A torus that touched the body along a thin lens did the same before it was moved away from it.
+
+**Does not prove.** A whole-grid re-mesh of 64³ to 128³: a tool with a larger field would mesh only the chunks that the brush touched, which `SurfaceNets` does not offer (it meshes a box). The field is a grid of samples, so the brush is as sharp as a cell; the library's `Sdf` composition is used only for the stamp.
