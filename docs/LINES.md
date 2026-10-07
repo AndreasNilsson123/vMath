@@ -1,7 +1,7 @@
 # Thick lines (`vmath.lines`, experimental)
 
 Thousands of styled polylines, drawn with as few calls as the context allows, from OpenGL 3.30 up: the data model, the five ways to draw them, a dynamic set that uploads only what changed, trails, simplification, clipping and culling.
-What it does not have yet: the demos of `docs/DEMOS.md` (L1 to L3; the numbers below come from `LineGpuCheck` instead), a coverage fringe for anti-aliasing, an alpha along every segment, the Vulkan form of the shader text (roadmap GPU-13), and a check on any vendor but one NVIDIA GPU.
+The demos `line-lab`, `line-styles` and `line-stream` ([DEMOS.md](DEMOS.md)) draw every tier and show the set; their cards have the numbers of a scripted run. What it does not have yet: a coverage fringe for anti-aliasing, an alpha along every segment, the Vulkan form of the shader text (roadmap GPU-13), and a check on any vendor but one NVIDIA GPU.
 
 The library makes no graphics API call. You describe the context ([`GraphicsCapabilities`](GPU.md)), the library chooses a strategy and gives you the buffers, the draws and the shader text.
 
@@ -140,7 +140,7 @@ A trail is drawn as one polyline per slice of age: the newest has the colour of 
 
 ## What each tier costs
 
-Measured by `LineGpuCheck --bench` (`./gradlew -Psamples :vmath-samples:lineCheck --args="--bench"`) on an NVIDIA GeForce RTX 3060 Laptop GPU, driver 546.30, Windows, at 1920 by 1080: 5000 polylines of 64 points (315000 segments) in 8 styles, widths of 1 to 6 pixels, runs of 7 polylines of one style. "GPU time" is the median of 60 frames of a `GL_TIME_ELAPSED` query, "write" the mean of 20 calls of `LineRenderPlan.write` on one thread. The older contexts are the same driver asked for the calls and the shader text of that tier.
+Measured by `LineGpuCheck --bench` (the line lab measures the same thing in the window, with the scripted view: 2.0 to 3.1 ms of GPU time for the five thick tiers and the same ordering, `docs/DEMOS.md`) (`./gradlew -Psamples :vmath-samples:lineCheck --args="--bench"`) on an NVIDIA GeForce RTX 3060 Laptop GPU, driver 546.30, Windows, at 1920 by 1080: 5000 polylines of 64 points (315000 segments) in 8 styles, widths of 1 to 6 pixels, runs of 7 polylines of one style. "GPU time" is the median of 60 frames of a `GL_TIME_ELAPSED` query, "write" the mean of 20 calls of `LineRenderPlan.write` on one thread. The older contexts are the same driver asked for the calls and the shader text of that tier.
 
 | Context | Strategy | Submission | Draws | Calls | Data (MB) | Styles (KB) | Write on the CPU (ms) | GPU time per frame (ms) |
 |---|---|---|---|---|---|---|---|---|

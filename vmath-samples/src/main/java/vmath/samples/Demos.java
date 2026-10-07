@@ -7,6 +7,9 @@ import vmath.samples.demos.culling.CullingLabDemo;
 import vmath.samples.demos.globe.GlobeDemo;
 import vmath.samples.demos.gpucull.GpuCullDemo;
 import vmath.samples.demos.lights.LightsDemo;
+import vmath.samples.demos.lines.LineLabDemo;
+import vmath.samples.demos.lines.LineStreamDemo;
+import vmath.samples.demos.lines.LineStylesDemo;
 import vmath.samples.demos.occlusion.OcclusionDemo;
 import vmath.samples.demos.physics.PileDemo;
 import vmath.samples.demos.portals.PortalsDemo;
@@ -50,6 +53,9 @@ public final class Demos {
                 new DemoEntry(GpuCullDemo.INFO, GpuCullDemo::new),
                 new DemoEntry(GlobeDemo.INFO, GlobeDemo::new),
                 new DemoEntry(ShadowDemo.INFO, ShadowDemo::new),
-                new DemoEntry(StreamingDemo.INFO, StreamingDemo::new));
+                new DemoEntry(StreamingDemo.INFO, StreamingDemo::new),
+                new DemoEntry(LineLabDemo.INFO, LineLabDemo::new),
+                new DemoEntry(LineStylesDemo.INFO, LineStylesDemo::new),
+                new DemoEntry(LineStreamDemo.INFO, LineStreamDemo::new));
     }
 }

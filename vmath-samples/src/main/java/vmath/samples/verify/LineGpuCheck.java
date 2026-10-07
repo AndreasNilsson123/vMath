@@ -223,6 +223,50 @@ public final class LineGpuCheck {
         return null;
     }
 
+    /**
+     * Draws a batch with a plan on the GPU into a square target and counts how it differs from the
+     * reference expansion: the check the line demos show next to their numbers.
+     *
+     * @param plan the plan (not the hairline strategy)
+     * @param caps the capabilities the plan was made with
+     * @param batch the lines
+     * @param viewProjection the matrix relative to the origin of the batch
+     * @param worldToPixel pixels per world unit at {@code w = 1}
+     * @param size the width and height of the target in pixels
+     * @return {@code {covered, missing, extra}}: the pixels the reference covers, the pixels it covers
+     *     fully that the GPU left empty, and the pixels the GPU drew where the reference has almost no
+     *     coverage; both counts are 0 or a few edge pixels when the shader does what the reference does
+     */
+    public static int[] probe(LineRenderPlan plan, GraphicsCapabilities caps, LineBatch batch, float[] viewProjection, float worldToPixel, int size) {
+        CoverageRaster expected = new CoverageRaster(size, size);
+        LineExpander.expand(batch, viewProjection, size, size, worldToPixel, (x0, y0, a0, x1, y1, a1, x2, y2, a2, dash, dashCount, color) -> expected.fill(x0, y0, a0, x1, y1, a1, x2, y2, a2, dash, dashCount));
+        byte[] pixels;
+        try (LineGpuRunner runner = new LineGpuRunner(size, size); Arena arena = Arena.ofConfined()) {
+            long dataBytes = plan.dataBytes(batch), styleBytes = plan.styleBytes(batch);
+            MemorySegment data = allocate(arena, dataBytes), styles = allocate(arena, styleBytes);
+            DrawList draws = new DrawList(DrawList.Kind.ARRAYS, 16);
+            plan.write(batch, data, styles, draws);
+            try (LineGpuRunner.Prepared prepared = runner.new Prepared(plan, caps, data, dataBytes, styles, styleBytes, draws)) {
+                prepared.draw(viewProjection, worldToPixel);
+                pixels = prepared.read();
+            }
+        }
+        int covered = 0, missing = 0, extra = 0;
+        for (int y = 0; y < size; y++) {
+            for (int x = 0; x < size; x++) {
+                boolean on = (pixels[(y * size + x) * 4 + 3] & 255) != 0;
+                float c = expected.coverage(x, y);
+                covered += c > 0 ? 1 : 0;
+                if (on && c < 0.05f) {
+                    extra++;
+                } else if (!on && c > 0.95f) {
+                    missing++;
+                }
+            }
+        }
+        return new int[] {covered, missing, extra};
+    }
+
     /** Hairlines: every drawn pixel is near a segment and every segment has a drawn pixel near its middle. */
     private static String compareHairlines(Scene s, byte[] pixels) {
         LineBatch b = s.batch();

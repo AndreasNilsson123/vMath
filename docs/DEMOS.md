@@ -10,11 +10,11 @@ library build.
 
 ## 1. Where we are
 
-The framework (phase F) and fifteen demos are done: `city`, `culling-lab`, `interior-portals`, `occlusion`, `dq-vs-lbs`, `rigid-pile`, `sdf-sculpt`, `terrain`, `sky-sun`, `cluster-lod`, `gpu-culling`, `clustered-lights`, `globe`, `cascaded-shadows` and `streaming-ring`. Everything else in section 4 is the backlog. A card has numbers only for a demo that has run.
+The framework (phase F) and eighteen demos are done: `city`, `culling-lab`, `interior-portals`, `occlusion`, `dq-vs-lbs`, `rigid-pile`, `sdf-sculpt`, `terrain`, `sky-sun`, `cluster-lod`, `gpu-culling`, `clustered-lights`, `globe`, `cascaded-shadows`, `streaming-ring`, `line-lab`, `line-styles` and `line-stream`. Everything else in section 4 is the backlog. A card has numbers only for a demo that has run.
 
 | | |
 |---|---|
-| Demos | 15 of 32 (`city`, `culling-lab`, `interior-portals`, `occlusion`, `dq-vs-lbs`, `rigid-pile`, `sdf-sculpt`, `terrain`, `sky-sun`, `cluster-lod`, `gpu-culling`, `clustered-lights`, `globe`, `cascaded-shadows`, `streaming-ring`) |
+| Demos | 18 of 32 (`city`, `culling-lab`, `interior-portals`, `occlusion`, `dq-vs-lbs`, `rigid-pile`, `sdf-sculpt`, `terrain`, `sky-sun`, `cluster-lod`, `gpu-culling`, `clustered-lights`, `globe`, `cascaded-shadows`, `streaming-ring`, `line-lab`, `line-styles`, `line-stream`) |
 | Framework | launcher with a menu, runner, HUD, camera, instance stream, box renderer, debug lines, depth-buffer inset, shared scenes, warm-up, statistics and report, screenshot, smoke check |
 | Verified on | NVIDIA GeForce RTX 3060 Laptop GPU, driver 546.30, OpenGL 4.5, Windows 11, JDK 25 (one machine; other vendors and systems are unchecked) |
 
@@ -191,9 +191,12 @@ Does not prove: what the demo cannot tell you.
 
 The demos of `ROADMAP.md` phase O. Each runs every strategy of the line renderer that its context allows (the 4.5 context runs all of them by forcing the capabilities down), switchable live with the keys 1 to 5, and its `--verify` compares each strategy's image with the CPU reference of the library (LINE-2).
 
-- [ ] **L1 (P1, L)** `line-lab`: five thousand polylines of sixty-four points each (a procedural river-and-road network and random walks), drawn by every strategy with the same LineBatch; per strategy the draw calls, the bytes uploaded, the CPU time to write and the GPU time, and the largest coverage difference from the reference. Shows: LineBatch, LineRenderPlan.choose, DrawList and what each tier costs. → LINE-4
-- [ ] **L2 (P2, M)** `line-styles`: widths from hairline to thirty pixels, dashes, caps, joins and the miter limit on sharp turns, anti-aliasing against a pixel-exact reference, zoom without rebuilding, in world and in pixel width. Shows: the style model and the screen-space expansion. → L1
-- [ ] **L3 (P2, M)** `line-stream`: a few thousand polylines added, edited and removed every frame and a hundred tracks with trails; the bytes uploaded with dirty ranges against a full upload, the compaction, the handles. Shows: LineSet, TrailBuffer. → LINE-5, LINE-7
+- [x] **L1 (P1, L)** `line-lab`: five thousand polylines of sixty-four points each (a procedural river-and-road network and random walks), drawn by every strategy with the same LineBatch; per strategy the draw calls, the bytes uploaded, the CPU time to write and the GPU time, and the largest coverage difference from the reference. Shows: LineBatch, LineRenderPlan.choose, DrawList and what each tier costs. → LINE-4
+      *Done: `line-lab` draws one network of 5,000 polylines of 64 points (315,000 segments, 13 styles) in six tiers (INDIRECT_DRAW_ID on OpenGL 4.5 with the draw-parameters extension, INDIRECT_INSTANCE_STYLE on 4.3, INSTANCED_LOOP on 4.2 and on 3.3, EXPANDED_MULTIDRAW on 3.3, HAIRLINE on 3.3), switchable live, with the calls, bytes, CPU time to write, CPU time to issue, GPU time and the pixels that differ from the reference. The probe compares a 256 by 256 square of 1,500 other polylines, drawn offscreen by each tier, with `LineExpander`.*
+- [x] **L2 (P2, M)** `line-styles`: widths from hairline to thirty pixels, dashes, caps, joins and the miter limit on sharp turns, anti-aliasing against a pixel-exact reference, zoom without rebuilding, in world and in pixel width. Shows: the style model and the screen-space expansion. → L1
+      *Done: `line-styles` shows the widths, the nine cap and join combinations, two miter limits, dash patterns and a world-unit against a pixel width, in every tier. The roadmap's anti-aliasing is not built (the geometry has no coverage fringe, `docs/LINES.md`), so the card compares the pixels with the reference instead.*
+- [x] **L3 (P2, M)** `line-stream`: a few thousand polylines added, edited and removed every frame and a hundred tracks with trails; the bytes uploaded with dirty ranges against a full upload, the compaction, the handles. Shows: LineSet, TrailBuffer. → LINE-5, LINE-7
+      *Done: `line-stream` edits, replaces and moves 3,000 polylines and 100 trails every frame in one `LineSet`, with the two upload modes, handle checks and compaction.*
 
 ### Phase M: 2D maps
 
@@ -750,3 +753,73 @@ The pool, with three regions and the filler of 2 (chunks resident are the mean o
 **Findings.** (1) With one region the CPU and the GPU take turns: 15.4 ms is the CPU's own 7.7 ms (the frame with three regions and no filler) plus a wait of 7.65 ms for the GPU's 7.7 ms. Two regions recover almost all of it (8.9 ms), three or four the rest; beyond what the GPU is busy for, extra regions only add latency. (2) A region has to hold the byte budget plus whatever else the frame writes: the high water of 11.04 MB is 8 MB of chunks plus 3.2 MB of particles, and a region smaller than that makes the streamer defer uploads (the 6 MB region with a 2 MB budget had 35.6 chunks missing on average). (3) `PersistentBufferRing.stalls()` counts the waits but not how long they were; the demo times `beginFrame` itself. (4) A free list fragments quickly at the load that a streamer has: at 15% over the working set first fit left a largest free block of 1.31 MB in 4.4 MB free (60.6%), best fit 2.62 MB (37.8%), and at the working set itself both are above 88% and allocations fail in the thousands, so the demo has to evict chunks that it still wants. (5) A slab never fragments (at most 1.2%) but gives every chunk the block of the largest one: with chunks of 36 KB on average in blocks of 96 KB, 30 MB holds 326 of the 665 chunks that are wanted, and 60 MB is needed for 651. (6) The allocators and the ring needed no change; the first version of the demo had no way to tell the waiting from the working, which is why the wait is timed.
 
 **Does not prove.** The bandwidth of a real transfer (the copy is inside one GPU and 3.6 GB over 15 s is a small rate for it), a separate transfer queue or loader thread (the chunks are generated on the render thread, which is part of the CPU time of a frame), other drivers (this driver let the CPU run about three frames ahead, which is why four regions never waited), or what real asset sizes do to the pool (the sizes here are generated).
+
+### line-lab: Line lab: one network, six ways to draw it
+
+**Claim.** The same 5,000 polylines are drawn by every tier of the line renderer, from an indirect multi-draw on OpenGL 4.5 down to line strips on 3.3, and the numbers say what each costs in calls, bytes and time on one GPU: the draw-index strategy that sits first in the decision table was the slowest on the GPU here, and the vertex-pulling tier of 3.3 the fastest of the thick ones.
+
+**Uses.** `LineBatch` and `LineStyle` (the data), `LineRenderPlan` (`force`, `write`, the shaders, `submission`), `DrawList` and `DrawSubmission` (an indirect multi-draw, `glMultiDrawArrays`, or a loop that moves the attributes by hand), `LineExpander` and `CoverageRaster` (the reference of the probe); in the samples `LineRenderer` (binds each strategy's arrays and issues the draws), `LineTier` (the capabilities of each tier), `PanZoom2d` and `LineGpuCheck.probe`.
+
+**Controls.** `1` to `6` or `N` choose the tier, `A` cycles through them, the left mouse button pans and the wheel zooms about the cursor.
+
+**Options.** `--polylines N` (5000), `--points N` (64), `--tier-frames N` (120: frames per tier in a scripted run and in the cycle), `--tier N` (1), `--seed N`.
+
+**How it works.** The network is procedural (`NetworkScene`): 4% rivers with a width in world units, 10% roads drawn twice (a dark casing, a bright fill), 50% minor roads, 5% dashed railways and the rest thin random walks in eight styles, over 8,000 by 4,500 units. At the start the demo writes the buffers of each tier for the same batch (the CPU time of `write` is the best of four), uploads them, and draws a probe of 1,500 other polylines into a 256 by 256 target to count the pixels where the GPU and the reference disagree. A frame sets the matrix (`relativeViewProjection`, in double precision) and draws the chosen tier; zooming rebuilds nothing. In a scripted run the tiers follow each other every `--tier-frames` measured frames along a fixed pan and zoom path.
+
+**Measured.** JDK 25, NVIDIA GeForce RTX 3060 Laptop GPU, driver 546.30, window 1600 x 900, vsync off, 720 frames after 120 of warm-up, 100 frames per tier, defaults above. 315,000 segments, 13 styles, 932 runs of equal style:
+
+| tier | strategy | submission | draw calls | data | styles | write (CPU) | issue (CPU) | GPU | pixels off in the probe |
+|---|---|---|---|---|---|---|---|---|---|
+| 4.5 draw id | INDIRECT_DRAW_ID | indirect | 1 | 14.42 MB | 58.3 KB | 11.1 ms | 0.028 ms | 2.99 ms | 1 missing, 0 extra |
+| 4.3 indirect | INDIRECT_INSTANCE_STYLE | indirect | 1 | 14.42 MB | 0.8 KB | 12.2 ms | 0.058 ms | 2.93 ms | 1 missing, 0 extra |
+| 4.2 loop | INSTANCED_LOOP | loop with a base instance | 932 | 14.42 MB | 0.8 KB | 13.8 ms | 0.210 ms | 2.97 ms | 1 missing, 0 extra |
+| 3.3 pulling | EXPANDED_MULTIDRAW | glMultiDrawArrays | 1 | 14.42 MB | 0.8 KB | 9.8 ms | 0.044 ms | 2.02 ms | 1 missing, 0 extra |
+| 3.3 loop | INSTANCED_LOOP | loop, attributes by hand | 932 | 14.42 MB | 0.8 KB | 10.8 ms | 0.715 ms | 3.08 ms | 1 missing, 0 extra |
+| 3.3 hairline | HAIRLINE | glMultiDrawArrays | 1 (5,000 strips) | 4.88 MB | 0 | 9.9 ms | 0.030 ms | 0.09 ms | no triangles |
+
+The wall time of a frame was 2.54 ms, and the render thread allocated 292 B per frame (budget 4,096 B; smoke runs the demo with 400 polylines of 24 points). The write times vary by a few milliseconds from run to run (an earlier run of the same code gave 9.3 to 15.0 ms). The one missing pixel is the same in every tier, so it is an edge pixel that the reference and the rasteriser decide differently, not a difference between tiers.
+
+**Verification.** The probe is a check that the GLSL of every tier draws what the reference draws on this driver, with a view of 256 by 256 pixels; `LineGpuCheck` (`:vmath-samples:lineCheck`) does it for four scenes and every GLSL version from 3.30 (177 cases, `docs/LINES.md`).
+
+**Findings.** (1) Every thick tier moves the same 14.4 MB (48 bytes a segment, 54 vertices of work for each); what changes is how the style is found and how the draws are issued. (2) The loop costs the CPU 0.21 ms (with a base instance) to 0.72 ms (without one: the attributes are bound again for each of the 932 draws) against 0.03 to 0.06 ms for a multi-draw, and the same GPU time; a frame of 2.5 ms is not limited by that here, a scene with ten times the draws would be. (3) Reading the style by the draw index (INDIRECT_DRAW_ID) cost 1 ms of GPU time more than reading it from the instance, and vertex pulling from a texture buffer cost 1 ms less than instanced attributes; both are one GPU's answer and the decision table (best first by what the features allow) does not follow them. (4) Hairlines are 30 times cheaper and one pixel wide.
+
+**Does not prove.** Anything about another vendor, a driver of the older versions (the older tiers run in a 4.5 context with the text and the calls of their version), a scene that is not a synthetic network, or the cost of the CPU side of a real engine around it. The GPU time is the time of the lines alone, at 1600 by 900 with the scripted view, which covers part of the world.
+
+### line-styles: Line styles: widths, caps, joins and dashes
+
+**Claim.** Widths from a pixel to thirty, nine cap and join combinations, miter limits, dashes and widths in world units are drawn by the same shaders in every tier, zoom changes only a matrix, and a comparison with the reference expansion finds no pixel of difference but edge pixels.
+
+**Uses.** `LineStyle` (`pixels`, `world`, caps, joins, `withMiterLimit`, `withDash`, `dashedInPixels`), `LineBatch`, `LineRenderPlan.write` (the style table is written again for dashes that keep their length in pixels), `LineExpander` and `CoverageRaster`; in the samples `LineRenderer`, `LineTier`, `PanZoom2d` and `LineGpuCheck.probe`.
+
+**Controls.** `1` to `6` or `N` choose the tier, `Z` makes the dashes keep their length in pixels, `C` compares the middle 512 by 512 pixels of the view with the reference, the left mouse button pans and the wheel zooms.
+
+**Options.** `--tier-frames N` (90: frames per tier in a scripted run), `--tier N` (1), `--dashes N` (0: in a scripted run alternate dashes in world units and in pixels, 1 pixels, 2 world units).
+
+**How it works.** `StyleScene` fills a `LineSet` per tier with the panel (one unit is one pixel at scale 1): eight widths, three caps by three joins on a zigzag, seven angles of a sharp turn with miter limit 8 and 1.5, four dash patterns and a dashed closed circle, and two fans of lines with the same width, 10, in world units on the left and in pixels on the right. Dashes are lengths in world units, so they grow with the zoom; with `Z` the five dashed polylines get a new style with `dashedInPixels(pixelSize)` through `LineSet.setStyle` whenever the zoom has changed by 0.2%, and `update` writes only those polylines again, which takes 0.07 ms. Every change of tier, and `C`, draws a 512 by 512 square of the current view offscreen with that tier's shaders and counts the pixels that differ from the reference.
+
+**Measured.** JDK 25, NVIDIA GeForce RTX 3060 Laptop GPU, window 1600 x 900, vsync off, 600 frames after 60 of warm-up, 50 frames per tier, the pixel dashes on for every second block of 100 frames. The probe covered about 47,000 pixels, and at every comparison (at the start and at each change of tier except into the hairline tier, which has no triangles) 0 fully covered pixels were missing and 0 were extra. Writing the changed polylines again took 0.072 ms (240 times); the GPU time of the lines was 0.027 ms and the frame 1.26 ms. The render thread allocated 32 B per frame with the dashes in world units and 10,271 B with the dashes in pixels (a new style and a new draw list for each change of zoom; budget 16,384 B; smoke runs `--dashes 1` without tier changes). Each comparison allocates a few megabytes for the 512 by 512 raster of the reference, which is why the run above, with 12 of them, allocated 92,855 B per frame on average.
+
+**Does not prove.** Anti-aliasing (the geometry has none: an edge is as sharp as the pixels, and a coverage fringe in the shader is not built), the look at a distance (an orthographic view only), or any driver but the one of the machine. The comparison counts edge pixels leniently (a pixel the reference covers less than 5% or more than 95% is judged), as `LineGpuCheck` does.
+
+### line-stream: Line stream: edits, trails and dirty ranges
+
+**Claim.** In one `LineSet`, 3,000 polylines are edited in place, replaced and moved every frame and 100 tracks leave fading trails, and the update uploads 351 KB a frame as dirty ranges where writing and uploading every record would take 1.2 MB, with handles that stay valid and a compaction that lowers the number of draws.
+
+**Uses.** `LineSet` (`add`, `set`, `remove`, `contains`, `update`, `dirtyRangeCount`, `dirtyOffset`, `dirtyLength`, `invalidate`, `compact`, `largestFreeUnits`; the slots come from `FreeListAllocator`), `TrailBuffer` (`push`, `updateLines`), `LineRenderPlan` and `DrawList`; in the samples `LineRenderer` (the CPU mirrors, `uploadData` for a range), `LineTier` and `PanZoom2d`.
+
+**Controls.** `U` switches between uploading the dirty ranges and rewriting and uploading every record of every frame, `K` compacts now, `1` to `6` or `N` choose the tier (the set is built again), the left mouse button pans and the wheel zooms.
+
+**Options.** `--polylines N` (3000), `--edit-percent N` (5), `--churn-percent N` (1), `--tracks N` (100), `--trail-points N` (64), `--mode-frames N` (150), `--compact-every N` (200, scripted runs only), `--tier N` (2), `--seed N`.
+
+**How it works.** Each frame 150 polylines (5%) are rewritten with the same number of points, which `LineSet.set` does in place, 30 (1%) are removed and replaced by new ones of another length (4 to 11 points), which frees and takes slots of the allocator, and each of the 100 tracks moves, pushes its position into the `TrailBuffer` and has its eight slices of age written into the set again. `update` writes the records that changed into the mirror of the renderer and the demo uploads the dirty ranges; the draws and the style table are rebuilt (they are a few kilobytes). In the other mode `invalidate` makes every record dirty first, so the update rewrites all of them and the ranges are all the bytes in use. A scripted run alternates the two modes every `--mode-frames` frames and compacts every 200 frames; the demo checks that a removed handle is never valid again and that every handle of a new polyline is.
+
+**Measured.** JDK 25, NVIDIA GeForce RTX 3060 Laptop GPU, window 1600 x 900, vsync off, 600 frames after 120 of warm-up, tier 2 (INDIRECT_INSTANCE_STYLE, OpenGL 4.3), 150 frames per mode, 25,679 records (segments) in use of a capacity of 60,396:
+
+| mode | uploaded per frame | update and upload on the CPU | ranges |
+|---|---|---|---|
+| dirty ranges | 351.4 KB | 0.433 ms | 221 |
+| everything | 1,201.5 KB | 1.445 ms | 1 or a few |
+
+The dirty ranges are 29% of the bytes and 30% of the CPU time; most of what remains are the trails, which change completely every frame (100 tracks times 63 records of 48 bytes, 302 KB), where the edited polylines are 150 times 7 records (50 KB) and the churn a few KB. The set had 3,442 draws on average (the styles of the 3,000 polylines are dealt out at random, so most are a run of one) and a fragmentation of 1.5%; the three compactions took 3,792, 3,773 and 3,778 draws to 2,310, 2,324 and 2,375 and rewrote 1.2 MB each (every polyline moves). 108,000 edits, 21,600 removals and additions and 43,200 handle checks gave 0 failures. The wall time of a frame was 1.86 ms, the GPU time of the lines 0.29 ms, and the render thread allocated 4,165 B per frame (budget 16,384 B; smoke runs 400 polylines and 12 tracks).
+
+**Does not prove.** The cost of a real transfer (the upload here is `glBufferSubData` into a buffer that the GPU has finished with, not a persistently mapped ring with fences), a scene whose edits are not spread over the whole buffer, or the other tiers (the keys run them, the numbers above are tier 2). The fade of a trail is in steps and not a gradient along each segment.
