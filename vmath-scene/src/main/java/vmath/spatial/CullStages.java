@@ -94,7 +94,9 @@ public final class CullStages {
     /**
      * Rejects objects that would cover fewer than {@code minPixels} pixels of screen height: the
      * bounding sphere's projected size, {@code radius * pixelScale / distance}, is a
-     * conservative-enough proxy and needs no matrices.
+     * conservative-enough proxy and needs no matrices. In an orthographic context
+     * ({@link CullContext#orthographic()}) the size is {@code radius * pixelScale}, whatever the
+     * distance.
      *
      * <p>Does nothing when the context's {@code pixelScale} is zero.
      */
@@ -122,12 +124,13 @@ public final class CullStages {
             float[] x0 = bounds.minXs(), y0 = bounds.minYs(), z0 = bounds.minZs();
             float[] x1 = bounds.maxXs(), y1 = bounds.maxYs(), z1 = bounds.maxZs();
             long[] words = visible.words();
+            boolean ortho = ctx.orthographic();
             for (int i = visible.nextSetBit(0); i >= 0 && i < bounds.size(); i = visible.nextSetBit(i + 1)) {
                 float hx = (x1[i] - x0[i]) * 0.5f, hy = (y1[i] - y0[i]) * 0.5f, hz = (z1[i] - z0[i]) * 0.5f;
                 float dx = (x0[i] + x1[i]) * 0.5f - cx, dy = (y0[i] + y1[i]) * 0.5f - cy, dz = (z0[i] + z1[i]) * 0.5f - cz;
                 float radius2 = hx * hx + hy * hy + hz * hz;
-                float dist2 = dx * dx + dy * dy + dz * dz;
-                // radius * scale / dist < minPixels, compared without a square root
+                // perspective: radius * scale / dist < minPixels, compared without a square root; orthographic: the distance does not matter
+                float dist2 = ortho ? 1f : dx * dx + dy * dy + dz * dz;
                 if (radius2 * scale * scale < minPixels * minPixels * dist2) {
                     words[i >>> 6] &= ~(1L << i);
                 }

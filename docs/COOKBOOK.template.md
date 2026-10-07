@@ -1,6 +1,6 @@
 # Cookbook
 
-Four recipes, each short enough to read in a few minutes and each **compiled and run by the test suite**: the code blocks below are cut out of
+Five recipes, each short enough to read in a few minutes and each **compiled and run by the test suite**: the code blocks below are cut out of
 `vmath-render/src/test/java/vmath/cookbook/CookbookTest.java` by `CookbookDocTest`, which fails when this file and that one disagree. To change a recipe, edit the test and regenerate this
 file with `./gradlew :vmath-render:test --tests "vmath.cookbook.CookbookDocTest" -Dvmath.writeDocs=true` (edit `docs/COOKBOOK.template.md` for the prose).
 
@@ -91,3 +91,23 @@ vmath's treats `-0.0` and `0.0` as different and NaN as equal to itself (`docs/E
 
 What there is no equivalent for: JOML's `Matrix4f.set...` mutators, `Matrix4f.mulAffine`-style in-place fast paths (use `Mat4x3f` for affine data), and its `Matrix4fStack`. The double types have
 the same API under the `d` names, and a float or double type converts with `toDouble()` / `toFloat()`.
+
+## 5. A 2D, UI or CAD view: an orthographic projection with a pixel-exact size
+
+**Problem.** A map, a user interface, a technical drawing or a 2D game wants the world to be flat: no foreshortening, a line the same width at every depth, and one world unit that is exactly one pixel (or any other
+fixed number of pixels), so that lines and dashes are described in the units of the screen.
+
+**Recipe.** `OrthoCameraf` is the orthographic counterpart of `Cameraf`: a separate type (a perspective camera has a field of view and an orthographic one has a box, and sharing one type would make every consumer guess).
+`forViewport` makes the box of a window with a given number of world units per pixel; `zoomed` and `withAspect` change it without touching the position. The projection is JOML's `setOrtho` in every depth convention (tested), and
+depth is linear, so `linearizeDepth` and the slices of a cluster grid are too:
+
+{{recipe:ortho-pixels}}
+
+Picking needs no ray against the scene in 2D. The ray of an orthographic camera has the direction of the view and its origin moves with the pixel, on the plane through the camera, which is the opposite of the perspective ray:
+
+{{recipe:ortho-pick}}
+
+**Notes.** The near plane may be zero or behind the camera and the far plane is finite (there is no infinite orthographic projection, and reversed depth uses a real far plane). Jitter for temporal anti-aliasing
+is the same pixel offset (`jitteredProjection` shifts the translation, not the depth column). A camera far from the origin has a double twin (`OrthoCamerad`) and `cameraRelative()` as `Cameraf` does. Which parts of the
+library take a perspective camera, and which have an orthographic form, is the table in `docs/CAMERA.md`. For a line drawing in this view (`vmath.lines`), the number of pixels per world unit is `1 / camera.pixelSize(height)`
+and goes in `u_worldToPixel`.

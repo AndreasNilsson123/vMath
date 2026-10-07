@@ -18,6 +18,7 @@ import vmath.bulk.Mat4fArray;
 import vmath.bulk.VisibilitySet;
 import vmath.camera.Camerad;
 import vmath.camera.Cameraf;
+import vmath.camera.OrthoCameraf;
 import vmath.core.ClipSpace;
 import vmath.core.Mat4f;
 import vmath.core.Quatf;
@@ -27,6 +28,7 @@ import vmath.core.Vec4f;
 import vmath.geo.Aabbf;
 import vmath.geo.DepthRange;
 import vmath.geo.Frustumf;
+import vmath.geo.Rayf;
 import vmath.gl.DrawCommandBuffer;
 import vmath.gl.InstanceWriter;
 import vmath.gpucull.CullObject;
@@ -312,5 +314,34 @@ class CookbookTest {
         Quatf vslerp = vq.slerp(Quatf.IDENTITY, 0.3f);
         assertClose(jslerp.z, vslerp.z(), "slerp");
         // recipe end
+    }
+
+    // ================================================================ 5. orthographic views
+
+    @Test
+    void anOrthographicViewHasAPixelExactSizeAndAPickRayThatMoves() {
+        int width = 1280, height = 720;
+        // recipe[ortho-pixels]: a window in which one world unit is one pixel, the world origin at the bottom left (2D, user interface, CAD)
+        OrthoCameraf camera = OrthoCameraf.forViewport(new Vec3f(width / 2f, height / 2f, 10f), width, height, 1f, 0.1f, 100f, DepthRange.of(ClipSpace.OPENGL));
+        Mat4f viewProjection = camera.viewProjection();                          // world to clip space: what the shader gets
+        Vec3f pixel = camera.toScreen(new Vec3f(100f, 200f, 0f), width, height); // x 100 from the left, y 520 from the top
+        float unitsPerPixel = camera.pixelSize(height);                          // 1: widths and dash lengths in pixels are the same numbers in world units
+        OrthoCameraf zoomed = camera.zoomed(2f);                                 // about the same middle: a world unit is now two pixels
+        // recipe end
+        assertEquals(100f, pixel.x(), 1e-3f);
+        assertEquals(520f, pixel.y(), 1e-3f);
+        assertEquals(1f, unitsPerPixel, 1e-6f);
+        assertEquals(0.5f, zoomed.pixelSize(height), 1e-6f);
+        assertEquals(1f, viewProjection.transformProject(new Vec3f(width, height, 0f)).y(), 1e-4f, "the top right corner of the window is at NDC (1, 1)");
+
+        float mouseX = 400f, mouseY = 300f;
+        // recipe[ortho-pick]: picking: every ray has the direction of the view and an origin that follows the pixel (the perspective ray is the other way round)
+        Rayf ray = camera.pickRay(mouseX + 0.5f, mouseY + 0.5f, width, height);
+        float t = -ray.origin().z() / ray.direction().z();                       // where it meets the plane z = 0 of a 2D scene
+        Vec3f onPlane = ray.origin().add(ray.direction().mul(t));
+        // recipe end
+        assertEquals(400.5f, onPlane.x(), 1e-3f, "the world x under the cursor is the pixel x");
+        assertEquals(720f - 300.5f, onPlane.y(), 1e-3f, "the world y counts from the bottom");
+        assertEquals(0f, onPlane.z(), 1e-4f);
     }
 }

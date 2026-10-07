@@ -3,6 +3,7 @@ package vmath.lighting;
 import vmath.annotations.Experimental;
 import vmath.core.ClipSpace;
 import vmath.camera.Cameraf;
+import vmath.camera.OrthoCameraf;
 
 /**
  * The cluster grid of clustered (and tiled) forward lighting: the view frustum cut into tiles in x
@@ -28,8 +29,15 @@ import vmath.camera.Cameraf;
  * <p><b>Cluster index</b> is {@code (slice * tilesY + row) * tilesX + column}, slices outermost, so
  * the clusters of one depth slice are contiguous.
  *
- * <p>Perspective projections only. Everything is view space (x right, y up, z negative forward,
- * like {@link Cameraf#viewPositionFromDepth}).
+ * <p><b>Orthographic views.</b> A grid made from an {@link OrthoCameraf} ({@link #orthographic()}) has
+ * tiles that do not widen with distance (a tile is a fixed rectangle of view-space x and y), slices
+ * that are <em>linear</em> in depth, {@code boundary(k) = near + (far - near) * k / slices}, found
+ * with {@code floor(depth * sliceScale + sliceBias)} and no logarithm, and clusters that are boxes.
+ * The tangent accessors ({@link #tanHalfFovX()}, {@link #tanHalfFovY()}, {@link #slopes}) have no
+ * meaning there and throw; {@link #viewEdges} gives the tile edges instead.
+ *
+ * <p>Everything is view space (x right, y up, z negative forward, like
+ * {@link Cameraf#viewPositionFromDepth}).
  *
  * <p><b>Thread safety.</b> Immutable after construction, so it can be shared between threads
  * freely. The arrays it hands out are its own storage: do not modify them.
@@ -47,18 +55,24 @@ import vmath.camera.Cameraf;
 public final class ClusterGrid {
 
     private final int viewportWidth, viewportHeight, tilePixels, tilesX, tilesY, slices;
-    private final boolean yDown;
+    private final boolean yDown, orthographic;
     private final float near, far, tanX, tanY, sliceScale, sliceBias;
+    private final float viewLeft, viewRight, viewBottom, viewTop;   // orthographic grids: the box of the view in view-space x and y
     private final float[] sliceDepth;   // slices + 1 boundaries
     private final float[] columnNdc;    // tilesX + 1 ndc x edges, increasing
-    private final float[] colLowSlope, colHighSlope, rowLowSlope, rowHighSlope; // x / depth and y / depth at the tile edges
+    private final float[] colLowSlope, colHighSlope, rowLowSlope, rowHighSlope; // x / depth and y / depth at the tile edges (orthographic: x and y)
 
-    private ClusterGrid(int width, int height, int tile, int slices, boolean yDown, float fovy, float aspect, float near, float far) {
+    // a perspective grid takes (fovy, aspect, -, -), an orthographic one the edges of the box (left, right, bottom, top)
+    private ClusterGrid(int width, int height, int tile, int slices, boolean yDown, boolean orthographic, float near, float far, float p0, float p1, float p2, float p3) {
         if (width < 1 || height < 1 || tile < 1 || slices < 1) {
             throw new IllegalArgumentException("viewport, tile size and slice count must be positive");
         }
-        if (!(fovy > 0f && fovy < (float) Math.PI) || !(aspect > 0f) || !(near > 0f) || !(far > near) || Float.isInfinite(far)) {
-            throw new IllegalArgumentException("need 0 < fovy < pi, aspect > 0 and 0 < near < far < infinity: " + fovy + ", " + aspect + ", " + near + ", " + far);
+        if (orthographic) {
+            if (!(Float.isFinite(p0) && Float.isFinite(p1) && Float.isFinite(p2) && Float.isFinite(p3) && p1 > p0 && p3 > p2) || !Float.isFinite(near) || !(far > near) || Float.isInfinite(far)) {
+                throw new IllegalArgumentException("need finite edges with left < right and bottom < top and near < far < infinity: " + p0 + " " + p1 + " " + p2 + " " + p3 + ", " + near + ", " + far);
+            }
+        } else if (!(p0 > 0f && p0 < (float) Math.PI) || !(p1 > 0f) || !(near > 0f) || !(far > near) || Float.isInfinite(far)) {
+            throw new IllegalArgumentException("need 0 < fovy < pi, aspect > 0 and 0 < near < far < infinity: " + p0 + ", " + p1 + ", " + near + ", " + far);
         }
         this.viewportWidth = width;
         this.viewportHeight = height;
@@ -67,16 +81,29 @@ public final class ClusterGrid {
         this.tilesY = (height + tile - 1) / tile;
         this.slices = slices;
         this.yDown = yDown;
+        this.orthographic = orthographic;
         this.near = near;
         this.far = far;
-        this.tanY = (float) Math.tan(fovy * 0.5f);
-        this.tanX = tanY * aspect;
-        double logRatio = Math.log((double) far / near);
-        this.sliceScale = (float) (slices / logRatio);
-        this.sliceBias = (float) (-slices * Math.log(near) / logRatio);
+        this.viewLeft = orthographic ? p0 : Float.NaN;
+        this.viewRight = orthographic ? p1 : Float.NaN;
+        this.viewBottom = orthographic ? p2 : Float.NaN;
+        this.viewTop = orthographic ? p3 : Float.NaN;
+        this.tanY = orthographic ? Float.NaN : (float) Math.tan(p0 * 0.5f);
+        this.tanX = orthographic ? Float.NaN : tanY * p1;
         sliceDepth = new float[slices + 1];
-        for (int k = 0; k <= slices; k++) {
-            sliceDepth[k] = k == slices ? far : (float) (near * Math.pow((double) far / near, (double) k / slices));
+        if (orthographic) {
+            this.sliceScale = (float) (slices / ((double) far - near));
+            this.sliceBias = (float) (-(double) near * slices / ((double) far - near));
+            for (int k = 0; k <= slices; k++) {
+                sliceDepth[k] = k == slices ? far : (float) (near + ((double) far - near) * k / slices);
+            }
+        } else {
+            double logRatio = Math.log((double) far / near);
+            this.sliceScale = (float) (slices / logRatio);
+            this.sliceBias = (float) (-slices * Math.log(near) / logRatio);
+            for (int k = 0; k <= slices; k++) {
+                sliceDepth[k] = k == slices ? far : (float) (near * Math.pow((double) far / near, (double) k / slices));
+            }
         }
         columnNdc = new float[tilesX + 1];
         for (int i = 0; i <= tilesX; i++) {
@@ -85,15 +112,23 @@ public final class ClusterGrid {
         colLowSlope = new float[tilesX];
         colHighSlope = new float[tilesX];
         for (int i = 0; i < tilesX; i++) {
-            colLowSlope[i] = columnNdc[i] * tanX;
-            colHighSlope[i] = columnNdc[i + 1] * tanX;
+            colLowSlope[i] = orthographic ? viewX(columnNdc[i]) : columnNdc[i] * tanX;
+            colHighSlope[i] = orthographic ? viewX(columnNdc[i + 1]) : columnNdc[i + 1] * tanX;
         }
         rowLowSlope = new float[tilesY];
         rowHighSlope = new float[tilesY];
         for (int j = 0; j < tilesY; j++) {
-            rowLowSlope[j] = rowLow(j) * tanY;
-            rowHighSlope[j] = rowHigh(j) * tanY;
+            rowLowSlope[j] = orthographic ? viewY(rowLow(j)) : rowLow(j) * tanY;
+            rowHighSlope[j] = orthographic ? viewY(rowHigh(j)) : rowHigh(j) * tanY;
         }
+    }
+
+    private float viewX(float ndc) {
+        return viewLeft + (ndc + 1f) * 0.5f * (viewRight - viewLeft);
+    }
+
+    private float viewY(float ndc) {
+        return viewBottom + (ndc + 1f) * 0.5f * (viewTop - viewBottom);
     }
 
     /**
@@ -113,7 +148,7 @@ public final class ClusterGrid {
      * @return a grid for a camera
      */
     public static ClusterGrid of(Cameraf camera, int viewportWidth, int viewportHeight, int tilePixels, int slices, float far, boolean yDown) {
-        return new ClusterGrid(viewportWidth, viewportHeight, tilePixels, slices, yDown, camera.fovy(), camera.aspect(), camera.near(), Math.min(far, camera.far()));
+        return new ClusterGrid(viewportWidth, viewportHeight, tilePixels, slices, yDown, false, camera.near(), Math.min(far, camera.far()), camera.fovy(), camera.aspect(), 0f, 0f);
     }
 
     /**
@@ -151,7 +186,7 @@ public final class ClusterGrid {
      * @return a grid from a vertical field of view (radians), an aspect ratio and the depth range
      */
     public static ClusterGrid of(float fovy, float aspect, float near, float far, int viewportWidth, int viewportHeight, int tilePixels, int slices, boolean yDown) {
-        return new ClusterGrid(viewportWidth, viewportHeight, tilePixels, slices, yDown, fovy, aspect, near, far);
+        return new ClusterGrid(viewportWidth, viewportHeight, tilePixels, slices, yDown, false, near, far, fovy, aspect, 0f, 0f);
     }
 
     /**
@@ -174,6 +209,100 @@ public final class ClusterGrid {
      */
     public static ClusterGrid of(float fovy, float aspect, float near, float far, int viewportWidth, int viewportHeight, int tilePixels, int slices, ClipSpace space) {
         return of(fovy, aspect, near, far, viewportWidth, viewportHeight, tilePixels, slices, space.yDown());
+    }
+
+    /**
+     * Creates a cluster grid for an orthographic camera and a viewport: tiles that are fixed
+     * rectangles of the view box and slices that are linear in depth.
+     *
+     * <p>{@code far} is the far plane of the clusters (finite); the box and the near plane come
+     * from the camera, which may have a near plane at zero or behind the camera.
+     *
+     * @param camera the orthographic camera; must not be {@code null}
+     * @param viewportWidth the viewport width
+     * @param viewportHeight the viewport height
+     * @param tilePixels the tile size in pixels
+     * @param slices the number of depth slices
+     * @param far the distance to the far plane of the clusters, at most the camera's far plane is used
+     * @param yDown whether pixel row 0 is at the top of the screen
+     * @return an orthographic grid
+     * @throws IllegalArgumentException if a size is not positive or the depth range is empty
+     */
+    public static ClusterGrid of(OrthoCameraf camera, int viewportWidth, int viewportHeight, int tilePixels, int slices, float far, boolean yDown) {
+        return new ClusterGrid(viewportWidth, viewportHeight, tilePixels, slices, yDown, true, camera.near(), Math.min(far, camera.far()), camera.left(), camera.right(), camera.bottom(),
+                camera.top());
+    }
+
+    /**
+     * Creates a cluster grid for an orthographic camera and the clip space of a graphics API.
+     *
+     * <p>As {@link #of(OrthoCameraf, int, int, int, int, float, boolean)} with {@code yDown} taken
+     * from {@code space}.
+     *
+     * @param camera the orthographic camera; must not be {@code null}
+     * @param viewportWidth the viewport width
+     * @param viewportHeight the viewport height
+     * @param tilePixels the tile size in pixels
+     * @param slices the number of depth slices
+     * @param far the distance to the far plane of the clusters
+     * @param space the clip space whose y direction the grid follows; must not be {@code null}
+     * @return an orthographic grid
+     */
+    public static ClusterGrid of(OrthoCameraf camera, int viewportWidth, int viewportHeight, int tilePixels, int slices, float far, ClipSpace space) {
+        return of(camera, viewportWidth, viewportHeight, tilePixels, slices, far, space.yDown());
+    }
+
+    /**
+     * Tells whether the grid is orthographic.
+     *
+     * @return {@code true} for a grid made from an {@link OrthoCameraf}
+     */
+    public boolean orthographic() {
+        return orthographic;
+    }
+
+    /**
+     * Gives the box of an orthographic view.
+     *
+     * @param out receives {@code left, right, bottom, top} in view-space units
+     * @throws IllegalStateException if the grid is perspective
+     */
+    public void viewBox(float[] out) {
+        requireOrthographic();
+        out[0] = viewLeft;
+        out[1] = viewRight;
+        out[2] = viewBottom;
+        out[3] = viewTop;
+    }
+
+    /**
+     * Gives the view-space edges of a tile of an orthographic grid, the counterpart of
+     * {@link #slopes} (which is {@code x / depth} and does not exist without a perspective).
+     *
+     * @param column the column, counted from 0
+     * @param row the row, counted from 0
+     * @param out receives {@code xLow, xHigh, yLow, yHigh} at {@code out[offset..offset + 3]}
+     * @param offset the index of the first element to write
+     * @throws IllegalStateException if the grid is perspective
+     */
+    public void viewEdges(int column, int row, float[] out, int offset) {
+        requireOrthographic();
+        out[offset] = colLowSlope[column];
+        out[offset + 1] = colHighSlope[column];
+        out[offset + 2] = rowLowSlope[row];
+        out[offset + 3] = rowHighSlope[row];
+    }
+
+    private void requireOrthographic() {
+        if (!orthographic) {
+            throw new IllegalStateException("only an orthographic grid has view-space tile edges");
+        }
+    }
+
+    private void requirePerspective(String what) {
+        if (orthographic) {
+            throw new IllegalStateException(what + " has no meaning for an orthographic grid: tiles do not widen with depth (see viewBox and viewEdges)");
+        }
     }
 
     /**
@@ -275,6 +404,7 @@ public final class ClusterGrid {
      *     of the screen
      */
     public float tanHalfFovX() {
+        requirePerspective("tanHalfFovX");
         return tanX;
     }
 
@@ -285,6 +415,7 @@ public final class ClusterGrid {
      *     screen
      */
     public float tanHalfFovY() {
+        requirePerspective("tanHalfFovY");
         return tanY;
     }
 
@@ -348,7 +479,7 @@ public final class ClusterGrid {
         if (!(depth > near)) {
             return 0;
         }
-        int s = (int) Math.floor(Math.log(depth) * sliceScale + sliceBias);
+        int s = (int) Math.floor((orthographic ? depth : Math.log(depth)) * sliceScale + sliceBias);
         return s < 0 ? 0 : Math.min(s, slices - 1);
     }
 
@@ -362,6 +493,18 @@ public final class ClusterGrid {
      *     convention, finite or infinite far plane)
      */
     public int sliceOfNdcDepth(Cameraf camera, float ndcDepth) {
+        return sliceOf(camera.linearizeDepth(ndcDepth));
+    }
+
+    /**
+     * Finds the slice for a depth stored in a depth buffer of an orthographic camera (depth is
+     * linear there).
+     *
+     * @param camera the orthographic camera; must not be {@code null}
+     * @param ndcDepth the ndc depth
+     * @return the slice that an NDC depth value of {@code camera}'s projection falls in
+     */
+    public int sliceOfNdcDepth(OrthoCameraf camera, float ndcDepth) {
         return sliceOf(camera.linearizeDepth(ndcDepth));
     }
 
@@ -416,10 +559,16 @@ public final class ClusterGrid {
      */
     public int clusterOfViewPosition(float x, float y, float z) {
         float depth = -z;
-        if (!(depth > 0f)) {
+        float ndcX, ndcY;
+        if (orthographic) {
+            ndcX = (x - viewLeft) / (viewRight - viewLeft) * 2f - 1f;
+            ndcY = (y - viewBottom) / (viewTop - viewBottom) * 2f - 1f;
+        } else if (!(depth > 0f)) {
             return -1;
+        } else {
+            ndcX = x / (depth * tanX);
+            ndcY = y / (depth * tanY);
         }
-        float ndcX = x / (depth * tanX), ndcY = y / (depth * tanY);
         if (!(ndcX >= -1f && ndcX <= 1f && ndcY >= -1f && ndcY <= 1f)) {
             return -1;
         }
@@ -490,6 +639,15 @@ public final class ClusterGrid {
      */
     public void bounds(int column, int row, int slice, float depthNear, float depthFar, float[] out, int offset) {
         float xl = colLowSlope[column], xh = colHighSlope[column], yl = rowLowSlope[row], yh = rowHighSlope[row];
+        if (orthographic) {
+            out[offset] = xl;
+            out[offset + 1] = yl;
+            out[offset + 2] = -depthFar;
+            out[offset + 3] = xh;
+            out[offset + 4] = yh;
+            out[offset + 5] = -depthNear;
+            return;
+        }
         out[offset] = xl >= 0f ? xl * depthNear : xl * depthFar;
         out[offset + 1] = yl >= 0f ? yl * depthNear : yl * depthFar;
         out[offset + 2] = -depthFar;
@@ -512,6 +670,7 @@ public final class ClusterGrid {
      * @param offset the index of the first element to read or write
      */
     public void slopes(int column, int row, float[] out, int offset) {
+        requirePerspective("slopes");
         out[offset] = colLowSlope[column];
         out[offset + 1] = colHighSlope[column];
         out[offset + 2] = rowLowSlope[row];
@@ -533,6 +692,17 @@ public final class ClusterGrid {
      *     formulas (one logarithm for the slice)
      */
     public String glslLookup() {
+        if (orthographic) {
+            return "const uvec3 CLUSTER_GRID = uvec3(" + tilesX + "u, " + tilesY + "u, " + slices + "u);\n"
+                    + "const float CLUSTER_TILE = " + glslFloat(tilePixels) + ";\n"
+                    + "const float CLUSTER_SLICE_SCALE = " + glslFloat(sliceScale) + ";\n"
+                    + "const float CLUSTER_SLICE_BIAS = " + glslFloat(sliceBias) + ";\n"
+                    + "uint clusterIndex(vec2 fragCoord, float viewDepth) {\n"
+                    + "    uvec2 tile = min(uvec2(fragCoord / CLUSTER_TILE), CLUSTER_GRID.xy - 1u);\n"
+                    + "    float slice = clamp(floor(viewDepth * CLUSTER_SLICE_SCALE + CLUSTER_SLICE_BIAS), 0.0, float(CLUSTER_GRID.z) - 1.0);\n"
+                    + "    return (uint(slice) * CLUSTER_GRID.y + tile.y) * CLUSTER_GRID.x + tile.x;\n"
+                    + "}\n";
+        }
         return "const uvec3 CLUSTER_GRID = uvec3(" + tilesX + "u, " + tilesY + "u, " + slices + "u);\n"
                 + "const float CLUSTER_TILE = " + glslFloat(tilePixels) + ";\n"
                 + "const float CLUSTER_SLICE_SCALE = " + glslFloat(sliceScale) + ";\n"

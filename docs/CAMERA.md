@@ -45,6 +45,48 @@ Vec3f ndc = relative.project(local);
 whatever its depth. For motion vectors keep last frame's view-projection and use `cam.reprojection(previousViewProjection)`, which
 maps this frame's clip space to the previous frame's.
 
+## `OrthoCameraf` / `OrthoCamerad`
+
+The orthographic camera, for 2D views, user interfaces, maps, CAD and technical drawings. It is a **separate type** from `Cameraf`, which was decided in a spike with the existing tests as the judge: a perspective camera
+is `fovy` and `aspect`, an orthographic one is a box, and one type that holds both would give `fovy()` a meaning it does not have for half of its users and put a check in every consumer. With two types a consumer that needs a
+perspective camera cannot be handed an orthographic one (it does not compile), and the ones that can do both say so (the table below). The cost is that `Cameraf`'s consumers have no orthographic overload by default; the ones that need one have it.
+
+```java
+OrthoCameraf cam = OrthoCameraf.lookingAt(eye, target, Vec3f.UNIT_Y, 20f, 16f / 9f, 0.1f, 500f, DepthRange.ZERO_TO_ONE);   // the box is 20 units high, 16/9 as wide
+OrthoCameraf px = OrthoCameraf.forViewport(new Vec3f(640f, 360f, 10f), 1280, 720, 1f, 0.1f, 100f, DepthRange.of(ClipSpace.OPENGL));   // one world unit is one pixel
+Mat4f vp = cam.viewProjection();                       // JOML's setOrtho in each convention (tested)
+Rayf ray = cam.pickRay(mx + 0.5f, my + 0.5f, w, h);    // the direction of the view, an origin that moves with the pixel
+float size = cam.pixelSize(h);                         // world units per pixel: the same everywhere
+```
+
+The view is the box `left..right` by `bottom..top` (view-space units) and `near..far` along the view direction; `near` may be zero or negative, `far` must be finite (no infinite orthographic projection;
+with `DepthRange.REVERSED_ZERO_TO_ONE` the far plane is a real plane). Depth is **linear**: `linearizeDepth` is `near + ndc * (far - near)` in the `[0, 1]` convention. `viewPositionFromDepth` and
+`worldPositionFromDepth` take the x and y from the box. `jitteredProjection` shifts the translation by `(2 jx / width, 2 jy / height)` and leaves depth alone. The right axis of the camera is `rightAxis()`
+because `right()` is the right edge of the box. `OrthoCamerad` and `cameraRelative()` work as for `Cameraf` (tested at 6.4 million units from the origin).
+
+### Which parts of the library are orthographic-aware
+
+Every place that assumed a perspective camera, and what it does now. "Refuses" means that the type or an exception stops it; nothing gives a quietly wrong answer for an orthographic camera.
+
+| Part | What it assumed | For an orthographic view |
+|---|---|---|
+| `Cameraf` (all of it) | `fovy`, `aspect`, `far` as a distance | `OrthoCameraf` is the type; the two do not mix |
+| `Cameraf.linearizeDepth`, `viewPositionFromDepth` | the perspective depth curve | `OrthoCameraf` has the linear forms |
+| `Cameraf.pickRay` | origin at the camera, direction through the pixel | `OrthoCameraf.pickRay`: direction of the view, origin per pixel |
+| `Jitter`, `jitteredProjection` | sub-pixel offsets in pixels | the same offsets; `OrthoCameraf.jitteredProjection` (the offset goes in the translation) |
+| `ClusterGrid.of(Cameraf, ...)`, `of(fovy, ...)` | exponential slices, tiles that widen with depth | `ClusterGrid.of(OrthoCameraf, ...)`: linear slices, fixed tiles, boxes, GLSL lookup without a logarithm (CAM-13); `tanHalfFovX/Y` and `slopes` refuse an orthographic grid |
+| `ClusterLights.assign`, `assignTiled` | the angular extent of a sphere | handles an orthographic grid: the extent is the sphere's range in view space, and the test is the exact sphere against box |
+| `CullContext`, `CullStages.SmallFeature`, `LodSelector` | the size of an object is `radius * pixelScale / distance` | `CullContext.orthographic(...)`: the size is `radius * pixelScale` (pixels per world unit) at any distance |
+| `ClusterHierarchy.select`, `MeshLod`, `ClusterCullView` and the GPU cull shaders | the same formula, from numbers (`pixelScale`, the eye) and not a context | **perspective only**: they take numbers, so they cannot refuse a camera; do not feed them the pixels per unit of an orthographic view |
+| `TileSelector.select(..., fovY, ...)` | a field of view and the distance to the globe | perspective only (it takes `fovY`); an orthographic map view is the 2D map view of roadmap MAP-3 |
+| `Cascades`, `CascadeCasters` | the slices of a perspective frustum, by `fovy` | take a `Cameraf`: an orthographic main camera is refused by the type; a cascaded shadow map for an orthographic view is not built |
+| `PlanarViews.reflection`, `reflectedView`, `portalView` | matrices only | any camera |
+| `PlanarViews.obliqueNearPlane` | a projection matrix and a plane | works on an orthographic projection (tested: the plane has the depth of the near plane, the clipped side is outside the range) |
+| `Stereo`, `CubeFaces`, `DualParaboloid` | perspective by construction (angles, 90 degrees, a paraboloid) | not applicable |
+| `Frustumf.fromViewProjection`, `Mat4f.invertProjection` | any projection of the kinds `Mat4f` builds | orthographic included |
+| `vmath.occlusion.DepthBuffer`, `ConeCull` | | have orthographic modes already (`beginOrthographic`, the orthographic cluster cone test) |
+| `vmath.lines` | `u_worldToPixel` is `0.5 * height * projection[1][1]` | for an orthographic camera it is `1 / pixelSize(height)` (a width in world units is the size on the ground) |
+
 ## Cascaded shadow maps (`Cascades`)
 
 ```java
@@ -98,8 +140,9 @@ text that is not compiled here.
 
 ## Not covered yet
 
-Orthographic and off-center cameras (use `Mat4f.ortho`/`frustum` directly), a single culling frustum for both
-eyes, and the quality of a dual-paraboloid shadow map compared with a cube map (not measured). All are in `docs/ROADMAP.md`.
+Off-center cameras as a camera type (use `Mat4f.frustum` directly), a single culling frustum for both
+eyes, and the quality of a dual-paraboloid shadow map compared with a cube map (not measured). All are in `docs/ROADMAP.md`. Orthographic cameras are
+`OrthoCameraf`, above.
 
 ## Clip-space conventions (`ClipSpace`)
 

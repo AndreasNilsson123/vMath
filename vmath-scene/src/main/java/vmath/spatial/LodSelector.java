@@ -9,7 +9,9 @@ import vmath.bulk.VisibilitySet;
  *
  * <p><b>The metric.</b> The size of an object is the diameter, in pixels of screen height, of its
  * bounding sphere: {@code 2 * radius * pixelScale / distance} (see
- * {@link CullContext#pixelScale()}), times an optional bias. It needs no matrices, is conservative
+ * {@link CullContext#pixelScale()}), times an optional bias; in an orthographic context
+ * ({@link CullContext#orthographic()}) the distance does not enter: {@code 2 * radius * pixelScale}.
+ * It needs no matrices, is conservative
  * for box-shaped objects, and does not change when the camera turns.
  *
  * <p><b>Thresholds.</b> With {@code L} levels there are {@code L - 1} thresholds in strictly
@@ -182,6 +184,7 @@ public final class LodSelector {
             throw new IllegalArgumentException("levels and fade need " + n + " entries");
         }
         float scale = ctx.pixelScale() * bias;
+        boolean ortho = ctx.orthographic();
         float cx = ctx.camera().x(), cy = ctx.camera().y(), cz = ctx.camera().z();
         float[] x0 = bounds.minXs(), y0 = bounds.minYs(), z0 = bounds.minZs();
         float[] x1 = bounds.maxXs(), y1 = bounds.maxYs(), z1 = bounds.maxZs();
@@ -196,7 +199,7 @@ public final class LodSelector {
                 float dx = (x0[i] + x1[i]) * 0.5f - cx, dy = (y0[i] + y1[i]) * 0.5f - cy, dz = (z0[i] + z1[i]) * 0.5f - cz;
                 float radius = (float) Math.sqrt(hx * hx + hy * hy + hz * hz);
                 float dist = (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
-                size = dist > 0f ? 2f * radius * scale / dist : Float.POSITIVE_INFINITY;
+                size = ortho ? 2f * radius * scale : dist > 0f ? 2f * radius * scale / dist : Float.POSITIVE_INFINITY;
             }
             if (size < cullBelow) {
                 words[i >>> 6] &= ~(1L << i);

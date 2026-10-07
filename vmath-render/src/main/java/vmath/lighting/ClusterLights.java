@@ -282,8 +282,15 @@ public final class ClusterLights {
             ext[2] = -1f;
             ext[3] = 1f;
         } else {
-            ndcExtent(sx[l], depth, r, grid.tanHalfFovX(), ext, 0);
-            ndcExtent(sy[l], depth, r, grid.tanHalfFovY(), ext, 2);
+            if (grid.orthographic()) {
+                // no perspective: the sphere covers the view-space range x +- r on every depth
+                grid.viewBox(boxEdges);
+                orthoExtent(sx[l], r, boxEdges[0], boxEdges[1], ext, 0);
+                orthoExtent(sy[l], r, boxEdges[2], boxEdges[3], ext, 2);
+            } else {
+                ndcExtent(sx[l], depth, r, grid.tanHalfFovX(), ext, 0);
+                ndcExtent(sy[l], depth, r, grid.tanHalfFovY(), ext, 2);
+            }
         }
         int tilesX = grid.tilesX(), tilesY = grid.tilesY();
         float perTileX = 0.5f * grid.viewportWidth() / grid.tilePixels(), perTileY = 0.5f * grid.viewportHeight() / grid.tilePixels();
@@ -324,6 +331,14 @@ public final class ClusterLights {
     }
 
     private final float[] boxScratch = new float[6];
+    private final float[] boxEdges = new float[4];
+
+    /** The ndc range of a sphere along one axis of an orthographic view: its view-space range mapped linearly, slightly widened. */
+    private static void orthoExtent(float c, float r, float lo, float hi, float[] out, int at) {
+        float size = hi - lo;
+        out[at] = Math.max(-1f, (c - r - lo) / size * 2f - 1f - 1e-5f);
+        out[at + 1] = Math.min(1f, (c + r - lo) / size * 2f - 1f + 1e-5f);
+    }
 
     private static int clampIndex(int i, int n) {
         return i < 0 ? 0 : Math.min(i, n - 1);
