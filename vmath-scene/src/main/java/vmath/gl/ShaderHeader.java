@@ -63,12 +63,14 @@ public final class ShaderHeader {
     private final List<StructLayout> structs;
     private final List<String> constants;
     private final List<String> blocks;
+    private final List<String> accesses;
 
-    private ShaderHeader(String guard, List<StructLayout> structs, List<String> constants, List<String> blocks) {
+    private ShaderHeader(String guard, List<StructLayout> structs, List<String> constants, List<String> blocks, List<String> accesses) {
         this.guard = guard;
         this.structs = structs;
         this.constants = constants;
         this.blocks = blocks;
+        this.accesses = accesses;
     }
 
     /**
@@ -95,6 +97,7 @@ public final class ShaderHeader {
         private final List<StructLayout> structs = new ArrayList<>();
         private final List<String> constants = new ArrayList<>();
         private final List<String> blocks = new ArrayList<>();
+        private final List<String> accesses = new ArrayList<>();
         private final List<String> constantNames = new ArrayList<>();
 
         private Builder(String guard) {
@@ -185,12 +188,29 @@ public final class ShaderHeader {
         }
 
         /**
+         * Adds an array of structs together with the function that reads it (GLSL output only).
+         *
+         * <p>The element struct is declared in the header too, so it need not be added with
+         * {@link #struct}. The text of {@link StructArrayAccess#glsl()} comes after the blocks, and
+         * its {@code fetch_<name>} function is what shader code calls, whichever access mode the
+         * array has.
+         *
+         * @param access the array and its access mode; must not be {@code null}
+         * @return this builder
+         */
+        public Builder access(StructArrayAccess access) {
+            structs.add(access.layout());
+            accesses.add(access.glsl());
+            return this;
+        }
+
+        /**
          * Builds the header; the builder may be reused.
          *
          * @return the header, never {@code null}
          */
         public ShaderHeader build() {
-            return new ShaderHeader(guard, List.copyOf(structs), List.copyOf(constants), List.copyOf(blocks));
+            return new ShaderHeader(guard, List.copyOf(structs), List.copyOf(constants), List.copyOf(blocks), List.copyOf(accesses));
         }
 
         /**
@@ -232,6 +252,9 @@ public final class ShaderHeader {
         if (language == Language.GLSL) {
             for (String b : blocks) {
                 sb.append(b).append("\n\n");
+            }
+            for (String a : accesses) {
+                sb.append(a).append('\n');
             }
         }
         sb.append("#endif // ").append(guard).append('\n');

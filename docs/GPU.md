@@ -162,6 +162,137 @@ Split of the cost on the same set: bit scan with `nextSetBit` 0.41 ms, word scan
 0.16 to 0.19 ms. The gather (cache misses across six arrays) is the largest part and is what a packed layout would attack; it was not convincing here, so
 the bounds stay in the planar layout the SIMD cull needs.
 
+## Choosing by capability (`vmath.gl`, experimental)
+
+Some things have a newer way and an older way to do them. The library implements both and picks by what the context can do, so that the same program runs on OpenGL 3.30 and on 4.6, and
+on Vulkan, without the caller knowing which way is behind it. The library never calls a graphics API: **you** describe the context with a `GraphicsCapabilities` (from the version and the
+extension strings you queried, or from the Vulkan device features) and the library answers with a strategy, a layout and, where there is shader text, the GLSL.
+
+```java
+GraphicsCapabilities caps = GraphicsCapabilities.openGl(major, minor, extensionNames);   // or GraphicsCapabilities.vulkan(multiDrawIndirect, drawIndirectFirstInstance, shaderDrawParameters)
+GraphicsCapabilities older = caps.without(GraphicsCapabilities.Feature.MULTI_DRAW_INDIRECT);   // to test a lower way, or to work around a driver
+```
+
+The floor is OpenGL 3.30 core; below it nothing is promised and `openGl` refuses. A strategy that the capabilities cannot satisfy is an `UnsupportedOperationException` that lists what is
+missing; the library never quietly does something else. Every table below is produced by `StrategyChooser.markdownTable()`; a test (`DecisionTablesDocTest`) keeps this page equal to the code
+(`-Dvmath.writeDocs=true` rewrites it).
+
+The features that each context has (derived from the version and the extensions in `GraphicsCapabilities.openGl`, which follows the specifications; it has not been checked against a driver):
+
+<!-- decision-table:capabilities -->
+| Feature | OpenGL 3.3 | OpenGL 4.2 | OpenGL 4.3 | OpenGL 4.5 | OpenGL 4.6 | Vulkan, no optional features | Vulkan, all three |
+|---|---|---|---|---|---|---|---|
+| GLSL | 330 | 420 | 430 | 450 | 460 | 450 | 450 |
+| `MULTI_DRAW` | yes | yes | yes | yes | yes | no | no |
+| `BASE_VERTEX` | yes | yes | yes | yes | yes | yes | yes |
+| `INSTANCED_DRAWS` | yes | yes | yes | yes | yes | yes | yes |
+| `INSTANCED_ARRAYS` | yes | yes | yes | yes | yes | yes | yes |
+| `UNIFORM_BLOCKS` | yes | yes | yes | yes | yes | yes | yes |
+| `TEXTURE_BUFFERS` | yes | yes | yes | yes | yes | yes | yes |
+| `DRAW_INDIRECT` | no | yes | yes | yes | yes | yes | yes |
+| `MULTI_DRAW_INDIRECT` | no | no | yes | yes | yes | no | yes |
+| `BASE_INSTANCE` | no | yes | yes | yes | yes | no | yes |
+| `SHADER_DRAW_PARAMETERS` | no | no | no | no | yes | no | yes |
+| `STORAGE_BUFFERS` | no | no | yes | yes | yes | yes | yes |
+| `COMPUTE_SHADERS` | no | no | yes | yes | yes | yes | yes |
+| `PERSISTENT_MAPPING` | no | no | no | yes | yes | yes | yes |
+<!-- /decision-table -->
+
+### Submitting draws (`DrawList`, `DrawSubmission`)
+
+Put the draws in a `DrawList` (a count, a first vertex or index, a base vertex, an instance count, a base instance and a value of yours per draw), ask `DrawSubmission.choose(caps, list)`, and
+write the list in the form it names:
+
+| `DrawSubmission` | What you call | What the list gives you |
+|---|---|---|
+| `MULTI_DRAW_INDIRECT` | `glMultiDrawArraysIndirect` / `glMultiDrawElementsIndirect` (Vulkan: `vkCmdDrawIndirect` / `vkCmdDrawIndexedIndirect`) over a buffer | `list.writeIndirect(DrawCommandBuffer)`, which keeps zero-instance draws so that command index = draw index |
+| `MULTI_DRAW_CLIENT` | `glMultiDrawArrays` / `glMultiDrawElements` (`glMultiDrawElementsBaseVertex` if a base vertex is used) | `copyCounts`, `copyFirsts`, `copyIndexOffsets`, `copyBaseVertices`; draws that draw nothing are left out; no instancing |
+| `DRAW_LOOP` | one `glDrawArraysInstanced` / `glDrawElementsInstancedBaseVertex` per draw (with the base-instance form of the call where `BASE_INSTANCE` exists) | `list.forEach(visitor)`; without `BASE_INSTANCE` move the per-instance vertex attributes by `baseInstance` instances yourself |
+
+The choice depends on the shape of the list, because a client multi-draw cannot instance and an indirect draw with a base instance needs `BASE_INSTANCE`:
+
+Draws without instancing:
+
+<!-- decision-table:draw-plain -->
+| # | Strategy | Needs | What it does |
+|---|---|---|---|
+| 1 | `MULTI_DRAW_INDIRECT` | `MULTI_DRAW_INDIRECT` | one indirect call, the commands in a buffer |
+| 2 | `MULTI_DRAW_CLIENT` | `MULTI_DRAW` | one call with client arrays |
+| 3 | `DRAW_LOOP` | nothing | a draw call per draw |
+<!-- /decision-table -->
+
+Instanced draws:
+
+<!-- decision-table:draw-instanced -->
+| # | Strategy | Needs | What it does |
+|---|---|---|---|
+| 1 | `MULTI_DRAW_INDIRECT` | `MULTI_DRAW_INDIRECT` | one indirect call, the commands in a buffer |
+| 2 | `DRAW_LOOP` | `INSTANCED_DRAWS` | an instanced draw call per draw |
+<!-- /decision-table -->
+
+Instanced draws with a base instance:
+
+<!-- decision-table:draw-base-instance -->
+| # | Strategy | Needs | What it does |
+|---|---|---|---|
+| 1 | `MULTI_DRAW_INDIRECT` | `MULTI_DRAW_INDIRECT`, `BASE_INSTANCE` | one indirect call, the commands in a buffer |
+| 2 | `DRAW_LOOP` | `INSTANCED_DRAWS` | an instanced draw call per draw; without a base instance the per-instance attributes are moved by hand |
+<!-- /decision-table -->
+
+### Arrays of structs in a shader (`StructArrayAccess`)
+
+A table of styles, a list of instances: the shader code calls `fetch_<name>(i)` and gets a struct, and the buffer behind it is one of four kinds. `StructArrayAccess.of(struct, mode, name, count,
+slot, caps)` returns the GLSL (also through `ShaderHeader.Builder.access`), the layout and stride to write the elements with, and, for vertex attributes, the `VertexBufferLayout`.
+
+| `StructArrayAccess.Mode` | Buffer | Write the elements | Bind it with |
+|---|---|---|---|
+| `STORAGE_BLOCK` | shader storage buffer | the writers of the struct in `std430` | `glBindBufferBase(GL_SHADER_STORAGE_BUFFER, slot, ...)` |
+| `UNIFORM_BLOCK` | uniform buffer, at most 16,384 bytes guaranteed | `std140` | `glBindBufferBase(GL_UNIFORM_BUFFER, slot, ...)` |
+| `TEXTURE_BUFFER` | texture buffer, format `RGBA32UI` | `std430`, every element padded to a multiple of 16 bytes (`elementStride()`) | `glTexBuffer` and a `usamplerBuffer` on a texture unit |
+| `VERTEX_ATTRIBUTE` | vertex buffer, divisor 1 | `std430`, at `elementStride()`; the attributes are in `vertexLayout()` | the vertex array, one attribute per member |
+
+`layout(binding = ...)` is only written from GLSL 4.20 on; below that the text has none and you bind through the API. The texture-buffer and attribute modes read scalars and vectors of `float`, `int` and
+`uint`; a matrix, array or nested struct member is refused by name rather than laid out some other way. Which mode the library picks:
+
+Read by any index:
+
+<!-- decision-table:access-random -->
+| # | Strategy | Needs | What it does |
+|---|---|---|---|
+| 1 | `STORAGE_BLOCK` | `STORAGE_BUFFERS` | a storage block, any length |
+| 2 | `TEXTURE_BUFFER` | `TEXTURE_BUFFERS` | a texture buffer of RGBA32UI texels, any length |
+| 3 | `UNIFORM_BLOCK` | `UNIFORM_BLOCKS` | an array in a uniform block, as long as the block size allows |
+<!-- /decision-table -->
+
+Read for the instance that is being drawn:
+
+<!-- decision-table:access-instance -->
+| # | Strategy | Needs | What it does |
+|---|---|---|---|
+| 1 | `VERTEX_ATTRIBUTE` | `INSTANCED_ARRAYS` | per-instance vertex attributes, nothing to fetch |
+| 2 | `STORAGE_BLOCK` | `STORAGE_BUFFERS` | a storage block read by the instance index |
+| 3 | `TEXTURE_BUFFER` | `TEXTURE_BUFFERS` | a texture buffer read by the instance index |
+| 4 | `UNIFORM_BLOCK` | `UNIFORM_BLOCKS` | an array in a uniform block read by the instance index |
+<!-- /decision-table -->
+
+The text has been checked against the layouts by tests, and compiled with a GLSL compiler wherever one is installed (`ShaderCompileTest`; none was installed on the machine it was written on, so it has
+not been compiled there).
+
+### Where the culling runs (`CullBackend`, `SurvivorBatcher`)
+
+The compute shaders of the next section are one way to cull. The other is the CPU: the kernels of `vmath.spatial` produce a `VisibilitySet`, `SurvivorBatcher.batch` groups the survivors by draw into a
+`DrawList` (instance count and base instance per draw) and the list of surviving object indices (`survivors()`) that the vertex shader reads per instance, and `DrawSubmission` hands the list to the
+driver in the best way available. Both paths give the same grouping.
+
+<!-- decision-table:cull-backend -->
+| # | Strategy | Needs | What it does |
+|---|---|---|---|
+| 1 | `COMPUTE` | `DRAW_INDIRECT`, `BASE_INSTANCE`, `STORAGE_BUFFERS`, `COMPUTE_SHADERS`, GLSL 4.50 | the compute shaders of GpuCullGlsl write the indirect commands |
+| 2 | `CPU` | nothing | SIMD, parallel or tree kernels, then SurvivorBatcher and DrawList |
+<!-- /decision-table -->
+
+The compute path needs GLSL 4.50 for now (the text of `GpuCullGlsl` starts with `#version 450`); the roadmap lowers that once a compiler has confirmed what the shaders need.
+
 ## GPU-driven culling (`vmath.gpucull`, experimental)
 
 CULL-13: the CPU-side layouts and a **CPU reference** of what a culling compute shader does, so that the shader has an exact oracle. Nothing here talks to a graphics API, and

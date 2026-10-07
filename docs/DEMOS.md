@@ -14,7 +14,7 @@ The framework (phase F) and fifteen demos are done: `city`, `culling-lab`, `inte
 
 | | |
 |---|---|
-| Demos | 15 of 25 (`city`, `culling-lab`, `interior-portals`, `occlusion`, `dq-vs-lbs`, `rigid-pile`, `sdf-sculpt`, `terrain`, `sky-sun`, `cluster-lod`, `gpu-culling`, `clustered-lights`, `globe`, `cascaded-shadows`, `streaming-ring`) |
+| Demos | 15 of 32 (`city`, `culling-lab`, `interior-portals`, `occlusion`, `dq-vs-lbs`, `rigid-pile`, `sdf-sculpt`, `terrain`, `sky-sun`, `cluster-lod`, `gpu-culling`, `clustered-lights`, `globe`, `cascaded-shadows`, `streaming-ring`) |
 | Framework | launcher with a menu, runner, HUD, camera, instance stream, box renderer, debug lines, depth-buffer inset, shared scenes, warm-up, statistics and report, screenshot, smoke check |
 | Verified on | NVIDIA GeForce RTX 3060 Laptop GPU, driver 546.30, OpenGL 4.5, Windows 11, JDK 25 (one machine; other vendors and systems are unchecked) |
 
@@ -37,6 +37,8 @@ Every demo, no exceptions:
    test (`DemosRegistryTest`) fails when one of them is missing.
 7. **OpenGL 4.5, one context.** The demos use direct state access, persistent mapping, indirect draws and compute shaders, but nothing that needs more than 4.5 (so not mesh shaders), and no
    second window. Vulkan is not a goal of the demos.
+   The demos of phase L and M (lines and maps) are the exception that proves the tiers: they run in a 4.5 context but force each lower strategy of the library (and its `#version`, down to
+   330) through the capabilities they pass in, so that every tier is drawn and compared; what they cannot show is that a real driver of that version accepts it (`ROADMAP.md` GPU-15).
 8. **Honest scope.** A card says what the demo does not prove: one GPU, a synthetic scene, a CPU measurement that leaves the driver out.
 
 ---
@@ -184,6 +186,21 @@ Does not prove: what the demo cannot tell you.
 - [ ] **R4 (P2, M)** `ibl-spheres`: a grid of material spheres lit by `SphericalHarmonics` irradiance and `Ibl` GGX prefiltering of the procedural sky. Shows: image-based lighting. → F12, R1
 - [ ] **R5 (P3, M)** `mirrors-stereo`: a planar reflection and a portal view (`PlanarViews`) and a side-by-side stereo pair (`Stereo`). Shows: the view-matrix constructions. → F12
 - [ ] **R6 (P3, S)** `color-lab`: colour spaces and tone maps side by side (`ColorSpaces`, `Srgb`, `ToneMap`). Shows: the colour math.
+
+### Phase L: lines and multi-draw
+
+The demos of `ROADMAP.md` phase O. Each runs every strategy of the line renderer that its context allows (the 4.5 context runs all of them by forcing the capabilities down), switchable live with the keys 1 to 5, and its `--verify` compares each strategy's image with the CPU reference of the library (LINE-2).
+
+- [ ] **L1 (P1, L)** `line-lab`: five thousand polylines of sixty-four points each (a procedural river-and-road network and random walks), drawn by every strategy with the same LineBatch; per strategy the draw calls, the bytes uploaded, the CPU time to write and the GPU time, and the largest coverage difference from the reference. Shows: LineBatch, LineRenderPlan.choose, DrawList and what each tier costs. → LINE-4
+- [ ] **L2 (P2, M)** `line-styles`: widths from hairline to thirty pixels, dashes, caps, joins and the miter limit on sharp turns, anti-aliasing against a pixel-exact reference, zoom without rebuilding, in world and in pixel width. Shows: the style model and the screen-space expansion. → L1
+- [ ] **L3 (P2, M)** `line-stream`: a few thousand polylines added, edited and removed every frame and a hundred tracks with trails; the bytes uploaded with dirty ranges against a full upload, the compaction, the handles. Shows: LineSet, TrailBuffer. → LINE-5, LINE-7
+
+### Phase M: 2D maps
+
+- [ ] **M1 (P1, L)** `map-view`: a moving map with own position moving along a route: a MapView2d that centres on it or sits it near the bottom, north up, course up and heading up on a key, range rings and a route with legs from GeoShapes, tiles from the flat tile selector (the generated procedural tiles of the globe demo, so no downloads), a scale bar from the pixel size on the ground, and a cursor that shows latitude and longitude. Shows: the 2D view, geodesy and the shapes, all drawn through the line renderer. → MAP-3, MAP-4, MAP-5, L1
+- [ ] **M2 (P2, M)** `map-projections`: the same data (coastlines of the procedural world, a geodesic and a rhumb line between two cities, circles of equal ground radius) in Web Mercator, azimuthal equidistant, polar stereographic and UTM, switched live, with distortion ellipses so that the difference can be seen; the round-trip error and the distance error of each printed. Shows: MapProjection and Geodesic. → MAP-1, MAP-2
+- [ ] **M3 (P2, M)** `map-symbols`: ten thousand moving symbols with headings, trails, priority declutter of labels and a pointer that selects the nearest one; the symbols that stay upright on a rotated map; the draw calls and the CPU time per frame in every tier. Shows: the symbol writer, Declutter, TrailBuffer, picking through `screenToWorld`. → MAP-6, MAP-7, L3
+- [ ] **M4 (P2, L)** `map-terrain`: hillshaded elevation tiles with a ramp indexed by the height relative to a reference altitude that the pointer or a key changes, and a viewshed from the own position shown as a mask, its cost per cell. Shows: the terrain shading and the CPU viewshed. → MAP-9, M1
 
 ### Phase T: tour and capture
 

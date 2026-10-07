@@ -92,4 +92,25 @@ class ShaderCompileTest {
         compile("paraboloid", "vert", "#version 450\nlayout(location = 0) in vec3 position;\nout float gl_ClipDistance[1];\n" + DualParaboloid.glsl()
                 + "void main() { float side; gl_Position = dualParaboloid(position, 0.1, 100.0, side); gl_ClipDistance[0] = side; }\n");
     }
+
+    @Test
+    void everyAccessModeOfAStructArrayCompilesAtEveryVersionItClaims() throws Exception {
+        GlslType.Struct style = new GlslType.Struct("Style", List.of(new GlslType.Member("color", GlslType.VEC4), new GlslType.Member("width", GlslType.FLOAT),
+                new GlslType.Member("flags", GlslType.UINT), new GlslType.Member("offset", GlslType.IVEC2)));
+        int[][] versions = {{3, 3}, {4, 0}, {4, 1}, {4, 2}, {4, 3}, {4, 4}, {4, 5}, {4, 6}};
+        for (int[] v : versions) {
+            GraphicsCapabilities caps = GraphicsCapabilities.openGl(v[0], v[1], List.of());
+            for (StructArrayAccess.Mode mode : StructArrayAccess.Mode.values()) {
+                if (!caps.has(mode.requires())) {
+                    continue;
+                }
+                StructArrayAccess a = StructArrayAccess.of(style, mode, "styles", 64, mode == StructArrayAccess.Mode.VERTEX_ATTRIBUTE ? 4 : 1, caps);
+                String header = ShaderHeader.builder("STYLES").access(a).build(ShaderHeader.Language.GLSL);
+                String source = caps.glsl().versionLine() + "\n" + header + "layout(location = 0) in vec3 position;\n"
+                        + "void main() {\n    Style s = " + a.fetchFunction() + "(gl_VertexID);\n"
+                        + "    gl_Position = vec4(position * s.width + s.color.xyz + float(s.flags) + float(s.offset.x), 1.0);\n}\n";
+                compile("access-" + mode + "-" + caps.glsl().number(), "vert", source);
+            }
+        }
+    }
 }
