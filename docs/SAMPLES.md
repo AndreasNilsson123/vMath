@@ -11,6 +11,7 @@ camera, a heads-up display, statistics, screenshots and a smoke check); how it i
 ./gradlew -Psamples :vmath-samples:run --args="--list"                          # the demos
 ./gradlew -Psamples :vmath-samples:run --args="--help"
 ./gradlew -Psamples :vmath-samples:smoke                                        # every demo for a few frames, checked
+./gradlew -Psamples :vmath-samples:lineCheck                                    # the line shaders at every GLSL version, against the reference (add --args="--bench" for the costs)
 ./gradlew -Psamples :vmath-samples:test                                         # the tests that need no window
 ```
 
@@ -91,6 +92,8 @@ a real driver is the first check against hardware, and it covers: the 64-byte in
 formats and locations that `VertexBufferLayout` produces, the shader input text from `glslInputs()`, persistent mapping with the ring's fences (no corruption, and the stalls counted
 when the GPU is the limit), and the OpenGL clip-space conventions of `Cameraf` (`DepthRange.NEGATIVE_ONE_TO_ONE`). It was run on one NVIDIA GPU under Windows; the
 GPU-driven culling shaders (`vmath.gpucull`), Vulkan, other vendors and other operating systems are still unchecked, and the parts of the framework that need no window have unit tests, and `:vmath-samples:smoke` runs every demo on a machine that has a display and a driver (it is not part of any other task).
+
+`:vmath-samples:lineCheck` (class `vmath.samples.verify.LineGpuCheck`, also a test that skips without a context) is the second check against hardware: it opens a hidden window, compiles, links and runs the shaders of every line strategy of `vmath.lines` at every GLSL version from 3.30 to what the driver gives, and compares the pixels with the reference of the library (177 cases, all agreeing on the NVIDIA GPU above; `docs/LINES.md`). It leaves out the culling shaders, Vulkan and other vendors like the sample.
 
 The older headless `vmath-bench/.../sample/CullAndDrawSample` stays as the CPU-only version for machines without a graphics driver (`./gradlew :vmath-bench:sample`, `docs/GPU.md`).
 

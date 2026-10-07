@@ -74,3 +74,16 @@ tasks.register<JavaExec>("smoke") {
     jvmArgs(demoJvmArgs)
     args("--smoke")
 }
+
+// Compiles and runs the shaders of every line strategy (vmath.lines) at every GLSL version from 3.30 to what the driver gives and compares the pixels with the reference of the
+// library; --bench adds the cost of each strategy. Needs a display and an OpenGL 4.6 driver (docs/LINES.md).
+//
+//   ./gradlew -Psamples :vmath-samples:lineCheck
+//   ./gradlew -Psamples :vmath-samples:lineCheck --args="--bench"
+tasks.register<JavaExec>("lineCheck") {
+    group = "verification"
+    description = "Runs the line shaders on the OpenGL driver and compares them with the reference (needs a display and OpenGL 4.6)."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("vmath.samples.verify.LineGpuCheck")
+    jvmArgs(demoJvmArgs)
+}

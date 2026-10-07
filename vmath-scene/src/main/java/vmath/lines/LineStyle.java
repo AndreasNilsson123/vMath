@@ -298,6 +298,10 @@ public final class LineStyle {
         return dash.length;
     }
 
+    float dashAt(int index) {
+        return dash[index];
+    }
+
     /**
      * Gives the dash pattern.
      *

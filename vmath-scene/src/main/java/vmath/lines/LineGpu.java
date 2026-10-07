@@ -73,6 +73,13 @@ public final class LineGpu {
     private static final long O_ALONG1 = SEGMENT_LAYOUT.offsetOf("along1");
     private static final long O_PREV = SEGMENT_LAYOUT.offsetOf("prev");
     private static final long O_PACKED = SEGMENT_LAYOUT.offsetOf("flagsAndStyle");
+    private static final long O_COLOR = STYLE_LAYOUT.offsetOf("color");
+    private static final long O_DASH0 = STYLE_LAYOUT.offsetOf("dash0");
+    private static final long O_DASH1 = STYLE_LAYOUT.offsetOf("dash1");
+    private static final long O_WIDTH = STYLE_LAYOUT.offsetOf("width");
+    private static final long O_MITER = STYLE_LAYOUT.offsetOf("miterLimit");
+    private static final long O_STYLE_FLAGS = STYLE_LAYOUT.offsetOf("flags");
+    private static final long O_DASH_COUNT = STYLE_LAYOUT.offsetOf("dashCount");
 
     private LineGpu() {
     }
@@ -146,17 +153,16 @@ public final class LineGpu {
      */
     public static void writeStyle(MemorySegment dst, long offset, LineStyle s) {
         int c = s.color();
-        float[] rgba = {(c >>> 24 & 255) / 255f, (c >>> 16 & 255) / 255f, (c >>> 8 & 255) / 255f, (c & 255) / 255f};
-        float[] dash = s.dash();
+        int dashCount = s.dashCount();
         for (int k = 0; k < 4; k++) {
-            GpuWriter.putFloat(dst, offset + STYLE_LAYOUT.offsetOf("color") + 4L * k, rgba[k]);
-            GpuWriter.putFloat(dst, offset + STYLE_LAYOUT.offsetOf("dash0") + 4L * k, k < dash.length ? dash[k] : 0f);
-            GpuWriter.putFloat(dst, offset + STYLE_LAYOUT.offsetOf("dash1") + 4L * k, 4 + k < dash.length ? dash[4 + k] : 0f);
+            GpuWriter.putFloat(dst, offset + O_COLOR + 4L * k, (c >>> (24 - 8 * k) & 255) / 255f);
+            GpuWriter.putFloat(dst, offset + O_DASH0 + 4L * k, k < dashCount ? s.dashAt(k) : 0f);
+            GpuWriter.putFloat(dst, offset + O_DASH1 + 4L * k, 4 + k < dashCount ? s.dashAt(4 + k) : 0f);
         }
-        GpuWriter.putFloat(dst, offset + STYLE_LAYOUT.offsetOf("width"), s.width());
-        GpuWriter.putFloat(dst, offset + STYLE_LAYOUT.offsetOf("miterLimit"), s.miterLimit());
-        GpuWriter.putInt(dst, offset + STYLE_LAYOUT.offsetOf("flags"), styleFlags(s));
-        GpuWriter.putInt(dst, offset + STYLE_LAYOUT.offsetOf("dashCount"), dash.length);
+        GpuWriter.putFloat(dst, offset + O_WIDTH, s.width());
+        GpuWriter.putFloat(dst, offset + O_MITER, s.miterLimit());
+        GpuWriter.putInt(dst, offset + O_STYLE_FLAGS, styleFlags(s));
+        GpuWriter.putInt(dst, offset + O_DASH_COUNT, dashCount);
     }
 
     /**

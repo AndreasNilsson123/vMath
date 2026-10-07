@@ -512,7 +512,7 @@ public final class LineRenderPlan {
         for (int p : batch.drawOrder()) {
             int si = batch.styleIndexOf(p);
             if (runSegments > 0 && si != runStyle) {
-                closeRun(batch, styleBuffer, draws, runStyle, runFirst, runSegments);
+                closeRun(batch.style(runStyle), styleBuffer, draws, runStyle, runFirst, runSegments);
                 runSegments = 0;
             }
             if (runSegments == 0) {
@@ -527,20 +527,70 @@ public final class LineRenderPlan {
             }
         }
         if (runSegments > 0) {
-            closeRun(batch, styleBuffer, draws, runStyle, runFirst, runSegments);
+            closeRun(batch.style(runStyle), styleBuffer, draws, runStyle, runFirst, runSegments);
         }
         return draws.size();
     }
 
-    private void closeRun(LineBatch batch, MemorySegment styleBuffer, DrawList draws, int style, long firstSegment, long segmentCount) {
+    private void closeRun(LineStyle runStyle, MemorySegment styleBuffer, DrawList draws, int style, long firstSegment, long segmentCount) {
         if (strategy == LineStrategy.INDIRECT_DRAW_ID) {
-            LineGpu.writeStyle(styleBuffer, draws.size() * LineGpu.STYLE_BYTES, batch.style(style));
+            LineGpu.writeStyle(styleBuffer, draws.size() * LineGpu.STYLE_BYTES, runStyle);
         }
         if (strategy == LineStrategy.EXPANDED_MULTIDRAW) {
             draws.addArrays((int) (segmentCount * LineGeometry.VERTICES_PER_SEGMENT), (int) (firstSegment * LineGeometry.VERTICES_PER_SEGMENT), 1, 0, style);
         } else {
             draws.addArrays(LineGeometry.VERTICES_PER_SEGMENT, 0, (int) segmentCount, (int) firstSegment, style);
         }
+    }
+
+    // ---------------------------------------------------------------- pieces for LineSet
+
+    /** The size in bytes of what a polyline occupies per unit: a segment record, or a hairline vertex. */
+    long unitBytes() {
+        return strategy == LineStrategy.HAIRLINE ? LineGpu.HAIRLINE_VERTEX_BYTES : LineGpu.SEGMENT_BYTES;
+    }
+
+    /** The units (segment records or hairline vertices) of a polyline. */
+    int unitsOf(int pointCount, boolean closed) {
+        if (strategy == LineStrategy.HAIRLINE) {
+            return pointCount + (closed ? 1 : 0);
+        }
+        return closed ? pointCount : pointCount - 1;
+    }
+
+    /** Writes the records of one polyline from {@code firstUnit}. */
+    void writeUnits(MemorySegment data, long firstUnit, double[] xyz, int firstPoint, int pointCount, boolean closed, LineStyle style, int styleIndex, double ox, double oy, double oz,
+                    SegmentFeed feed) {
+        if (strategy == LineStrategy.HAIRLINE) {
+            int color = style.color();
+            for (int i = 0; i < pointCount + (closed ? 1 : 0); i++) {
+                int at = 3 * (firstPoint + i % pointCount);
+                long o = (firstUnit + i) * LineGpu.HAIRLINE_VERTEX_BYTES;
+                vmath.gl.GpuWriter.putFloat(data, o, (float) (xyz[at] - ox));
+                vmath.gl.GpuWriter.putFloat(data, o + 4, (float) (xyz[at + 1] - oy));
+                vmath.gl.GpuWriter.putFloat(data, o + 8, (float) (xyz[at + 2] - oz));
+                vmath.gl.GpuWriter.putInt(data, o + 12, color);
+            }
+            return;
+        }
+        feed.begin(xyz, firstPoint, pointCount, closed, style.dashPeriod(), ox, oy, oz);
+        long segment = firstUnit;
+        while (feed.next()) {
+            LineGpu.writeSegment(data, segment++ * LineGpu.SEGMENT_BYTES, feed.p0, feed.p1, feed.prev, feed.along0, feed.along1, styleIndex, feed.flags);
+        }
+    }
+
+    /** Adds the draw of a range of units (a run of equal style, or one polyline of the hairline strategy). */
+    void addDraw(DrawList draws, MemorySegment styleBuffer, LineStyle style, int styleIndex, long firstUnit, long units) {
+        if (strategy == LineStrategy.HAIRLINE) {
+            draws.addArrays((int) units, (int) firstUnit, 1, 0, styleIndex);
+        } else {
+            closeRun(style, styleBuffer, draws, styleIndex, firstUnit, units);
+        }
+    }
+
+    StructArrayAccess.Mode styleMode() {
+        return styles == null ? null : styles.mode();
     }
 
     private int writeHairlines(LineBatch batch, MemorySegment data, DrawList draws) {

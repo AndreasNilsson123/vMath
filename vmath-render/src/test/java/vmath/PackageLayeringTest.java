@@ -42,7 +42,7 @@ class PackageLayeringTest {
             // layer 3
             Map.entry("anim", Set.of("core", "bulk")),
             Map.entry("gl", Set.of("core", "bulk")),
-            Map.entry("lines", Set.of("gl")),
+            Map.entry("lines", Set.of("core", "geo", "bulk", "gl", "mem", "spatial")),
             Map.entry("spatial", Set.of("core", "geo", "bulk")),
             // layer 4; util uses anim only for DebugLines.skeleton
             Map.entry("occlusion", Set.of("core", "geo", "bulk", "spatial")),

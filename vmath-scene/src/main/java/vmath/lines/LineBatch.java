@@ -138,6 +138,10 @@ public final class LineBatch {
      * @throws IllegalArgumentException if an array is too short
      */
     public void relativeViewProjection(double[] viewProjection, float[] out) {
+        relativeMatrix(viewProjection, out, originX, originY, originZ);
+    }
+
+    static void relativeMatrix(double[] viewProjection, float[] out, double originX, double originY, double originZ) {
         if (viewProjection.length < 16 || out.length < 16) {
             throw new IllegalArgumentException("a matrix has 16 values");
         }
@@ -168,34 +172,11 @@ public final class LineBatch {
         if (pointCount < 0 || offset < 0 || xyz.length < offset + 3L * pointCount) {
             throw new IllegalArgumentException("the array has " + xyz.length + " values for " + pointCount + " points at " + offset);
         }
-        for (int i = 0; i < 3 * pointCount; i++) {
-            if (!Double.isFinite(xyz[offset + i])) {
-                throw new IllegalArgumentException("point " + i / 3 + " is not finite");
-            }
-        }
         if (points.length < pointsUsed + 3 * pointCount) {
             points = Arrays.copyOf(points, Math.max(points.length * 2, pointsUsed + 3 * pointCount));
         }
         int first = pointsUsed;
-        int kept = 0;
-        for (int i = 0; i < pointCount; i++) {
-            double x = xyz[offset + 3 * i], y = xyz[offset + 3 * i + 1], z = xyz[offset + 3 * i + 2];
-            if (kept > 0 && points[first + 3 * (kept - 1)] == x && points[first + 3 * (kept - 1) + 1] == y && points[first + 3 * (kept - 1) + 2] == z) {
-                continue;
-            }
-            points[first + 3 * kept] = x;
-            points[first + 3 * kept + 1] = y;
-            points[first + 3 * kept + 2] = z;
-            kept++;
-        }
-        if (isClosed && kept > 1 && points[first] == points[first + 3 * (kept - 1)] && points[first + 1] == points[first + 3 * (kept - 1) + 1]
-                && points[first + 2] == points[first + 3 * (kept - 1) + 2]) {
-            kept--; // the first point repeated at the end: the closing segment is implicit
-        }
-        int needed = isClosed ? 3 : 2;
-        if (kept < needed) {
-            throw new IllegalArgumentException("a " + (isClosed ? "closed " : "") + "polyline needs " + needed + " distinct points, has " + kept);
-        }
+        int kept = copyDistinct(xyz, offset, pointCount, isClosed, points, first);
         if (polylines == start.length) {
             int n = polylines * 2;
             start = Arrays.copyOf(start, n);
@@ -204,15 +185,7 @@ public final class LineBatch {
             styleOf = Arrays.copyOf(styleOf, n);
             bounds = Arrays.copyOf(bounds, n * 6);
         }
-        double[] b = {Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY, Double.NEGATIVE_INFINITY, Double.NEGATIVE_INFINITY};
-        for (int i = 0; i < kept; i++) {
-            for (int k = 0; k < 3; k++) {
-                double v = points[first + 3 * i + k];
-                b[k] = Math.min(b[k], v);
-                b[3 + k] = Math.max(b[3 + k], v);
-            }
-        }
-        System.arraycopy(b, 0, bounds, polylines * 6, 6);
+        boundsOf(points, first, kept, bounds, polylines * 6);
         Integer existing = styleIndex.get(style);
         int si;
         if (existing == null) {
@@ -334,6 +307,65 @@ public final class LineBatch {
     public void bounds(int polyline, double[] out) {
         check(polyline);
         System.arraycopy(bounds, polyline * 6, out, 0, 6);
+    }
+
+    /**
+     * Validates the points of a polyline and copies them without repeated points.
+     *
+     * @return the number of points copied to {@code dst} at {@code dstOffset}
+     */
+    static int copyDistinct(double[] xyz, int offset, int pointCount, boolean isClosed, double[] dst, int dstOffset) {
+        if (pointCount < 0 || offset < 0 || xyz.length < offset + 3L * pointCount) {
+            throw new IllegalArgumentException("the array has " + xyz.length + " values for " + pointCount + " points at " + offset);
+        }
+        for (int i = 0; i < 3 * pointCount; i++) {
+            if (!Double.isFinite(xyz[offset + i])) {
+                throw new IllegalArgumentException("point " + i / 3 + " is not finite");
+            }
+        }
+        int first = dstOffset;
+        int kept = 0;
+        for (int i = 0; i < pointCount; i++) {
+            double x = xyz[offset + 3 * i], y = xyz[offset + 3 * i + 1], z = xyz[offset + 3 * i + 2];
+            if (kept > 0 && dst[first + 3 * (kept - 1)] == x && dst[first + 3 * (kept - 1) + 1] == y && dst[first + 3 * (kept - 1) + 2] == z) {
+                continue;
+            }
+            dst[first + 3 * kept] = x;
+            dst[first + 3 * kept + 1] = y;
+            dst[first + 3 * kept + 2] = z;
+            kept++;
+        }
+        if (isClosed && kept > 1 && dst[first] == dst[first + 3 * (kept - 1)] && dst[first + 1] == dst[first + 3 * (kept - 1) + 1]
+                && dst[first + 2] == dst[first + 3 * (kept - 1) + 2]) {
+            kept--; // the first point repeated at the end: the closing segment is implicit
+        }
+        int needed = isClosed ? 3 : 2;
+        if (kept < needed) {
+            throw new IllegalArgumentException("a " + (isClosed ? "closed " : "") + "polyline needs " + needed + " distinct points, has " + kept);
+        }
+        return kept;
+    }
+
+    static void boundsOf(double[] pts, int firstValue, int count, double[] out, int outOffset) {
+        for (int k = 0; k < 3; k++) {
+            out[outOffset + k] = Double.POSITIVE_INFINITY;
+            out[outOffset + 3 + k] = Double.NEGATIVE_INFINITY;
+        }
+        for (int i = 0; i < count; i++) {
+            for (int k = 0; k < 3; k++) {
+                double v = pts[firstValue + 3 * i + k];
+                out[outOffset + k] = Math.min(out[outOffset + k], v);
+                out[outOffset + 3 + k] = Math.max(out[outOffset + 3 + k], v);
+            }
+        }
+    }
+
+    double[] pointArray() {
+        return points;
+    }
+
+    int firstPoint(int polyline) {
+        return start[polyline];
     }
 
     private void check(int polyline) {
