@@ -84,7 +84,7 @@ val jacocoTestReport = tasks.register<JacocoReport>("jacocoTestReport") {
 // Line coverage first, then branch coverage.
 val coverageFloors = mapOf(
     "vmath/anim" to (0.94 to 0.90), "vmath/bulk" to (0.90 to 0.80), "vmath/camera" to (0.97 to 0.89), "vmath/lighting" to (0.95 to 0.85), "vmath/sky" to (0.95 to 0.85), "vmath/color" to (0.94 to 0.85),
-    "vmath/core" to (0.96 to 0.93), "vmath/geo" to (0.95 to 0.90), "vmath/gl" to (0.90 to 0.85), "vmath/gltf" to (0.94 to 0.88),
+    "vmath/core" to (0.96 to 0.93), "vmath/geo" to (0.95 to 0.90), "vmath/gl" to (0.90 to 0.85), "vmath/lines" to (0.90 to 0.80), "vmath/gltf" to (0.94 to 0.88),
     "vmath/gpucull" to (0.93 to 0.89), "vmath/mem" to (0.84 to 0.80), "vmath/mesh" to (0.95 to 0.90), "vmath/occlusion" to (0.95 to 0.85),
     "vmath/pack" to (0.93 to 0.90), "vmath/physics" to (0.95 to 0.86), "vmath/spatial" to (0.92 to 0.82), "vmath/tex" to (0.95 to 0.85), "vmath/util" to (0.97 to 0.92)
 )

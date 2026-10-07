@@ -113,4 +113,20 @@ class ShaderCompileTest {
             }
         }
     }
+
+    @Test
+    void theLineShadersOfEveryStrategyCompileAtEveryVersionItClaims() throws Exception {
+        int[][] versions = {{3, 3}, {4, 0}, {4, 1}, {4, 2}, {4, 3}, {4, 4}, {4, 5}, {4, 6}};
+        for (int[] v : versions) {
+            GraphicsCapabilities caps = GraphicsCapabilities.openGl(v[0], v[1], List.of("GL_ARB_shader_draw_parameters"));
+            for (vmath.lines.LineStrategy strategy : vmath.lines.LineStrategy.values()) {
+                if (!vmath.lines.LineStrategy.chooser().supports(strategy, caps)) {
+                    continue;
+                }
+                vmath.lines.LineRenderPlan plan = vmath.lines.LineRenderPlan.force(strategy, caps);
+                compile("line-" + strategy + "-" + caps.glsl().number(), "vert", plan.vertexShader());
+                compile("line-" + strategy + "-" + caps.glsl().number(), "frag", plan.fragmentShader());
+            }
+        }
+    }
 }

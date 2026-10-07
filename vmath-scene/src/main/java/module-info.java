@@ -12,6 +12,7 @@ module vmath.scene {
     exports vmath.occlusion;
     exports vmath.anim;
     exports vmath.gl;
+    exports vmath.lines;
     exports vmath.util;
 
     uses vmath.spatial.FrustumKernelProvider;

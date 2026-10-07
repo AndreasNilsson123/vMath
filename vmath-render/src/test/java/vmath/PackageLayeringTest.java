@@ -42,6 +42,7 @@ class PackageLayeringTest {
             // layer 3
             Map.entry("anim", Set.of("core", "bulk")),
             Map.entry("gl", Set.of("core", "bulk")),
+            Map.entry("lines", Set.of("gl")),
             Map.entry("spatial", Set.of("core", "geo", "bulk")),
             // layer 4; util uses anim only for DebugLines.skeleton
             Map.entry("occlusion", Set.of("core", "geo", "bulk", "spatial")),
@@ -58,7 +59,7 @@ class PackageLayeringTest {
     private static final Map<String, Integer> MODULE = Map.ofEntries(
             Map.entry("core", 0), Map.entry("mem", 0), Map.entry("color", 0), Map.entry("tex", 0),
             Map.entry("geo", 1), Map.entry("pack", 1), Map.entry("physics", 1),
-            Map.entry("bulk", 2), Map.entry("anim", 2), Map.entry("gl", 2), Map.entry("spatial", 2), Map.entry("occlusion", 2), Map.entry("util", 2),
+            Map.entry("bulk", 2), Map.entry("anim", 2), Map.entry("gl", 2), Map.entry("lines", 2), Map.entry("spatial", 2), Map.entry("occlusion", 2), Map.entry("util", 2),
             Map.entry("camera", 3), Map.entry("lighting", 3), Map.entry("sky", 3), Map.entry("mesh", 3), Map.entry("gltf", 3), Map.entry("gpucull", 3));
 
     /** The measured edges between the packages of the library: package to the set of packages it uses. */
