@@ -1,0 +1,41 @@
+#version 330 core
+uniform sampler2D u_heights;
+uniform sampler2D u_ramp;
+uniform vec2 u_rampRange;
+uniform int u_rampTexels;
+uniform vec3 u_sun;
+uniform vec2 u_cell;
+uniform float u_exaggeration;
+uniform float u_strength;
+out vec4 o_color;
+
+float nodeHeight(ivec2 p, ivec2 size, float centre) {
+    float v = texelFetch(u_heights, clamp(p, ivec2(0), size - 1), 0).r;
+    return isnan(v) ? centre : v;
+}
+
+void main() {
+    ivec2 size = textureSize(u_heights, 0);
+    ivec2 p = ivec2(int(gl_FragCoord.x), size.y - 1 - int(gl_FragCoord.y));
+    float e = texelFetch(u_heights, p, 0).r;
+    if (isnan(e)) {
+        o_color = vec4(0.0);
+        return;
+    }
+    float a = nodeHeight(p + ivec2(-1, -1), size, e);
+    float b = nodeHeight(p + ivec2(0, -1), size, e);
+    float c = nodeHeight(p + ivec2(1, -1), size, e);
+    float d = nodeHeight(p + ivec2(-1, 0), size, e);
+    float f = nodeHeight(p + ivec2(1, 0), size, e);
+    float g = nodeHeight(p + ivec2(-1, 1), size, e);
+    float h = nodeHeight(p + ivec2(0, 1), size, e);
+    float i = nodeHeight(p + ivec2(1, 1), size, e);
+    float dzdx = ((c + 2.0 * f + i) - (a + 2.0 * d + g)) / (8.0 * u_cell.x);
+    float dzdy = ((a + 2.0 * b + c) - (g + 2.0 * h + i)) / (8.0 * u_cell.y);
+    vec3 n = normalize(vec3(-u_exaggeration * dzdx, -u_exaggeration * dzdy, 1.0));
+    float shade = max(dot(n, u_sun), 0.0);
+    float u = clamp((e - u_rampRange.x) / (u_rampRange.y - u_rampRange.x), 0.0, 1.0);
+    int index = min(u_rampTexels - 1, int(u * float(u_rampTexels)));
+    vec4 ramp = texelFetch(u_ramp, ivec2(index, 0), 0);
+    o_color = vec4(ramp.rgb * mix(1.0, shade, u_strength), ramp.a);
+}

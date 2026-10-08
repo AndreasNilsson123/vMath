@@ -1,0 +1,2 @@
+layout(location = 4) in vec4 i_offset;
+layout(location = 5) in uvec2 i_flags;

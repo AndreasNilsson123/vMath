@@ -287,11 +287,76 @@ driver in the best way available. Both paths give the same grouping.
 <!-- decision-table:cull-backend -->
 | # | Strategy | Needs | What it does |
 |---|---|---|---|
-| 1 | `COMPUTE` | `DRAW_INDIRECT`, `BASE_INSTANCE`, `STORAGE_BUFFERS`, `COMPUTE_SHADERS`, GLSL 4.50 | the compute shaders of GpuCullGlsl write the indirect commands |
+| 1 | `COMPUTE` | `DRAW_INDIRECT`, `BASE_INSTANCE`, `STORAGE_BUFFERS`, `COMPUTE_SHADERS`, GLSL 4.30 | the compute shaders of GpuCullGlsl write the indirect commands |
 | 2 | `CPU` | nothing | SIMD, parallel or tree kernels, then SurvivorBatcher and DrawList |
 <!-- /decision-table -->
 
 The compute path needs GLSL 4.50 for now (the text of `GpuCullGlsl` starts with `#version 450`); the roadmap lowers that once a compiler has confirmed what the shaders need.
+
+## GLSL versions (`GlslFeature`, `ShaderHeader.Builder.version`; experimental)
+
+Every generator of the library writes text for the desktop GLSL versions from 3.30 up, and where a construct does not exist in a version the generator says so instead of writing text that will not compile on the user's driver. Three pieces make that checkable:
+
+1. **The inventory** below: what each generator writes, and the lowest version that has each construct.
+2. **`GlslFeature`**: the constructs as an enum with their lowest version, the one table that every gate reads (`GlslVersion.supports(feature)`, and `GlslVersion.require(feature)`, which throws `UnsupportedOperationException` naming the construct, the version asked for and the lowest version that has it).
+3. **Golden tests**: the output of every generator at its default is pinned byte for byte in files under `src/test/resources/golden` (`GlslGoldenTest`, `LineShaderGoldenTest` and `ShaderGoldenTest`), so a change of generated text is a reviewed change of a file. After a deliberate change run the tests with `-Dvmath.writeGolden=true` (and `--no-configuration-cache`), read the difference, and commit it.
+
+**The numbers have been checked with a compiler** (the compile matrix of GPU-12). `GlslFeatureCompileTest` compiles the probe shader of every `GlslFeature` with glslang 16.6.0 at every version from 3.30 and requires it to be accepted from exactly the version in the table and refused below; it found one number wrong (the boolean selector of `mix` is in GLSL 3.30, not 4.50: the table said 4.50 from memory) and the table now follows the compiler. `ShaderCompileTest` compiles the output of every generator at every version it claims (the culling shaders from 4.30, the access modes, the line, symbol, area and terrain shaders, the cluster lookup, the dual paraboloid, the vertex inputs) and checks that the text a generator would write below its lowest version is refused by the compiler and by the generator. Both are skipped without a compiler and fail without one when `-Dvmath.requireEnvironment=true` is set (the Linux CI job installs `glslang-tools`; on a machine, `-Dvmath.glslang=path/to/glslang`). `./gradlew -Psamples :vmath-samples:glslCheck` runs the same probes on a real driver (NVIDIA, OpenGL 4.6): it accepted every construct from the version in the table and refused the others, except that it also accepted a compute shader below 4.30, which a driver may do and a compiler front end does not; it is the less strict of the two and the table follows the strict one.
+
+### Inventory
+
+| Generator | Construct | Feature | Lowest version |
+|---|---|---|---|
+| `ShaderHeader` structs, constants | `struct`, `const uint x = 5u;`, include guards | | 3.30 |
+| `ShaderHeader.block`, `StructArrayAccess` (uniform block) | `layout(std140) uniform Name { ... };` | `UNIFORM_BLOCK`, `STD140_LAYOUT` | 3.30 |
+| `ShaderHeader.block`, `StructArrayAccess` (storage block) | `layout(std430) readonly buffer Name { T a[]; };` | `STORAGE_BLOCK`, `STD430_LAYOUT`, `MEMORY_QUALIFIERS` | 4.30 |
+| `StructArrayAccess` (texture buffer) | `usamplerBuffer`, `texelFetch`, `uintBitsToFloat` | `TEXTURE_BUFFER`, `BIT_CASTS` | 3.30 |
+| `StructArrayAccess` (vertex attribute), `VertexBufferLayout.glslInputs` | `layout(location = n) in uvec2 name;` | `EXPLICIT_ATTRIBUTE_LOCATION` | 3.30 |
+| `StructArrayAccess`, `GpuCullGlsl` | `layout(binding = n)` on a block or a sampler | `EXPLICIT_BINDING` | 4.20 |
+| `GpuCullGlsl.computeShader`, `clusterShader` | `layout(local_size_x = n) in;`, `gl_GlobalInvocationID` | `COMPUTE_SHADER` | 4.30 |
+| `GpuCullGlsl` | `atomicAdd`, `atomicMin` on buffer variables | `ATOMIC_BUFFER_FUNCTIONS` | 4.30 |
+| `GpuCullGlsl` | `mix(vec3, vec3, bvec3)` with a boolean selector in the frustum test | `MIX_WITH_BOOLEAN_SELECTOR` | 3.30 (checked) |
+| `LineRenderPlan` (draw index tier) | `gl_DrawID` (core), `gl_DrawIDARB` with the extension | `BUILTIN_DRAW_ID` | 4.60, or 4.40 with the extension (see below) |
+| `ClusterGrid.glslLookup`, `DualParaboloid.glsl` | plain functions: `log`, `floor`, `uvec3` arithmetic | | 3.30 |
+| `SymbolRenderPlan`, `AreaRenderPlan`, `TerrainShader`, `LineRenderPlan` | the above, `texelFetch` on `sampler2D`, `gl_VertexID`, `flat` outputs, `isnan` | | 3.30 (the access modes as above) |
+| types of `GlslType` | `float`, `int`, `uint`, vectors, matrices; no double types | `DOUBLE_TYPES` | 4.00 if added |
+
+What the compiler found, besides the `mix` number:
+
+- **The culling shaders are written for 4.30, not 4.50.** With the `mix` settled, the constructs in both shaders are those of 4.30 and 4.20 (the binding points of the blocks and of the sampler), so `GpuCullGlsl.computeShader(group, version)` and `clusterShader(group, version)` write the text for any version from 4.30 and throw below it, naming the compute shader and the CPU path (`GpuCullReference`, the kernels of `vmath.spatial`, `CullBackend.CPU`) for a context that has none. The methods without a version still write `#version 450`, byte for byte as before (golden file); the text for a version is that text with its first line changed, and `CullBackend` now asks for 4.30. glslang refuses the text at 4.20 and below, which the test shows, so 4.30 is the lowest version and not merely the lowest that was tried.
+- **`gl_DrawIDARB` is known to glslang from 4.40 only**, while the extension text says 4.30 and the NVIDIA driver took it at every version from 3.30. The library writes only what both accept: the draw-index tier of the lines uses the extension form only from GLSL 4.40, and `GraphicsCapabilities.openGl` turns `SHADER_DRAW_PARAMETERS` on from an extension string only at 4.4 and later (it was at any version). A 4.3 context with the extension now chooses the strategy below the draw-index one.
+- **The version-neutral generators need no gate** (GPU-11): the cluster lookup (perspective and orthographic, y up and y down), `DualParaboloid.glsl` and `VertexBufferLayout.glslInputs` compile unchanged at every version from 3.30, so they have no version parameter; they are valid from 3.30 and the compile matrix keeps it so. (The test harness around them cannot say `layout(location)` on a fragment input at 3.30: that is the harness, not the generator, whose text uses plain `in` and `out`.)
+
+### `ShaderHeader.Builder.version`
+
+Without a version the header is what it has always been. With `version(GlslVersion)`:
+
+- `emit(Language.GLSL)` refuses a storage block, a `std430` layout or the memory qualifiers below 4.30 (4.20 for the qualifiers), by the table, with the exception above, before it writes anything; it never writes `std140` in place of `std430`, which would put the offsets in the wrong place without a message.
+- from 4.20 the text is unchanged; below it the explicit binding points are left out of the text, listed in `ShaderHeader.bindings()` (each with the call that sets it: `glUniformBlockBinding` for a uniform block, `glUniform1i` for a texture buffer) and written into the header as a comment;
+- `withVersionLine()` puts a `#version N core` line at the top, for a header that is not included into a shader that has one.
+
+The Slang output is not affected by a version.
+
+### Vulkan and OpenGL ES flavours
+
+**Vulkan** (`ShaderHeader.Target.VULKAN`, GPU-13). `StructArrayAccess.of(struct, mode, name, count, set, binding, caps)` with the capabilities of Vulkan writes Vulkan GLSL: `layout(std430, set = s, binding = n) readonly buffer`, `layout(std140, set = s, binding = n) uniform`, `layout(set = s, binding = n) uniform utextureBuffer` (Vulkan has no combined sampler for a texel buffer in its own text), vertex attributes as before; a binding is required. The header takes `Target.VULKAN`, writes blocks with `block(struct, layout, storage, instance, set, binding)` and one `pushConstants(struct, instance)` (`layout(std430, push_constant) uniform`, at most `MAX_PUSH_CONSTANT_BYTES` = 128 bytes, the size every Vulkan device has), and has no loose uniforms (there is nothing in a header that makes one). It needs GLSL 4.50, refuses an access made for OpenGL and the other way round, and the default target is still OpenGL, byte for byte (golden files). `ShaderCompileTest.aVulkanHeaderCompilesToSpirv` compiles a header with every kind of block to SPIR-V with `glslang -V`. The plans (lines, symbols, areas, terrain) are still OpenGL text.
+
+**OpenGL ES** (`GlslEsVersion` 3.00, 3.10, 3.20 and `ShaderHeader.Builder.esVersion`, GPU-14). `GlslFeature.minimumEs()` is the ES column of the table, checked with glslang's ES profile by `GlslFeatureCompileTest` like the desktop one:
+
+| Feature | desktop | ES |
+|---|---|---|
+| uniform block, `std140`, `layout(location)` on vertex inputs, bit casts, `mix` with a boolean selector | 3.30 | 3.00 |
+| explicit binding point, memory qualifiers, `std430`, storage block, compute shader, atomics on buffers | 4.20 to 4.30 | 3.10 |
+| texture buffer (`usamplerBuffer`) | 3.30 | 3.20 |
+| double-precision types, `gl_DrawID` | 4.00, 4.60 | none |
+
+The header writes what ES needs besides: the `#version 300 es` line first (before everything, which ES requires), `precision highp float;` and `precision highp int;` (a fragment shader has no default for `float`, and glslang refuses it without), and `precision highp usamplerBuffer;` where a texture buffer is read. Below 3.10 the binding points are left out and returned like below 4.20, a storage block or `std430` throws with the ES version and the one that has it, and a feature that ES does not have says so. `ShaderCompileTest` compiles a header in a vertex and a fragment shader at every ES version for every access mode it allows. The shaders of the plans are not written for ES.
+
+### Running the shaders on a real GPU
+
+`./gradlew -Psamples :vmath-samples:gpuIt` (class `vmath.samples.verify.GpuItMain`, also a test that skips without a context) runs, against the OpenGL driver of the machine: the probe shader of every `GlslFeature` at every version (`GlslDriverCheck`); every generated program of the lines, symbols, areas and terrain linked at each version it claims; the object and cluster culling shaders of `GpuCullGlsl` at 4.30 and 4.50, in three depth conventions, on random scenes, against `GpuCullReference` and `ClusterCullReference` (`CullShaderGpuCheck`: the instance lists as sets per draw, the counts and the overflow when a draw has too little room, the chosen clusters as sets); the layout of 15 structs in `std140` and `std430` against the program reflection (`LayoutGpuCheck`: offsets, array and matrix strides, and the size of the struct from the stride of an array of it, through `LayoutValidator`, with a control that the check rejects a wrong layout); and `PersistentBufferRing` with real fences (`RingGpuCheck`: 48 frames through three regions with a deliberately slow shader, every result holding the pattern of its own frame, and a control without the fences in which 47 of 48 frames are overwritten, which shows the check can fail). 179 checks, all agreeing on an NVIDIA GeForce RTX 3060 Laptop GPU, driver 546.30, OpenGL 4.6.
+
+It is one driver, so it says nothing about other vendors, operating systems, mobile GPUs, OpenGL ES or Vulkan (the Vulkan text is compiled to SPIR-V and not run; a software Vulkan such as lavapipe was not tried). The roadmap asked for a module of its own, `vmath-gpu-it`; these checks are in `vmath-samples` instead, which is already the opt-in module with LWJGL and the other checks against the driver, so the build, the flag (`-Psamples`) and the skip-without-a-display rule are the same ones.
 
 ## GPU-driven culling (`vmath.gpucull`, experimental)
 
@@ -339,3 +404,13 @@ paths; this work belongs on the GPU.
 
 **Not covered**: building the pyramid and the depth pre-pass (the renderer's job); hardware runs of the shaders; skinned meshes (`ClusterHierarchy` has no attribute support); oriented boxes
 and spheres in the object pass; the per-cluster Hi-Z box is the box around the bounding sphere, which is loose. Instance order inside a draw is ascending in the reference and atomic order on a GPU.
+
+### The depth pyramid in a GPU texture: three contracts
+
+`GpuCullGlsl` reads the pyramid as an `R32F` `sampler2D` with all its mip levels. Three things about it were found by running the shader (technical debt item TD-33) and are stated in the Javadoc of `HiZ` and `GpuCullGlsl`:
+
+1. **The base is a power of two on OpenGL.** `HiZ.mipSize` halves rounding up (1600, 800, ..., 25, 13, 7, 4, 2, 1), as the shader and `HiZPyramid` do; OpenGL halves a mip chain rounding down and has one level fewer, so `glTextureStorage2D` with the library's level count fails with `GL_INVALID_OPERATION` at 1600 by 900 (12 levels against 11). Use `HiZ.baseSize(dim)` for the base and `HiZ.resampleFarthest(...)` to resample the depth image to it, taking under every texel the farthest of the pixels it covers (which keeps the test conservative).
+2. **The texels hold normalised device depth**, so with `DepthRange.NEGATIVE_ONE_TO_ONE` a texel is `2 d - 1` of the window depth `d` that OpenGL writes (`HiZ.toNormalizedDeviceDepth`); `HiZPyramid` keeps "farness", so a comparison of the GPU's texels with it converts one of them.
+3. **Two barriers.** After the compute passes that build the pyramid, the culling shader's `texelFetch` needs `GL_TEXTURE_FETCH_BARRIER_BIT` and a `glGetTextureImage` of a level needs `GL_TEXTURE_UPDATE_BARRIER_BIT`; a barrier for image access alone is not enough for either.
+
+`CullShaderGpuCheck` uploads a pyramid built this way and compares the shaders with the references.

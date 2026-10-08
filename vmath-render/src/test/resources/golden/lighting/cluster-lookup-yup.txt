@@ -1,0 +1,9 @@
+const uvec3 CLUSTER_GRID = uvec3(30u, 17u, 24u);
+const float CLUSTER_TILE = 64.0;
+const float CLUSTER_SLICE_SCALE = 3.1575198;
+const float CLUSTER_SLICE_BIAS = 7.270458;
+uint clusterIndex(vec2 fragCoord, float viewDepth) {
+    uvec2 tile = min(uvec2(fragCoord / CLUSTER_TILE), CLUSTER_GRID.xy - 1u);
+    float slice = clamp(floor(log(viewDepth) * CLUSTER_SLICE_SCALE + CLUSTER_SLICE_BIAS), 0.0, float(CLUSTER_GRID.z) - 1.0);
+    return (uint(slice) * CLUSTER_GRID.y + tile.y) * CLUSTER_GRID.x + tile.x;
+}

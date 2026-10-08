@@ -17,9 +17,10 @@ import vmath.gl.StrategyChooser;
  * {@link vmath.gl.DrawSubmission} then hands to the driver in the best way the capabilities allow.
  * {@link #choose} picks the first when the driver can run it.
  *
- * <p>The compute path needs GLSL 4.50 for now: the text of {@link GpuCullGlsl} starts with
- * {@code #version 450}. The roadmap (GPU-10) lowers that to what the constructs in it need,
- * which are 4.30 ones, once a GLSL compiler has confirmed the version.
+ * <p>The compute path needs GLSL 4.30, the lowest version that the text of {@link GpuCullGlsl} can be
+ * written for (the compile matrix of GPU-12 confirms that glslang accepts it from there and refuses it
+ * below). Write the shaders for the version of the context with {@code GpuCullGlsl.computeShader(group,
+ * caps.glsl())}; the methods without a version write {@code #version 450}.
  *
  * <p><b>Thread safety.</b> The constants are immutable and the methods stateless: safe to call
  * from any number of threads.
@@ -39,7 +40,7 @@ public enum CullBackend {
     CPU;
 
     private static final StrategyChooser<CullBackend> CHOOSER = StrategyChooser.<CullBackend>builder("culling")
-            .optionGlsl(COMPUTE, GlslVersion.V450, "the compute shaders of GpuCullGlsl write the indirect commands",
+            .optionGlsl(COMPUTE, GlslVersion.V430, "the compute shaders of GpuCullGlsl write the indirect commands",
                     Feature.COMPUTE_SHADERS, Feature.STORAGE_BUFFERS, Feature.DRAW_INDIRECT, Feature.BASE_INSTANCE)
             .option(CPU, "SIMD, parallel or tree kernels, then SurvivorBatcher and DrawList")
             .build();

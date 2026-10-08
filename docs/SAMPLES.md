@@ -13,6 +13,7 @@ camera, a heads-up display, statistics, screenshots and a smoke check); how it i
 ./gradlew -Psamples :vmath-samples:smoke                                        # every demo for a few frames, checked
 ./gradlew -Psamples :vmath-samples:lineCheck                                    # the line shaders at every GLSL version, against the reference (add --args="--bench" for the costs)
 ./gradlew -Psamples :vmath-samples:mapCheck                                     # the map shaders (symbols, areas, terrain) at every GLSL version, against their CPU models
+./gradlew -Psamples :vmath-samples:gpuIt                                         # the GLSL table, the generated programs, the culling shaders, the struct layouts and the ring with fences, against the driver
 ./gradlew -Psamples :vmath-samples:test                                         # the tests that need no window
 ```
 
@@ -97,6 +98,10 @@ GPU-driven culling shaders (`vmath.gpucull`), Vulkan, other vendors and other op
 `:vmath-samples:lineCheck` (class `vmath.samples.verify.LineGpuCheck`, also a test that skips without a context) is the second check against hardware: it opens a hidden window, compiles, links and runs the shaders of every line strategy of `vmath.lines` at every GLSL version from 3.30 to what the driver gives, and compares the pixels with the reference of the library (177 cases, all agreeing on the NVIDIA GPU above; `docs/LINES.md`). It leaves out the culling shaders, Vulkan and other vendors like the sample.
 
 `:vmath-samples:mapCheck` (class `vmath.samples.verify.MapGpuCheck`, likewise a test that skips without a context) does the same for the map layer: the symbol strategies, the area strategies with every style-table mode and draw submission, and the terrain shader, at every GLSL version, compared with the CPU models (275 cases on the NVIDIA GPU above; `docs/MAPS.md`).
+
+`:vmath-samples:cullCheck` (class `vmath.samples.verify.OcclusionGpuCheck`, likewise a test that skips without a context) runs the coherent culling of `vmath.occlusion` against real `GL_SAMPLES_PASSED` queries and compares the framebuffer with that of drawing everything, for three scenes of 60 frames (`docs/CULLING.md`).
+
+`:vmath-samples:gpuIt` (class `vmath.samples.verify.GpuItMain`, also a test that skips without a context) runs the shader and buffer checks of `docs/GPU.md`: the GLSL feature table and the generated programs at every version, the culling shaders against their references, the struct layouts against the driver's reflection and the persistent ring with real fences (179 checks, all agreeing on the NVIDIA GPU above). `:vmath-samples:glslCheck` prints the table of the features as the driver accepts it.
 
 The older headless `vmath-bench/.../sample/CullAndDrawSample` stays as the CPU-only version for machines without a graphics driver (`./gradlew :vmath-bench:sample`, `docs/GPU.md`).
 

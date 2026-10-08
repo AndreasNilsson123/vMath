@@ -1,0 +1,35 @@
+#version 460 core
+flat in vec4 v_fill;
+flat in vec4 v_pattern;
+flat in vec4 v_params;
+flat in uint v_kind;
+uniform vec2 u_patternOffset;
+out vec4 o_color;
+
+float lineOn(vec2 p, float angle, float spacing, float width) {
+    float t = dot(p, vec2(-sin(angle), cos(angle)));
+    float m = t - spacing * floor(t / spacing);
+    return m < width ? 1.0 : 0.0;
+}
+
+void main() {
+    float on = 0.0;
+    if (v_kind != 0u) {
+        vec2 p = gl_FragCoord.xy + u_patternOffset;
+        float spacing = v_params.x;
+        float width = v_params.y;
+        float angle = v_params.z;
+        if (v_kind == 1u) {
+            on = lineOn(p, angle, spacing, width);
+        } else if (v_kind == 2u) {
+            on = max(lineOn(p, angle, spacing, width), lineOn(p, angle + 1.5707963267948966, spacing, width));
+        } else {
+            float c = cos(angle);
+            float s = sin(angle);
+            vec2 q = vec2(c * p.x + s * p.y, -s * p.x + c * p.y);
+            vec2 cell = q - spacing * floor(q / spacing) - 0.5 * spacing;
+            on = length(cell) < 0.5 * width ? 1.0 : 0.0;
+        }
+    }
+    o_color = on > 0.5 ? v_pattern : v_fill;
+}

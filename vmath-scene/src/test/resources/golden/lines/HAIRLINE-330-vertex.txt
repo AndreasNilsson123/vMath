@@ -1,0 +1,10 @@
+#version 330 core
+layout(location = 0) in vec3 a_position;
+layout(location = 1) in uint a_color;
+uniform mat4 u_viewProjection;
+out vec4 v_color;
+
+void main() {
+    gl_Position = u_viewProjection * vec4(a_position, 1.0);
+    v_color = vec4(float(a_color >> 24u), float((a_color >> 16u) & 255u), float((a_color >> 8u) & 255u), float(a_color & 255u)) / 255.0;
+}

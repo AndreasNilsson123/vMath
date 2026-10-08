@@ -1,0 +1,6 @@
+vec4 dualParaboloid(vec3 viewPos, float near, float far, out float side) {
+    float len = length(viewPos);
+    vec3 d = viewPos / len;
+    side = -d.z;
+    return vec4(d.xy / (1.0 - d.z), (len - near) / (far - near), 1.0);
+}

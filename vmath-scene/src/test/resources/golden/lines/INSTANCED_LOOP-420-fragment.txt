@@ -1,0 +1,36 @@
+#version 420 core
+in vec4 v_color;
+in float v_along;
+flat in vec4 v_dash0;
+flat in vec4 v_dash1;
+flat in uint v_dashCount;
+out vec4 o_color;
+
+void main() {
+    if (v_dashCount > 0u) {
+        float d[8] = float[8](v_dash0.x, v_dash0.y, v_dash0.z, v_dash0.w, v_dash1.x, v_dash1.y, v_dash1.z, v_dash1.w);
+        int count = int(v_dashCount);
+        float total = 0.0;
+        for (int i = 0; i < count; i++) {
+            total += d[i];
+        }
+        float m = v_along - total * floor(v_along / total);
+        bool on = true;
+        for (int i = 0; i < count; i += 2) {
+            if (m < d[i]) {
+                on = true;
+                break;
+            }
+            m -= d[i];
+            if (m < d[i + 1]) {
+                on = false;
+                break;
+            }
+            m -= d[i + 1];
+        }
+        if (!on) {
+            discard;
+        }
+    }
+    o_color = v_color;
+}

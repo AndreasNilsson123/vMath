@@ -1,0 +1,16 @@
+#version 330 core
+layout(location = 0) in vec2 a_position;
+layout(location = 1) in uint a_word;
+uniform mat4 u_viewProjection;
+flat out vec4 v_fill;
+flat out vec4 v_pattern;
+flat out vec4 v_params;
+flat out uint v_kind;
+
+void main() {
+    gl_Position = u_viewProjection * vec4(a_position, 0.0, 1.0);
+    v_fill = vec4(float(a_word >> 24u), float((a_word >> 16u) & 255u), float((a_word >> 8u) & 255u), float(a_word & 255u)) / 255.0;
+    v_pattern = vec4(0.0);
+    v_params = vec4(0.0);
+    v_kind = 0u;
+}

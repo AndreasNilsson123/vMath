@@ -65,7 +65,7 @@ public final class GraphicsCapabilities {
         MULTI_DRAW_INDIRECT,
         /** A first instance that is not zero, in direct and in indirect draws (OpenGL 4.2, {@code ARB_base_instance}; {@code drawIndirectFirstInstance} in Vulkan). */
         BASE_INSTANCE,
-        /** The index of the draw in a multi-draw as {@code gl_DrawID} (OpenGL 4.6, {@code ARB_shader_draw_parameters}; {@code shaderDrawParameters} in Vulkan). */
+        /** The index of the draw in a multi-draw as {@code gl_DrawID} (OpenGL 4.6, or 4.4 and later with {@code ARB_shader_draw_parameters}; {@code shaderDrawParameters} in Vulkan). */
         SHADER_DRAW_PARAMETERS,
         /** Shader storage blocks (OpenGL 4.3, {@code ARB_shader_storage_buffer_object}). */
         STORAGE_BUFFERS,
@@ -123,7 +123,9 @@ public final class GraphicsCapabilities {
         if (v >= 42 || has(extensions, "ARB_base_instance")) {
             f.add(Feature.BASE_INSTANCE);
         }
-        if (v >= 46 || has(extensions, "ARB_shader_draw_parameters")) {
+        // the extension form gl_DrawIDARB is written for GLSL 4.40 and later: the compile matrix (GPU-12) found that glslang knows it only from there, although
+        // the NVIDIA driver takes it from 3.30; the library only writes text that both accept
+        if (v >= 46 || v >= 44 && has(extensions, "ARB_shader_draw_parameters")) {
             f.add(Feature.SHADER_DRAW_PARAMETERS);
         }
         if (v >= 43 || has(extensions, "ARB_shader_storage_buffer_object")) {

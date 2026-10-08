@@ -16,7 +16,7 @@ import vmath.annotations.Experimental;
  * <pre>{@code
  * GlslVersion v = GlslVersion.ofOpenGl(4, 3);                  // 430
  * String line = v.versionLine();                               // "#version 430 core"
- * boolean explicitBindings = v.atLeast(GlslVersion.V420);      // true
+ * boolean explicitBindings = v.supports(GlslFeature.EXPLICIT_BINDING);   // true: binding points are from 4.20
  * }</pre>
  *
  * @param number the version number as it is written after {@code #version}, for example 450
@@ -95,6 +95,31 @@ public record GlslVersion(int number) implements Comparable<GlslVersion> {
             return V330;
         }
         return of(400 + 10 * minor);
+    }
+
+    /**
+     * Tells whether this version has a construct of the language, by the table of {@link GlslFeature}.
+     *
+     * @param feature the construct; must not be {@code null}
+     * @return {@code true} if this version is at or above the lowest version of the feature
+     */
+    public boolean supports(GlslFeature feature) {
+        return atLeast(feature.minimum());
+    }
+
+    /**
+     * Fails fast if this version lacks a construct: the generators call it before they write the
+     * construct, so that text which would not compile is never produced and no other layout is
+     * swapped in quietly.
+     *
+     * @param feature the construct that the caller is about to write; must not be {@code null}
+     * @throws UnsupportedOperationException if this version does not have it; the message names the
+     *     construct, this version and the lowest version that has it
+     */
+    public void require(GlslFeature feature) {
+        if (!supports(feature)) {
+            throw new UnsupportedOperationException(feature.description() + " needs " + feature.minimum() + " or later, and this is " + this);
+        }
     }
 
     /**

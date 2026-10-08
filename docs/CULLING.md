@@ -239,8 +239,26 @@ divisions and the rectangle logic per object, not in something wider vectors rem
 
 **GPU side.** `HiZ` gives the pyramid sizing (`mipCount`, `mipSize`, `levelFor`) and documents the two-phase contract for
 GPU-driven occlusion culling (test against last frame's pyramid, draw, rebuild the pyramid, test what failed against the new
-one). `DepthBuffer` is the CPU reference to check a GPU implementation against. Temporal coherence (CULL-14) and portals are
-not built.
+one). `DepthBuffer` is the CPU reference to check a GPU implementation against. Temporal coherence is the next section.
+
+## Temporal coherence: `CoherentCulling` and `VisibilityHistory`
+
+Occlusion queries have a latency (the GPU answers a frame or more after it was asked) and cost a draw each, so asking about every node of a tree every frame, or waiting for each answer before going on, is too slow. `CoherentCulling` is the coherent hierarchical culling of Bittner, Wimmer, Piringer and Purgathofer (2004) over a `StaticBvh`, driven by the visibility of the last frame:
+
+- the tree is visited **front to back** with a queue ordered by the distance of each node to the camera;
+- a node that was **visible last frame** is not queried: an inner node is just opened; a leaf is **drawn at once**, with a query issued whose answer only decides next frame (and only every `queryInterval` frames, 3 by default, spread by the index of the node, so that the cost is spread over frames);
+- a node that was **not visible** gets a query and *waits in a queue of pending queries*: the traversal goes on with other nodes, and when the answer comes in a visible node is opened and its visibility is propagated up to its ancestors (so they are known to be visible next frame) while a hidden one drops its whole subtree;
+- the queue of answers is polled as they become ready and drained at the end, so no single answer is waited for while other work remains.
+
+The engine supplies the queries through `OcclusionQueries` (`issue` a box, `isReady`, `visibleSamples`: a `GL_SAMPLES_PASSED` or `GL_ANY_SAMPLES_PASSED` query of the box drawn with colour and depth writes off, or a Vulkan query pool) and a consumer that draws an object. The contract of a GPU query applies: the box is tested against the depth buffer as it is when it is issued, in the order of the commands, so the engine draws the objects the consumer hands out immediately and in order.
+
+`VisibilityHistory` is the per-object half: whether each object was drawn in the last frame, the streak of frames it has been drawn or has not, and the last frame it was drawn. `CoherentCulling` keeps one up to date. It is for what an engine does with the history (draw last frame's visible set first to fill the depth buffer, fade in after several frames, test the long-hidden rarely); the culling itself uses the history of the nodes.
+
+**Correctness.** Nothing that shows is left out: an object is not drawn only if it is outside the frustum or hidden by what had been drawn before the query was issued, and the depth buffer only grows. Objects may be drawn that are hidden (a visible leaf is asked about only every few frames, a query is conservative); that costs time, not the image. `CoherentCullingTest` checks it against an exact software renderer (boxes on whole pixels with distinct depths, a latency of 0, 3 and 40 polls, a camera that pans): after every frame the image of the drawn objects is the image of all of them, object for object, and every object that shows in the full image was drawn. `:vmath-samples:cullCheck` (class `vmath.samples.verify.OcclusionGpuCheck`, also a test that skips without a context) does it on a real driver with `GL_SAMPLES_PASSED` queries: three scenes, 60 frames each, the framebuffer of the culled drawing equal to that of drawing everything in every frame.
+
+**What it saves, measured.** In the software test (3,000 boxes in a 64 by 64 view, a tree of 5,907 nodes, a latency of 2 polls): 5,385 queries in the first frame, when nothing is known, and 1,030 in the steady state, 17 percent of the nodes. On the driver (NVIDIA, OpenGL 4.6; scenes of 600, 1,500 and 3,000 boxes, 60 frames, a panning camera): 9,701 of 36,000, 17,829 of 90,000 and 8,326 of 180,000 objects were drawn (27, 20 and 4.6 percent; the rest were outside the frustum or hidden), with 15,378, 26,410 and 22,264 queries in 60 frames. These are counts of queries and draws on synthetic boxes, **not** the time a real engine saves: a query costs a draw of a box and the draws it saves cost what the objects cost, which is the engine's.
+
+**Does not do.** It does not draw anything or know a graphics API; a tree whose objects move needs `StaticBvh.refit` before the frame (and `reset` after a rebuild or a jump of the camera); a leaf is asked about as a whole (a leaf of at most four objects, drawn together); `setMinimumSamples` above 1 leaves out what shows as a few pixels, which is a decision to lose small things, not a conservative one. The multi-frame reuse of a GPU Hi-Z pyramid is the two-phase scheme of `HiZ`, which this does not replace.
 
 ## Using several threads
 
@@ -334,8 +352,7 @@ Not built: portals as extra cameras (mirrors, portal views), a visibility compil
 
 ## Not built yet
 
-Temporal coherence for occlusion queries, a kernel interface for the occlusion test (a SIMD version) and a SIMD BVH traversal.
-They are in `docs/ROADMAP.md`.
+A kernel interface for the occlusion test (a SIMD version) and a SIMD BVH traversal. They are in `docs/ROADMAP.md`.
 
 ## Segments, capsules and the remaining overlap tests
 

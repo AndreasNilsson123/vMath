@@ -173,7 +173,7 @@ tasks.withType<Test>().configureEach {
     // Extra JVM flags for the test JVM, e.g. -Pvmath.testJvmArgs="-XX:TieredStopAtLevel=1" to see which JIT settings the allocation contract tolerates.
     providers.gradleProperty("vmath.testJvmArgs").orNull?.let { jvmArgs(it.trim().split(Regex("\\s+"))) }
     // Forward -Dvmath.seed / -Dvmath.trials from the command line, e.g. a nightly job with a fresh seed.
-    listOf("vmath.seed", "vmath.trials", "vmath.writeAssets", "vmath.writeDocs", "vmath.verbose", "vmath.alloc.force", "vmath.docs.all", "vmath.glslang", "vmath.requireEnvironment").forEach { key ->
+    listOf("vmath.seed", "vmath.trials", "vmath.writeAssets", "vmath.writeDocs", "vmath.writeGolden", "vmath.verbose", "vmath.alloc.force", "vmath.docs.all", "vmath.glslang", "vmath.requireEnvironment").forEach { key ->
         System.getProperty(key)?.let { systemProperty(key, it) }
     }
     // the coverage is merged over all modules by the root project (docs/COVERAGE.md); the Valhalla class files are not read by the JaCoCo release in use

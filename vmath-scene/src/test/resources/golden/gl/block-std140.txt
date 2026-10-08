@@ -1,0 +1,6 @@
+layout(std140) uniform Scene {
+    mat4 viewProjection;
+    Light lights[4];
+    vec3 ambient;
+    uint count;
+} scene;

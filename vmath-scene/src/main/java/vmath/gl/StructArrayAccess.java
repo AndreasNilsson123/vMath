@@ -121,9 +121,11 @@ public final class StructArrayAccess {
     private final VertexBufferLayout vertexLayout;
     private final boolean explicitBinding;
     private final String glsl;
+    private final boolean vulkan;
 
     private StructArrayAccess(Mode mode, String name, Struct struct, StructLayout layout, long elementStride, int texelsPerElement, VertexBufferLayout vertexLayout,
-                              boolean explicitBinding, String glsl) {
+                              boolean explicitBinding, String glsl, boolean vulkan) {
+        this.vulkan = vulkan;
         this.mode = mode;
         this.name = name;
         this.struct = struct;
@@ -180,6 +182,43 @@ public final class StructArrayAccess {
      *     struct has a member that the mode cannot read
      */
     public static StructArrayAccess of(Struct struct, Mode mode, String name, int count, int slot, GraphicsCapabilities caps) {
+        return make(struct, mode, name, count, 0, slot, caps, false);
+    }
+
+    /**
+     * Makes the access for a Vulkan descriptor set and binding, or, for an OpenGL context, exactly as the
+     * method without a set.
+     *
+     * <p>For capabilities of {@link GraphicsCapabilities.Api#VULKAN} the text is Vulkan GLSL (the method without a set always writes OpenGL GLSL, whatever the capabilities, which is what the plans of the library
+     * use): every
+     * block and the texture buffer carry {@code layout(set = s, binding = n)} (a binding is then
+     * required, so {@code slot} must not be negative), the texture buffer is a {@code utextureBuffer}
+     * (Vulkan has no combined sampler for it), and the vertex attributes are as for OpenGL. The text is
+     * compiled to SPIR-V by the tests with glslang. For OpenGL capabilities the set must be 0.
+     *
+     * @param struct the element type; must not be {@code null}
+     * @param mode how the array is read
+     * @param name the name of the array, an identifier
+     * @param count the number of elements (the length of a uniform block's array, at least 1; 0 for the unsized modes)
+     * @param set the descriptor set (Vulkan); 0 for OpenGL
+     * @param slot the binding point, texture unit or first attribute location; negative for none on OpenGL
+     * @param caps the capabilities that decide what can be expressed; must not be {@code null}
+     * @return the access
+     * @throws IllegalArgumentException as for the method without a set, or if the set is not 0 on OpenGL, or the
+     *     binding is negative on Vulkan
+     * @throws UnsupportedOperationException if the capabilities do not allow the mode
+     */
+    public static StructArrayAccess of(Struct struct, Mode mode, String name, int count, int set, int slot, GraphicsCapabilities caps) {
+        return make(struct, mode, name, count, set, slot, caps, caps.api() == GraphicsCapabilities.Api.VULKAN);
+    }
+
+    private static StructArrayAccess make(Struct struct, Mode mode, String name, int count, int set, int slot, GraphicsCapabilities caps, boolean vulkan) {
+        if (set < 0 || !vulkan && set != 0) {
+            throw new IllegalArgumentException("a descriptor set is a Vulkan concept and not negative: " + set);
+        }
+        if (vulkan && mode != Mode.VERTEX_ATTRIBUTE && slot < 0) {
+            throw new IllegalArgumentException("Vulkan needs a binding for every block and sampler, not " + slot);
+        }
         if (name == null || !IDENTIFIER.matcher(name).matches()) {
             throw new IllegalArgumentException("the name of an array must be an identifier: " + name);
         }
@@ -187,16 +226,17 @@ public final class StructArrayAccess {
         if (count < 0 || (mode == Mode.UNIFORM_BLOCK && count < 1)) {
             throw new IllegalArgumentException("the element count is out of range: " + count);
         }
-        boolean binding = slot >= 0 && caps.glsl().atLeast(GlslVersion.V420);
+        boolean binding = vulkan ? mode != Mode.VERTEX_ATTRIBUTE : slot >= 0 && caps.glsl().supports(GlslFeature.EXPLICIT_BINDING);
+        String where = vulkan ? ", set = " + set + ", binding = " + slot : binding ? ", binding = " + slot : "";
         StructLayout layout = struct.layout(mode == Mode.UNIFORM_BLOCK ? GpuLayout.STD140 : GpuLayout.STD430);
         String fetch = "fetch_" + name;
         String type = struct.name();
         switch (mode) {
             case STORAGE_BLOCK: {
                 long stride = layout.size();
-                String text = "layout(std430" + (binding ? ", binding = " + slot : "") + ") readonly buffer " + name + "_Block {\n    " + type + " " + name + "[];\n};\n\n"
+                String text = "layout(std430" + where + ") readonly buffer " + name + "_Block {\n    " + type + " " + name + "[];\n};\n\n"
                         + type + " " + fetch + "(int i) {\n    return " + name + "[i];\n}\n";
-                return new StructArrayAccess(mode, name, struct, layout, stride, 0, null, binding, text);
+                return new StructArrayAccess(mode, name, struct, layout, stride, 0, null, binding, text, vulkan);
             }
             case UNIFORM_BLOCK: {
                 long stride = layout.size();
@@ -204,16 +244,17 @@ public final class StructArrayAccess {
                     throw new IllegalArgumentException(count + " elements of " + stride + " bytes are " + stride * count + " bytes, more than the " + GUARANTEED_UNIFORM_BLOCK_BYTES
                             + " that a uniform block is guaranteed to hold: use a storage block or a texture buffer");
                 }
-                String text = "layout(std140" + (binding ? ", binding = " + slot : "") + ") uniform " + name + "_Block {\n    " + type + " " + name + "[" + count + "];\n};\n\n"
+                String text = "layout(std140" + where + ") uniform " + name + "_Block {\n    " + type + " " + name + "[" + count + "];\n};\n\n"
                         + type + " " + fetch + "(int i) {\n    return " + name + "[i];\n}\n";
-                return new StructArrayAccess(mode, name, struct, layout, stride, 0, null, binding, text);
+                return new StructArrayAccess(mode, name, struct, layout, stride, 0, null, binding, text, vulkan);
             }
             case TEXTURE_BUFFER: {
                 requireScalarsAndVectors(struct, mode);
                 long stride = (layout.size() + 15) & ~15L;
                 int texels = (int) (stride / 16);
                 StringBuilder sb = new StringBuilder();
-                sb.append(binding ? "layout(binding = " + slot + ") " : "").append("uniform usamplerBuffer ").append(name).append("_texels;\n\n");
+                sb.append(vulkan ? "layout(set = " + set + ", binding = " + slot + ") uniform utextureBuffer " : (binding ? "layout(binding = " + slot + ") " : "") + "uniform usamplerBuffer ").append(name)
+                        .append("_texels;\n\n");
                 sb.append(type).append(' ').append(fetch).append("(int i) {\n");
                 for (int t = 0; t < texels; t++) {
                     sb.append("    uvec4 t").append(t).append(" = texelFetch(").append(name).append("_texels, i * ").append(texels).append(t == 0 ? "" : " + " + t).append(");\n");
@@ -223,7 +264,7 @@ public final class StructArrayAccess {
                     sb.append("    r.").append(f.name()).append(" = ").append(decode(f.type(), (int) (f.offset() / 4))).append(";\n");
                 }
                 sb.append("    return r;\n}\n");
-                return new StructArrayAccess(mode, name, struct, layout, stride, texels, null, binding, sb.toString());
+                return new StructArrayAccess(mode, name, struct, layout, stride, texels, null, binding, sb.toString(), vulkan);
             }
             case VERTEX_ATTRIBUTE: {
                 requireScalarsAndVectors(struct, mode);
@@ -244,7 +285,7 @@ public final class StructArrayAccess {
                     sb.append("    r.").append(f.name()).append(" = ").append(name).append('_').append(f.name()).append(";\n");
                 }
                 sb.append("    return r;\n}\n");
-                return new StructArrayAccess(mode, name, struct, layout, stride, 0, vl, false, sb.toString());
+                return new StructArrayAccess(mode, name, struct, layout, stride, 0, vl, false, sb.toString(), vulkan);
             }
             default:
                 throw new AssertionError(mode);
@@ -295,6 +336,16 @@ public final class StructArrayAccess {
             case "int" -> new VertexFormat[] {VertexFormat.SINT32, VertexFormat.SINT32X2, VertexFormat.SINT32X3, VertexFormat.SINT32X4}[n - 1];
             default -> new VertexFormat[] {VertexFormat.UINT32, VertexFormat.UINT32X2, VertexFormat.UINT32X3, VertexFormat.UINT32X4}[n - 1];
         };
+    }
+
+    /**
+     * Tells which graphics API the text of this access is written for: Vulkan GLSL carries set and
+     * binding numbers on every block and sampler; OpenGL GLSL carries binding numbers from 4.20.
+     *
+     * @return {@link GraphicsCapabilities.Api#VULKAN} or {@link GraphicsCapabilities.Api#OPENGL}
+     */
+    public GraphicsCapabilities.Api api() {
+        return vulkan ? GraphicsCapabilities.Api.VULKAN : GraphicsCapabilities.Api.OPENGL;
     }
 
     /**

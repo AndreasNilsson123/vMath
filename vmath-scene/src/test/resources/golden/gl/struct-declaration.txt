@@ -1,0 +1,11 @@
+struct Style {
+    vec4 color;
+    float width;
+    uint flags;
+};
+struct Scene {
+    mat4 viewProjection;
+    Light lights[4];
+    vec3 ambient;
+    uint count;
+};

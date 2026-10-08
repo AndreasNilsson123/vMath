@@ -1,0 +1,122 @@
+//// GLSL 3.30
+// STORAGE_BLOCK: not available
+// UNIFORM_BLOCK
+layout(std140) uniform items_Block {
+    Style items[32];
+};
+
+Style fetch_items(int i) {
+    return items[i];
+}
+
+// TEXTURE_BUFFER
+uniform usamplerBuffer items_texels;
+
+Style fetch_items(int i) {
+    uvec4 t0 = texelFetch(items_texels, i * 2);
+    uvec4 t1 = texelFetch(items_texels, i * 2 + 1);
+    Style r;
+    r.color = vec4(uintBitsToFloat(t0.x), uintBitsToFloat(t0.y), uintBitsToFloat(t0.z), uintBitsToFloat(t0.w));
+    r.width = uintBitsToFloat(t1.x);
+    r.flags = t1.y;
+    return r;
+}
+
+// VERTEX_ATTRIBUTE
+layout(location = 2) in vec4 items_color;
+layout(location = 3) in float items_width;
+layout(location = 4) in uint items_flags;
+
+// the attributes hold the instance that is being drawn: the argument is not used
+Style fetch_items(int i) {
+    Style r;
+    r.color = items_color;
+    r.width = items_width;
+    r.flags = items_flags;
+    return r;
+}
+
+//// GLSL 4.20
+// STORAGE_BLOCK: not available
+// UNIFORM_BLOCK
+layout(std140, binding = 5) uniform items_Block {
+    Style items[32];
+};
+
+Style fetch_items(int i) {
+    return items[i];
+}
+
+// TEXTURE_BUFFER
+layout(binding = 5) uniform usamplerBuffer items_texels;
+
+Style fetch_items(int i) {
+    uvec4 t0 = texelFetch(items_texels, i * 2);
+    uvec4 t1 = texelFetch(items_texels, i * 2 + 1);
+    Style r;
+    r.color = vec4(uintBitsToFloat(t0.x), uintBitsToFloat(t0.y), uintBitsToFloat(t0.z), uintBitsToFloat(t0.w));
+    r.width = uintBitsToFloat(t1.x);
+    r.flags = t1.y;
+    return r;
+}
+
+// VERTEX_ATTRIBUTE
+layout(location = 2) in vec4 items_color;
+layout(location = 3) in float items_width;
+layout(location = 4) in uint items_flags;
+
+// the attributes hold the instance that is being drawn: the argument is not used
+Style fetch_items(int i) {
+    Style r;
+    r.color = items_color;
+    r.width = items_width;
+    r.flags = items_flags;
+    return r;
+}
+
+//// GLSL 4.60
+// STORAGE_BLOCK
+layout(std430, binding = 5) readonly buffer items_Block {
+    Style items[];
+};
+
+Style fetch_items(int i) {
+    return items[i];
+}
+
+// UNIFORM_BLOCK
+layout(std140, binding = 5) uniform items_Block {
+    Style items[32];
+};
+
+Style fetch_items(int i) {
+    return items[i];
+}
+
+// TEXTURE_BUFFER
+layout(binding = 5) uniform usamplerBuffer items_texels;
+
+Style fetch_items(int i) {
+    uvec4 t0 = texelFetch(items_texels, i * 2);
+    uvec4 t1 = texelFetch(items_texels, i * 2 + 1);
+    Style r;
+    r.color = vec4(uintBitsToFloat(t0.x), uintBitsToFloat(t0.y), uintBitsToFloat(t0.z), uintBitsToFloat(t0.w));
+    r.width = uintBitsToFloat(t1.x);
+    r.flags = t1.y;
+    return r;
+}
+
+// VERTEX_ATTRIBUTE
+layout(location = 2) in vec4 items_color;
+layout(location = 3) in float items_width;
+layout(location = 4) in uint items_flags;
+
+// the attributes hold the instance that is being drawn: the argument is not used
+Style fetch_items(int i) {
+    Style r;
+    r.color = items_color;
+    r.width = items_width;
+    r.flags = items_flags;
+    return r;
+}
+

@@ -78,7 +78,7 @@ class GraphicsCapabilitiesTest {
     void anExtensionTurnsAFeatureOnInAnOlderContext() {
         Object[][] table = {
                 {"ARB_draw_indirect", Feature.DRAW_INDIRECT}, {"ARB_multi_draw_indirect", Feature.MULTI_DRAW_INDIRECT}, {"ARB_base_instance", Feature.BASE_INSTANCE},
-                {"ARB_shader_draw_parameters", Feature.SHADER_DRAW_PARAMETERS}, {"ARB_shader_storage_buffer_object", Feature.STORAGE_BUFFERS},
+                {"ARB_shader_storage_buffer_object", Feature.STORAGE_BUFFERS},
                 {"ARB_compute_shader", Feature.COMPUTE_SHADERS}, {"ARB_buffer_storage", Feature.PERSISTENT_MAPPING}};
         for (Object[] row : table) {
             String ext = (String) row[0];
@@ -88,6 +88,11 @@ class GraphicsCapabilitiesTest {
             assertFalse(openGl(3, 3, "ARB_other").contains(feature));
         }
         assertTrue(openGl(3, 3, "ARB_multi_draw_indirect").contains(Feature.DRAW_INDIRECT), "multi-draw indirect implies indirect draws");
+        // the draw index through the extension is written for GLSL 4.40 and later only: glslang knows gl_DrawIDARB from there (GPU-12)
+        assertFalse(openGl(3, 3, "ARB_shader_draw_parameters").contains(Feature.SHADER_DRAW_PARAMETERS));
+        assertFalse(openGl(4, 3, "GL_ARB_shader_draw_parameters").contains(Feature.SHADER_DRAW_PARAMETERS));
+        assertTrue(openGl(4, 4, "GL_ARB_shader_draw_parameters").contains(Feature.SHADER_DRAW_PARAMETERS));
+        assertTrue(openGl(4, 6).contains(Feature.SHADER_DRAW_PARAMETERS));
         assertEquals(GlslVersion.V330, GraphicsCapabilities.openGl(3, 3, List.of("ARB_compute_shader")).glsl(), "an extension does not raise the GLSL version");
     }
 

@@ -29,7 +29,8 @@ class CullBackendAndBatcherTest {
     @Test
     void computeNeedsComputeStorageIndirectBaseInstanceAndGlsl450() {
         assertEquals(CullBackend.CPU, CullBackend.choose(GraphicsCapabilities.baseline()));
-        assertEquals(CullBackend.CPU, CullBackend.choose(GraphicsCapabilities.openGl(4, 3, List.of())), "4.3 has the features but the shaders are written for GLSL 4.50");
+        assertEquals(CullBackend.CPU, CullBackend.choose(GraphicsCapabilities.openGl(4, 2, List.of())), "4.2 has no compute shaders");
+        assertEquals(CullBackend.COMPUTE, CullBackend.choose(GraphicsCapabilities.openGl(4, 3, List.of())), "4.3 has the features and the shaders can be written for GLSL 4.30");
         assertEquals(CullBackend.COMPUTE, CullBackend.choose(GraphicsCapabilities.openGl(4, 5, List.of())));
         assertEquals(CullBackend.COMPUTE, CullBackend.choose(GraphicsCapabilities.openGl(4, 6, List.of())));
         assertEquals(CullBackend.COMPUTE, CullBackend.choose(GraphicsCapabilities.vulkan(false, true, false)));
@@ -44,7 +45,7 @@ class CullBackendAndBatcherTest {
         assertEquals(CullBackend.CPU, CullBackend.force(CullBackend.CPU, gl46));
         assertEquals(CullBackend.COMPUTE, CullBackend.force(CullBackend.COMPUTE, gl46));
         UnsupportedOperationException e = assertThrows(UnsupportedOperationException.class, () -> CullBackend.force(CullBackend.COMPUTE, GraphicsCapabilities.baseline()));
-        assertTrue(e.getMessage().contains("COMPUTE_SHADERS") && e.getMessage().contains(GlslVersion.V450.toString()), e.getMessage());
+        assertTrue(e.getMessage().contains("COMPUTE_SHADERS") && e.getMessage().contains(GlslVersion.V430.toString()), e.getMessage());
         assertEquals(List.of(CullBackend.COMPUTE, CullBackend.CPU), CullBackend.chooser().strategies());
     }
 

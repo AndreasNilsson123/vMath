@@ -80,6 +80,30 @@ tasks.register<JavaExec>("smoke") {
 //
 //   ./gradlew -Psamples :vmath-samples:lineCheck
 //   ./gradlew -Psamples :vmath-samples:lineCheck --args="--bench"
+tasks.register<JavaExec>("gpuIt") {
+    group = "verification"
+    description = "Runs the shader and buffer checks against the OpenGL driver: the GLSL table, the culling shaders against their references, the struct layouts, the ring with fences (needs a display)."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("vmath.samples.verify.GpuItMain")
+    jvmArgs(demoJvmArgs)
+}
+
+tasks.register<JavaExec>("glslCheck") {
+    group = "verification"
+    description = "Compiles the probe shader of every GLSL feature at every version on the OpenGL driver and compares it with the table (needs a display)."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("vmath.samples.verify.GlslCheckMain")
+    jvmArgs(demoJvmArgs)
+}
+
+tasks.register<JavaExec>("cullCheck") {
+    group = "verification"
+    description = "Runs the coherent hierarchical culling against the occlusion queries of the OpenGL driver and compares the images (needs a display)."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("vmath.samples.verify.OcclusionGpuCheck")
+    jvmArgs(demoJvmArgs)
+}
+
 tasks.register<JavaExec>("mapCheck") {
     group = "verification"
     description = "Runs the map shaders (symbols, areas) on the OpenGL driver and compares them with their CPU models (needs a display and OpenGL 4.6)."

@@ -1,6 +1,9 @@
 package vmath.gpucull;
 
+import java.util.List;
 import vmath.annotations.Experimental;
+import vmath.gl.GlslFeature;
+import vmath.gl.GlslVersion;
 import vmath.gl.DrawElementsIndirectGpu;
 
 /**
@@ -11,16 +14,20 @@ import vmath.gl.DrawElementsIndirectGpu;
  * <p>The struct declarations come from the generated {@code GLSL} constants of the layouts, so
  * offsets cannot drift from the Java side.
  *
- * <p><b>Never run on a GPU.</b> {@code ShaderCompileTest} compiles the text with glslang when a
- * compiler is installed (it passed with glslang 16.6.0 on 2026-10-02), and the other tests check
- * that it is complete and consistent with the layouts; the Java references were written first and
- * the shaders from them, step by step. Treat the first run on a GPU as a test of the shader against
- * the reference (compare the instance lists as sets per draw, the cluster commands as sets).
+ * <p><b>Where it has been run.</b> {@code ShaderCompileTest} compiles the text with glslang at every
+ * version from 4.30 (and refuses it below), the other tests check that it is complete and consistent with the
+ * layouts, and the demos {@code gpu-culling}, {@code cluster-lod} and {@code clustered-lights} ran both shaders on one
+ * NVIDIA GPU under OpenGL 4.5 and compared them with the CPU references (the instance lists as sets per draw, the
+ * cluster commands as sets); other vendors, operating systems and Vulkan have not run them.
  *
  * <p>The Hi-Z pyramid is an {@code R32F} {@code sampler2D} with all its mip levels at texture unit
  * 0, each texel the farthest depth of the four below it ({@code max} for conventional depth,
  * {@code min} for reversed-Z); the shader converts every texel to "farness" (larger is farther)
- * before comparing, which is the same test in every convention.
+ * before comparing, which is the same test in every convention. <b>Three contracts</b> of the pyramid
+ * as a GPU texture are stated in {@link vmath.occlusion.HiZ}: its base must be a power of two on
+ * OpenGL ({@code HiZ.baseSize} and {@code HiZ.resampleFarthest} make it), its texels hold normalised device depth
+ * ({@code 2 d - 1} for the range -1 to 1), and the passes that build it need {@code GL_TEXTURE_FETCH_BARRIER_BIT}
+ * before this shader and {@code GL_TEXTURE_UPDATE_BARRIER_BIT} before a read-back.
  *
  * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the
  * same time. The arrays and buffers you pass in are not synchronised, so two threads must not write
@@ -100,15 +107,93 @@ public final class GpuCullGlsl {
             }
             """;
 
+    /** The version of the text that the methods without a version parameter produce. */
+    public static final GlslVersion DEFAULT_VERSION = GlslVersion.V450;
+
+    /** The constructs of both shaders: they are all at or below 4.30, which is the lowest version the text can be written for. */
+    private static final List<GlslFeature> NEEDED = List.of(GlslFeature.COMPUTE_SHADER, GlslFeature.STORAGE_BLOCK, GlslFeature.STD430_LAYOUT, GlslFeature.MEMORY_QUALIFIERS,
+            GlslFeature.ATOMIC_BUFFER_FUNCTIONS, GlslFeature.EXPLICIT_BINDING, GlslFeature.UNIFORM_BLOCK, GlslFeature.STD140_LAYOUT);
+
+    private static void requireVersion(GlslVersion version, String what) {
+        if (!version.supports(GlslFeature.COMPUTE_SHADER)) {
+            throw new UnsupportedOperationException("the " + what + " is a compute shader, which needs " + GlslFeature.COMPUTE_SHADER.minimum() + " or later, and this is " + version
+                    + ": on a context without compute shaders cull on the CPU with GpuCullReference or the kernels of vmath.spatial (CullBackend.CPU)");
+        }
+        for (GlslFeature f : NEEDED) {
+            version.require(f);
+        }
+    }
+
+    private static String withVersion(String text, GlslVersion version) {
+        return version.equals(DEFAULT_VERSION) ? text : "#version " + version.number() + text.substring("#version 450".length());
+    }
+
     /**
-     * Generates the GLSL source of the object culling compute shader for a work group size, which
-     * the caller compiles with its graphics API.
+     * Generates the GLSL source of the object culling compute shader for a work group size, as for
+     * {@link #computeShader(int, GlslVersion)} with {@link #DEFAULT_VERSION} ({@code #version 450}); this
+     * text is pinned byte for byte by a golden test.
      *
-     * @param workGroupSize the work group size
-     * @return the object culling compute shader source, for a work group of {@code workGroupSize}
-     *     invocations (a power of two, typically 64)
+     * @param workGroupSize the work group size (a power of two, typically 64)
+     * @return the object culling compute shader source
+     * @throws IllegalArgumentException if the size is not a power of two in the supported range
      */
     public static String computeShader(int workGroupSize) {
+        return computeShaderText(workGroupSize);
+    }
+
+    /**
+     * Generates the GLSL source of the object culling compute shader for a work group size and a GLSL
+     * version, which the caller compiles with its graphics API.
+     *
+     * <p>The constructs in the shader (a compute shader, {@code std430} storage blocks with memory
+     * qualifiers, atomic functions on buffer variables, explicit binding points) are those of GLSL 4.30
+     * and 4.20, and the compile matrix ({@code ShaderCompileTest}) confirms that the text is accepted from
+     * 4.30 on, so that is the lowest version it can be written for; a context with an older GLSL has no
+     * compute shaders and culls on the CPU. The text for a version is the text of the default version with
+     * the first line changed.
+     *
+     * @param workGroupSize the work group size (a power of two, typically 64)
+     * @param version the GLSL version of the context; must not be {@code null}
+     * @return the shader source, starting with {@code #version} and the number of the version
+     * @throws IllegalArgumentException if the size is not a power of two in the supported range
+     * @throws UnsupportedOperationException if the version has no compute shaders (below 4.30); the message names the CPU path
+     */
+    public static String computeShader(int workGroupSize, GlslVersion version) {
+        requireVersion(version, "object culling shader");
+        return withVersion(computeShaderText(workGroupSize), version);
+    }
+
+    /**
+     * Generates the GLSL source of the cluster culling compute shader for a work group size, as for
+     * {@link #clusterShader(int, GlslVersion)} with {@link #DEFAULT_VERSION} ({@code #version 450}); this
+     * text is pinned byte for byte by a golden test.
+     *
+     * @param workGroupSize the work group size (a power of two, typically 64)
+     * @return the cluster culling compute shader source
+     * @throws IllegalArgumentException if the size is not a power of two in the supported range
+     */
+    public static String clusterShader(int workGroupSize) {
+        return clusterShaderText(workGroupSize);
+    }
+
+    /**
+     * Generates the GLSL source of the cluster culling compute shader for a work group size and a GLSL
+     * version: level of detail, frustum, cone, Hi-Z, one indirect command per surviving cluster. The
+     * constructs, the lowest version (4.30) and the refusal below it are those of
+     * {@link #computeShader(int, GlslVersion)}.
+     *
+     * @param workGroupSize the work group size (a power of two, typically 64)
+     * @param version the GLSL version of the context; must not be {@code null}
+     * @return the shader source, starting with {@code #version} and the number of the version
+     * @throws IllegalArgumentException if the size is not a power of two in the supported range
+     * @throws UnsupportedOperationException if the version has no compute shaders (below 4.30); the message names the CPU path
+     */
+    public static String clusterShader(int workGroupSize, GlslVersion version) {
+        requireVersion(version, "cluster culling shader");
+        return withVersion(clusterShaderText(workGroupSize), version);
+    }
+
+    private static String computeShaderText(int workGroupSize) {
         checkGroup(workGroupSize);
         return """
                 #version 450
@@ -163,16 +248,7 @@ public final class GpuCullGlsl {
                 """.formatted(workGroupSize, CullObjectGpu.GLSL, CullViewGpu.GLSL, DrawElementsIndirectGpu.GLSL, HIZ);
     }
 
-    /**
-     * Generates the GLSL source of the cluster culling compute shader, which tests level of detail,
-     * frustum, normal cone and the depth pyramid and emits one indirect draw command per surviving
-     * cluster.
-     *
-     * @param workGroupSize the work group size
-     * @return the cluster culling compute shader source (level of detail, frustum, cone, Hi-Z; one
-     *     indirect command per surviving cluster)
-     */
-    public static String clusterShader(int workGroupSize) {
+    private static String clusterShaderText(int workGroupSize) {
         checkGroup(workGroupSize);
         return """
                 #version 450
