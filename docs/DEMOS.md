@@ -10,11 +10,11 @@ library build.
 
 ## 1. Where we are
 
-The framework (phase F) and eighteen demos are done: `city`, `culling-lab`, `interior-portals`, `occlusion`, `dq-vs-lbs`, `rigid-pile`, `sdf-sculpt`, `terrain`, `sky-sun`, `cluster-lod`, `gpu-culling`, `clustered-lights`, `globe`, `cascaded-shadows`, `streaming-ring`, `line-lab`, `line-styles` and `line-stream`. Everything else in section 4 is the backlog. A card has numbers only for a demo that has run.
+The framework (phase F) and twenty-two demos are done: `city`, `culling-lab`, `interior-portals`, `occlusion`, `dq-vs-lbs`, `rigid-pile`, `sdf-sculpt`, `terrain`, `sky-sun`, `cluster-lod`, `gpu-culling`, `clustered-lights`, `globe`, `cascaded-shadows`, `streaming-ring`, `line-lab`, `line-styles`, `line-stream`, `map-view`, `map-projections`, `map-symbols` and `map-terrain`. Everything else in section 4 is the backlog. A card has numbers only for a demo that has run.
 
 | | |
 |---|---|
-| Demos | 18 of 32 (`city`, `culling-lab`, `interior-portals`, `occlusion`, `dq-vs-lbs`, `rigid-pile`, `sdf-sculpt`, `terrain`, `sky-sun`, `cluster-lod`, `gpu-culling`, `clustered-lights`, `globe`, `cascaded-shadows`, `streaming-ring`, `line-lab`, `line-styles`, `line-stream`) |
+| Demos | 22 of 32 (`city`, `culling-lab`, `interior-portals`, `occlusion`, `dq-vs-lbs`, `rigid-pile`, `sdf-sculpt`, `terrain`, `sky-sun`, `cluster-lod`, `gpu-culling`, `clustered-lights`, `globe`, `cascaded-shadows`, `streaming-ring`, `line-lab`, `line-styles`, `line-stream`, `map-view`, `map-projections`, `map-symbols`, `map-terrain`) |
 | Framework | launcher with a menu, runner, HUD, camera, instance stream, box renderer, debug lines, depth-buffer inset, shared scenes, warm-up, statistics and report, screenshot, smoke check |
 | Verified on | NVIDIA GeForce RTX 3060 Laptop GPU, driver 546.30, OpenGL 4.5, Windows 11, JDK 25 (one machine; other vendors and systems are unchecked) |
 
@@ -200,10 +200,14 @@ The demos of `ROADMAP.md` phase O. Each runs every strategy of the line renderer
 
 ### Phase M: 2D maps
 
-- [ ] **M1 (P1, L)** `map-view`: a moving map with own position moving along a route: a MapView2d that centres on it or sits it near the bottom, north up, course up and heading up on a key, range rings and a route with legs from GeoShapes, tiles from the flat tile selector (the generated procedural tiles of the globe demo, so no downloads), a scale bar from the pixel size on the ground, and a cursor that shows latitude and longitude. Shows: the 2D view, geodesy and the shapes, all drawn through the line renderer. → MAP-3, MAP-4, MAP-5, L1
-- [ ] **M2 (P2, M)** `map-projections`: the same data (coastlines of the procedural world, a geodesic and a rhumb line between two cities, circles of equal ground radius) in Web Mercator, azimuthal equidistant, polar stereographic and UTM, switched live, with distortion ellipses so that the difference can be seen; the round-trip error and the distance error of each printed. Shows: MapProjection and Geodesic. → MAP-1, MAP-2
-- [ ] **M3 (P2, M)** `map-symbols`: ten thousand moving symbols with headings, trails, priority declutter of labels and a pointer that selects the nearest one; the symbols that stay upright on a rotated map; the draw calls and the CPU time per frame in every tier. Shows: the symbol writer, Declutter, TrailBuffer, picking through `screenToWorld`. → MAP-6, MAP-7, L3
-- [ ] **M4 (P2, L)** `map-terrain`: hillshaded elevation tiles with a ramp indexed by the height relative to a reference altitude that the pointer or a key changes, and a viewshed from the own position shown as a mask, its cost per cell. Shows: the terrain shading and the CPU viewshed. → MAP-9, M1
+- [x] **M1 (P1, L)** `map-view`: a moving map with own position moving along a route: a MapView2d that centres on it or sits it near the bottom, north up, course up and heading up on a key, range rings and a route with legs from GeoShapes, tiles from the flat tile selector (the generated procedural tiles of the globe demo, so no downloads), a scale bar from the pixel size on the ground, and a cursor that shows latitude and longitude. Shows: the 2D view, geodesy and the shapes, all drawn through the line renderer. → MAP-3, MAP-4, MAP-5, L1
+      *Done: `map-view` flies an own position along a route of great-circle legs over the procedural planet in a `MapView2d` (north up, course up, heading up, own position centred or low), with range rings, the route, a hatched corridor, a trail, tiles from `FlatTileSelector` generated on the fly, a scale bar, and a cursor read-out in navigation units; the lines go through the line renderer, the corridor through the area renderer and the own position through the symbol renderer. See the card.*
+- [x] **M2 (P2, M)** `map-projections`: the same data (coastlines of the procedural world, a geodesic and a rhumb line between two cities, circles of equal ground radius) in Web Mercator, azimuthal equidistant, polar stereographic and UTM, switched live, with distortion ellipses so that the difference can be seen; the round-trip error and the distance error of each printed. Shows: MapProjection and Geodesic. → MAP-1, MAP-2
+      *Done: `map-projections` draws the coasts, a geodesic and a rhumb line, circles of equal ground radius and a grid of 450 km circles (distortion ellipses) in Web Mercator, azimuthal equidistant, polar stereographic and UTM, switched live, with the round-trip error and the distance error of each. See the card.*
+- [x] **M3 (P2, M)** `map-symbols`: ten thousand moving symbols with headings, trails, priority declutter of labels and a pointer that selects the nearest one; the symbols that stay upright on a rotated map; the draw calls and the CPU time per frame in every tier. Shows: the symbol writer, Declutter, TrailBuffer, picking through `screenToWorld`. → MAP-6, MAP-7, L3
+      *Done: `map-symbols` moves 10,000 symbols with headings over a rotating map in each of the three symbol tiers, with trails of 300 of them, priority-declutter labels, a pointer pick through `screenToProjected`, and 1,500 cities that stay upright. See the card.*
+- [x] **M4 (P2, L)** `map-terrain`: hillshaded elevation tiles with a ramp indexed by the height relative to a reference altitude that the pointer or a key changes, and a viewshed from the own position shown as a mask, its cost per cell. Shows: the terrain shading and the CPU viewshed. → MAP-9, M1
+      *Done: `map-terrain` colours a 385 by 385 tile by height relative to a reference altitude (a key or the pointer changes it), hillshaded, on the CPU or the GPU, with a viewshed from the moving own position computed on a worker thread and shown as a mask. See the card.*
 
 ### Phase T: tour and capture
 
@@ -823,3 +827,116 @@ The wall time of a frame was 2.54 ms, and the render thread allocated 292 B per 
 The dirty ranges are 29% of the bytes and 30% of the CPU time; most of what remains are the trails, which change completely every frame (100 tracks times 63 records of 48 bytes, 302 KB), where the edited polylines are 150 times 7 records (50 KB) and the churn a few KB. The set had 3,442 draws on average (the styles of the 3,000 polylines are dealt out at random, so most are a run of one) and a fragmentation of 1.5%; the three compactions took 3,792, 3,773 and 3,778 draws to 2,310, 2,324 and 2,375 and rewrote 1.2 MB each (every polyline moves). 108,000 edits, 21,600 removals and additions and 43,200 handle checks gave 0 failures. The wall time of a frame was 1.86 ms, the GPU time of the lines 0.29 ms, and the render thread allocated 4,165 B per frame (budget 16,384 B; smoke runs 400 polylines and 12 tracks).
 
 **Does not prove.** The cost of a real transfer (the upload here is `glBufferSubData` into a buffer that the GPU has finished with, not a persistently mapped ring with fences), a scene whose edits are not spread over the whole buffer, or the other tiers (the keys run them, the numbers above are tier 2). The fade of a trail is in steps and not a gradient along each segment.
+
+### map-view: Moving map: own position, route, rings and tiles
+
+**Claim.** A 2D map follows an own position along a route of great-circle legs, north up, course up or heading up, with range rings, a corridor, a trail and generated tiles, and the numbers of the view are read off in navigation units, with the lines, the areas and the symbol on the library's renderers in their best tier on the context.
+
+**Uses.** `MapView2d` (centre, scale, orientation, offset of the centre, `toScreen`, `toGeographic`, `scaleBar`, `viewProjection`), `MapShapes` (`rangeRings`, `route`, `corridorAreas`), `FlatTileSelector` and `TileGrid`, `LineBatch` and `LineRenderPlan` through the line renderer, `AreaBatch` and `AreaRenderPlan`, `SymbolBatch` and `SymbolRenderPlan`, `Geodesy`, `GeoFormat` and `Units`.
+
+**Controls.** `O` cycles north up, course up and heading up, `C` centres the own position or puts it low, `R` shows the rings, `Space` pauses, the wheel zooms, the mouse position is read out as latitude, longitude and bearing and range from the own position.
+
+**Options.** `--speed N` (450 m/s), `--scale N` (150 m of ground per pixel), `--tier N` (the line tier, 1).
+
+**How it works.** The route (`MapKit.Route`) joins five waypoints by geodesics and is followed by distance with `Geodesy.direct`. Each frame the view is made again (it is immutable) at the own position; the selector chooses the tiles, at most three missing ones are generated per frame from the planet of the globe demo (a 128-pixel image each, nearest first) and a missing tile is covered by the nearest cached ancestor. The rings, the route and the corridor are sampled for the view by `MapShapes` into a `LineBatch` and an `AreaBatch`, written relative to the centre, and drawn with the matrix of `MapView2d.viewProjection`. The own position is a symbol with `ROTATE_WITH_MAP`, so it points along its heading on a turned map.
+
+**Measured.** JDK 25, NVIDIA GeForce RTX 3060 Laptop GPU, driver 546.30, window 1600 x 900, vsync off, 720 frames after 60 of warm-up, defaults above:
+
+| what | value |
+|---|---|
+| sampling the shapes and writing the lines and areas | 5.98 ms per frame (the corridor is triangulated every frame) |
+| wall time of a frame | 17.0 ms, with up to three 128-pixel tiles generated on the CPU per frame while the cache fills (304 generated, 300 cached) |
+| render-thread allocation | 497,118 B per frame (budget 1,048,576 B; smoke runs the demo at 600 m/s) |
+| line draw calls | 1 (tier 4.5 draw id) |
+
+**Verification.** The shaders it uses are those that `MapGpuCheck` compares with their CPU models on this driver (`docs/MAPS.md`); the tile images are not checked against anything, they are a procedural planet.
+
+**Findings.** (1) Rebuilding the shapes every frame is affordable at this size, but the corridor triangulation is most of the 6 ms, and a real display would rebuild it only when the view's scale changes. (2) The tiles that are not yet generated are covered by their parent, so the map never shows a hole, only a blur. (3) Course up and heading up differ only by the 9 degree wobble that the demo adds to the heading; the symbol turns by it while the map turns by the course.
+
+**Does not prove.** Any real tile source (fetching, decoding and caching are not here), a real route or data, a window other than this one, or another driver.
+
+### map-projections: Map projections: the same data in four of them
+
+**Claim.** Coasts, a geodesic and a rhumb line between two cities, circles of equal ground radius and distortion ellipses are drawn in Web Mercator, azimuthal equidistant about a city, polar stereographic and UTM, switched live, and the round-trip error and the distance error of each are printed.
+
+**Uses.** `MapProjection` and its four implementations (`WebMercatorProjection`, `AzimuthalEquidistant`, `PolarStereographic`, `TransverseMercator` through `Utm`), `MapShapes` (`circle`, `geodesicLeg`, `rhumbLeg`), `Geodesy`, `MapView2d`, `LineBatch`.
+
+**Controls.** `1` to `4` or `A` (cycle) choose the projection, `T` shows the distortion ellipses, `C` the coasts, the left mouse button pans and the wheel zooms.
+
+**Options.** `--projection-frames N` (120 frames per projection in a scripted run and in the cycle), `--projection N` (1).
+
+**How it works.** The coasts are the zero level of the planet's height found by marching squares on a 1 degree grid (8,072 segments). For each projection the segments whose ends are inside the part of the world that the projection is used for are projected; the 450 km circles on the ground are sampled by `MapShapes.circle` and become the distortion ellipses (Tissot's indicatrices). The round-trip error is the worst geodesic distance between a point and the inverse of its projection over 3,000 random points of the domain; the distance error compares the straight line between the cities on the plane (in projected metres) with the geodesic length.
+
+**Measured.** JDK 25, NVIDIA GeForce RTX 3060 Laptop GPU, driver 546.30, window 1600 x 900, vsync off, 720 frames after 60 of warm-up:
+
+| projection | round trip, worst of 3,000 points | straight line A to B against the geodesic (6,270 km) | scale at A |
+|---|---|---|---|
+| Web Mercator | 3.5e-09 m | +52.30 percent | 1.62296 |
+| azimuthal equidistant about A | 1.6e-08 m | 0.00 percent (true range from the centre, by construction) | 1.00000 |
+| polar stereographic (north) | 3.2e-09 m | +11.37 percent | 1.11168 |
+| UTM zone of A | 4.9e-07 m | city B is outside the domain used | 0.99960 |
+
+The wall time of a frame was 1.7 ms and the render thread allocated 31,367 B per frame (budget 262,144 B). Building the lines for a projection takes 17 ms for UTM and, in a run read off the HUD, 437 ms for the azimuthal equidistant (a geodesic inverse for each end of each coast segment to test the domain); it happens when the projection or the view changes, not every frame.
+
+**Verification.** The round-trip and distance figures are computed by the demo from the library, with `Geodesy` as the reference; the projections themselves are tested against published examples (`docs/MAPS.md`).
+
+**Findings.** (1) The only projection in which the straight line to B is the true distance is the one centred on A, as designed; Web Mercator overstates it by half at 52 degrees north. (2) The distortion ellipses show what each projection does: circles that grow toward the pole (Mercator, conformal), ellipses that stretch with distance from the centre (azimuthal equidistant), circles again but larger away from the pole (stereographic), and almost none inside the zone (UTM). (3) UTM series are used only within 55 degrees of the central meridian here, where the code is checked; beyond that the demo does not draw.
+
+**Does not prove.** That a projection is right outside the domain used here, or the cost of drawing a real coastline data set.
+
+### map-symbols: Map symbols: ten thousand movers, trails and labels
+
+**Claim.** Ten thousand moving symbols with headings and trails, priority-declutter labels that do not flicker, a pointer that picks the nearest symbol, and symbols that stay upright on a rotating map are drawn in each of the three tiers of the symbol renderer, with the CPU time to write the records and the GPU time of each.
+
+**Uses.** `SymbolBatch`, `SymbolAtlas`, `SymbolStrategy` and `SymbolRenderPlan` (all three strategies on a 3.3 context), `Declutter`, `TrailBuffer` and `LineSet`, `MapView2d` (`projectedToScreen`, `screenToProjected`, a rotation of the map), `GeoFormat` and `Units` for the read-out.
+
+**Controls.** `1` to `3` or `N` choose the tier, `A` cycles them, `R` stops or starts the rotation of the map, `L` shows the labels, the left mouse button pans, the wheel zooms, the pointer picks.
+
+**Options.** `--symbols N` (10,000), `--trails N` (300), `--cities N` (1,500), `--tier-frames N` (120), `--label-share N` (30 percent of the symbols have a label), `--seed N`.
+
+**How it works.** The movers fly in a box 5,000 km wide and bounce off its edges (the time is scaled by 250 so that they are seen to move); the cities are fixed with flags 0 and stay upright, the movers have `ROTATE_WITH_MAP`. Every frame the positions are set in the `SymbolBatch`, `SymbolRenderPlan.write` writes the records for the tier and they are uploaded. The labels are boxes of six characters placed by `Declutter` with nine candidates each (in place and eight around it) and a stickiness of 40; only the 30 percent of the symbols with the highest priority are candidates, because placing all of them costs three times as much. The trails are a `TrailBuffer` feeding one `LineSet` (each track is updated every third frame). The pointer is converted with `screenToProjected` and the nearest mover within 24 pixels is picked and recoloured.
+
+**Measured.** JDK 25, NVIDIA GeForce RTX 3060 Laptop GPU, driver 546.30, window 1600 x 900, vsync off, 720 frames after 60 of warm-up, defaults above (11,500 symbols, 300 trails):
+
+| tier | strategy | write (CPU) | GPU | data | draw calls |
+|---|---|---|---|---|---|
+| 1 | INSTANCED | 0.147 ms | 0.284 ms | 0.53 MB | 1 |
+| 2 | TEXTURE_FETCH | 0.163 ms | 0.306 ms | 0.53 MB | 1 |
+| 3 | EXPANDED | 1.104 ms | 0.504 ms | 3.16 MB | 1 |
+
+Declutter solved 2,030 candidates in 4.05 ms and placed 299; the trails cost 0.37 ms a frame; the wall time of a frame was 6.36 ms and the render thread allocated 126,284 B per frame (budget 1,048,576 B; smoke runs 1,500 symbols). The GPU times vary from run to run (an earlier run of the same code gave 0.66, 0.88 and 0.86 ms for the three tiers).
+
+**Verification.** The three shaders are compared with `SymbolShaderModel` pixel by pixel on this driver at every GLSL version by `MapGpuCheck`; the test that the labels do not flicker is `DeclutterTest` (a half-pixel pan changes under 1 percent of the decisions).
+
+**Findings.** (1) Once the records are written the three tiers cost the GPU about the same; what the floor costs is the CPU and the memory, six times the data (3.16 MB against 0.53 MB). (2) Declutter is the expensive part of the frame, not the drawing: 4 ms for two thousand candidates with nine candidate places each, more than the whole rest of the frame; a real display would limit the labels by priority as this one does. (3) Ten thousand symbols in a window of 1600 by 900 are a dense field, which is the point of the declutter and of the pick.
+
+**Does not prove.** Anything about another vendor or a driver of the older versions (the tiers run in a 4.5 context with the text of 3.30), real tracks, or label text drawn with a real font: the labels are drawn by the heads-up display's font.
+
+### map-terrain: Map terrain: height relative to an altitude, and a viewshed
+
+**Claim.** Hillshaded elevation coloured by height relative to a reference altitude that a key or the pointer changes, on the CPU or the GPU from the same heights, and a viewshed from the moving own position computed off the render thread and shown as a mask, with the cost per cell.
+
+**Uses.** `TerrainGrid`, `Hillshade` (inside the shading), `ColorRamp` (`relativeSteps`, `bake`), `TerrainShading` (the CPU path), `TerrainShader` through the GPU renderer, `Viewshed`, `MapView2d`, `Units` and `GeoFormat`.
+
+**Controls.** `Up` and `Down` change the reference altitude, `H` sets it to 150 m above the terrain under the pointer, `T` colours on the CPU or the GPU, `M` shows the mask, the left mouse button pans and the wheel zooms.
+
+**Options.** `--grid N` (385 nodes a side), `--range N` (40,000 m), `--size N` (240 km).
+
+**How it works.** The demo looks for the part of the planet where the land is most rugged and dry and samples a 385 by 385 grid of the planet's heights in Web Mercator there (cells of 625 m on the ground). The ramp has steps at 600 m and 300 m below the reference, at the reference and 300 m above it, and is baked into 512 texels; whenever the reference changes the tile is coloured again, by `TerrainShading.render` into a texture, or by the GLSL of `TerrainShader` into a texture of the grid's size, and drawn as a quad. The own position circles over the tile and every time it has moved two cells a viewshed (eye 30 m above the ground, curvature and refraction included) is computed on one worker thread; when it is done its result becomes a mask that darkens what is not seen.
+
+**Measured.** JDK 25, NVIDIA GeForce RTX 3060 Laptop GPU, driver 546.30, window 1600 x 900, vsync off, 720 frames after 60 of warm-up, defaults above:
+
+| what | value |
+|---|---|
+| colouring the whole tile on the CPU, with the upload | 8.10 ms |
+| colouring it on the GPU | 0.060 ms (a timer query, few samples) |
+| the viewshed, 88 runs, warmed up | 1.88 ms for about 12,900 cells in range, 146 ns per cell, 4 percent seen at the end |
+| wall time of a frame | 5.77 ms; the render thread allocated 22,977 B per frame (budget 262,144 B; smoke runs a 129 node grid) |
+
+In a fresh JVM the first call of `Viewshed.compute` costs far more per cell (3.3 microseconds a cell in the unit test, which runs cold): the figure above is after warm-up.
+
+**Verification.** The GPU shading is compared with the CPU shading pixel by pixel (within 3 of 255, a few in a thousand more) at every GLSL version by `MapGpuCheck`; the viewshed is compared with the exact test of `Viewshed.isVisible` in `TerrainTest` (98 percent agree).
+
+**Findings.** (1) Moving the colouring to the GPU is a factor of 130 on this tile, and it matters because the ramp changes every frame as the reference does. (2) The viewshed is cheap enough to follow a moving position, and on a worker thread it never stalls a frame; the mask is a few frames old. (3) A step ramp relative to an altitude makes the areas that matter (a terrain at the aircraft's level) a band, which the hillshade does not obscure at a strength of 0.65.
+
+**Does not prove.** That the colour scheme means anything for a real display (the colours are the demo's), accuracy of the viewshed beyond the 98 percent agreement with the exact test, or anything about real elevation data: the planet is synthetic.

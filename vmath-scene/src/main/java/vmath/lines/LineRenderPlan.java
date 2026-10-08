@@ -1,6 +1,7 @@
 package vmath.lines;
 
 import java.lang.foreign.MemorySegment;
+import java.util.function.IntUnaryOperator;
 import vmath.annotations.Experimental;
 import vmath.gl.DrawList;
 import vmath.gl.DrawSubmission;
@@ -483,6 +484,25 @@ public final class LineRenderPlan {
      *     or the style table of a uniform block is too short for the styles
      */
     public int write(LineBatch batch, MemorySegment data, MemorySegment styleBuffer, DrawList draws) {
+        return write(batch, data, styleBuffer, draws, null);
+    }
+
+    /**
+     * Fills the buffers and the draw list for a batch, with every colour passed through a colour map:
+     * a display palette (day, night, night vision) applied where the colours are written.
+     *
+     * <p>Switching the palette later is {@link #rewriteStyles}: one small buffer, not the segments
+     * (the hairline strategy keeps the colour in its vertices and needs this method again).
+     *
+     * @param batch the batch; must not be {@code null}
+     * @param data receives the segment records or hairline vertices; at least {@link #dataBytes} long
+     * @param styleBuffer receives the style table; at least {@link #styleBytes} long; may be {@code null} for the hairline strategy
+     * @param draws receives the draws, after being cleared; must be of the kind {@link DrawList.Kind#ARRAYS}
+     * @param colorMap maps a colour {@code 0xRRGGBBAA} to the colour to show; may be {@code null} for none
+     * @return the number of draws
+     * @throws IllegalArgumentException as for {@link #write(LineBatch, MemorySegment, MemorySegment, DrawList)}
+     */
+    public int write(LineBatch batch, MemorySegment data, MemorySegment styleBuffer, DrawList draws, IntUnaryOperator colorMap) {
         if (draws.kind() != DrawList.Kind.ARRAYS) {
             throw new IllegalArgumentException("the draw list must hold ARRAYS draws");
         }
@@ -491,7 +511,7 @@ public final class LineRenderPlan {
         }
         draws.clear();
         if (strategy == LineStrategy.HAIRLINE) {
-            return writeHairlines(batch, data, draws);
+            return writeHairlines(batch, data, draws, colorMap);
         }
         if (styleBuffer == null || styleBuffer.byteSize() < styleBytes(batch)) {
             throw new IllegalArgumentException("the style buffer needs " + styleBytes(batch) + " bytes");
@@ -501,7 +521,7 @@ public final class LineRenderPlan {
         }
         if (strategy != LineStrategy.INDIRECT_DRAW_ID) {
             for (int i = 0; i < batch.styleCount(); i++) {
-                LineGpu.writeStyle(styleBuffer, i * LineGpu.STYLE_BYTES, batch.style(i));
+                LineGpu.writeStyle(styleBuffer, i * LineGpu.STYLE_BYTES, mapped(batch.style(i), colorMap));
             }
         }
         SegmentFeed feed = new SegmentFeed();
@@ -512,7 +532,7 @@ public final class LineRenderPlan {
         for (int p : batch.drawOrder()) {
             int si = batch.styleIndexOf(p);
             if (runSegments > 0 && si != runStyle) {
-                closeRun(batch.style(runStyle), styleBuffer, draws, runStyle, runFirst, runSegments);
+                closeRun(mapped(batch.style(runStyle), colorMap), styleBuffer, draws, runStyle, runFirst, runSegments);
                 runSegments = 0;
             }
             if (runSegments == 0) {
@@ -527,9 +547,43 @@ public final class LineRenderPlan {
             }
         }
         if (runSegments > 0) {
-            closeRun(batch.style(runStyle), styleBuffer, draws, runStyle, runFirst, runSegments);
+            closeRun(mapped(batch.style(runStyle), colorMap), styleBuffer, draws, runStyle, runFirst, runSegments);
         }
         return draws.size();
+    }
+
+    /** The style with its colour passed through a colour map. */
+    static LineStyle mapped(LineStyle style, IntUnaryOperator colorMap) {
+        return colorMap == null ? style : style.withColor(colorMap.applyAsInt(style.color()));
+    }
+
+    /**
+     * Rewrites the style table for the draws that {@link #write} produced, with the colours passed
+     * through a colour map: a palette switch is this call and one upload of the small style buffer.
+     *
+     * @param batch the batch the draws were written for; must not be {@code null}
+     * @param draws the draws written by {@link #write} for it; must not be {@code null}
+     * @param styleBuffer receives the style table; at least {@link #styleBytes} long
+     * @param colorMap maps a colour {@code 0xRRGGBBAA} to the colour to show; may be {@code null} for none
+     * @throws IllegalStateException if the strategy is {@link LineStrategy#HAIRLINE}, whose colours are in the vertices
+     * @throws IllegalArgumentException if the buffer is too small
+     */
+    public void rewriteStyles(LineBatch batch, DrawList draws, MemorySegment styleBuffer, IntUnaryOperator colorMap) {
+        if (strategy == LineStrategy.HAIRLINE) {
+            throw new IllegalStateException("the hairline strategy keeps the colours in its vertices: write the batch again");
+        }
+        if (styleBuffer.byteSize() < styleBytes(batch)) {
+            throw new IllegalArgumentException("the style buffer needs " + styleBytes(batch) + " bytes");
+        }
+        if (strategy == LineStrategy.INDIRECT_DRAW_ID) {
+            for (int d = 0; d < draws.size(); d++) {
+                LineGpu.writeStyle(styleBuffer, d * LineGpu.STYLE_BYTES, mapped(batch.style(draws.user(d)), colorMap));
+            }
+        } else {
+            for (int i = 0; i < batch.styleCount(); i++) {
+                LineGpu.writeStyle(styleBuffer, i * LineGpu.STYLE_BYTES, mapped(batch.style(i), colorMap));
+            }
+        }
     }
 
     private void closeRun(LineStyle runStyle, MemorySegment styleBuffer, DrawList draws, int style, long firstSegment, long segmentCount) {
@@ -593,14 +647,14 @@ public final class LineRenderPlan {
         return styles == null ? null : styles.mode();
     }
 
-    private int writeHairlines(LineBatch batch, MemorySegment data, DrawList draws) {
+    private int writeHairlines(LineBatch batch, MemorySegment data, DrawList draws, IntUnaryOperator colorMap) {
         float[] p = new float[3];
         long vertex = 0;
         for (int polyline : batch.drawOrder()) {
             int n = batch.pointCount(polyline);
             boolean closed = batch.isClosed(polyline);
             int si = batch.styleIndexOf(polyline);
-            int color = batch.style(si).color();
+            int color = mapped(batch.style(si), colorMap).color();
             long first = vertex;
             for (int i = 0; i < n + (closed ? 1 : 0); i++) {
                 batch.relativePoint(polyline, i % n, p, 0);

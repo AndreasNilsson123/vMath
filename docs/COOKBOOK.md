@@ -315,3 +315,89 @@ Vec3f onPlane = ray.origin().add(ray.direction().mul(t));
 is the same pixel offset (`jitteredProjection` shifts the translation, not the depth column). A camera far from the origin has a double twin (`OrthoCamerad`) and `cameraRelative()` as `Cameraf` does. Which parts of the
 library take a perspective camera, and which have an orthographic form, is the table in `docs/CAMERA.md`. For a line drawing in this view (`vmath.lines`), the number of pixels per world unit is `1 / camera.pixelSize(height)`
 and goes in `u_worldToPixel`.
+
+## 6. A moving map: own position, range rings, a route, tracks and terrain
+
+**Problem.** A map that follows a moving position: it stays centred near the bottom of the window, turns so that the course points up, shows range rings and a route that are true on the ellipsoid, tracks with trails and symbols, and terrain coloured by how high it is relative to the observer. Nothing in it is specific to aircraft; the same pieces draw a ship, a vehicle or a survey. The guide is `docs/MAPS.md`.
+
+**Recipe, the view.** `MapView2d` holds the projection, the centre, the scale in metres of ground per pixel, the orientation and the offset of the centre in the window. It converts both ways in double precision and gives the camera-relative float matrix that the shaders use, in any clip space. The projection is yours (Web Mercator for tiles, a Transverse Mercator zone for a regional display, an azimuthal equidistant map for true ranges from the centre):
+
+```java
+// a moving map: the own position at the bottom, the course up, 200 m of ground per pixel, one projection for the whole display
+MapView2d view = MapView2d.of(new TransverseMercator(Ellipsoid.WGS84, 0.0, Math.toRadians(15.0), 0.9996, 500_000.0, 0.0), lat, lon, width, height)
+        .withMetersPerPixel(200.0)
+        .withCenterOffset(0.0, 0.3)                                      // the own position 30 percent of the height below the middle
+        .withOrientation(MapView2d.Orientation.COURSE_UP, course);
+double[] px = new double[2];
+view.toScreen(lat, lon, px);                                             // the own position in window pixels: x 640, y 576
+double[] ahead = new double[2];
+double[] where = new double[3];
+Geodesy.direct(lat, lon, course, 50_000.0, where);                         // 50 km on the course: a point straight up the screen
+view.toScreen(where[0], where[1], ahead);
+double[] under = new double[2];
+view.toGeographic(px[0] + 100.0, px[1], under);                            // what is 100 pixels to the right (the mouse), as latitude and longitude
+double[] bar = new double[2];
+view.scaleBar(200, bar);                                                  // a scale bar: metres on the ground and its length in pixels
+float[] viewProjection = new float[16];
+view.viewProjection(ClipSpace.OPENGL, view.centerX(), view.centerY(), viewProjection);   // camera-relative: the origin of the buffers is the centre
+```
+
+**Recipe, shapes.** `MapShapes` samples circles, arcs, sectors, legs and corridors on the ellipsoid to a tolerance in pixels of the current view and hands them to a `LineBatch`, a `LineSet` or an `AreaBatch`. A zoom changes the tolerance, so it is made again, which is cheap:
+
+```java
+// range rings, a route of great-circle legs and a corridor along it, sampled so that no segment is more than half a pixel off the true curve
+LineBatch lines = new LineBatch();
+AreaBatch areas = new AreaBatch();
+MapShapes shapes = new MapShapes(view, 0.5);
+LineStyle ringStyle = LineStyle.pixels(1f).withColor(0x80FF80FF);
+LineStyle routeStyle = LineStyle.pixels(3f).withColor(0xFF00FFFF).withJoin(LineStyle.Join.ROUND);
+int corridor = areas.style(AreaStyle.hatch(0xFF00FF20, 0xFF00FFC0, 8f, 1f, Math.toRadians(45.0)));
+shapes.rangeRings(lat, lon, new double[] {10_000.0, 20_000.0, 40_000.0}, shapes.lines(lines, ringStyle));
+double[] route = {lat, lon, Math.toRadians(59.90), Math.toRadians(18.60), Math.toRadians(60.20), Math.toRadians(19.10)};
+shapes.route(route, 3, true, shapes.lines(lines, routeStyle));           // legs on the great circle
+shapes.corridorAreas(route, 3, 6_000.0, areas.sink(corridor));            // 6 km wide, as filled polygons
+```
+
+**Recipe, tracks.** `TrailBuffer` keeps the recent positions of each track and writes them as fading lines into a `LineSet`; a `SymbolBatch` holds the symbol at the head; `Declutter` places boxes (labels, here) so that they do not overlap and keeps the result stable from frame to frame:
+
+```java
+// tracks: a trail of positions per track as fading lines, a symbol at the head, and labels that avoid each other
+LineRenderPlan linePlan = LineRenderPlan.choose(caps);
+LineSet trails = new LineSet(linePlan, 4096);
+TrailBuffer history = new TrailBuffer(16, 32, 4);
+SymbolBatch heads = new SymbolBatch(16);
+Declutter labels = new Declutter(64f, 16);
+labels.useRingCandidates(18f, 1);
+float[] sprite = {0f, 0f, 1f, 1f};                                       // the atlas rectangle of the aircraft symbol (SymbolAtlas.rect)
+for (int t = 0; t < 3; t++) {
+    int track = history.addTrack();
+    double x = view.centerX() + t * 1_500.0, y = view.centerY();
+    for (int s = 0; s < 10; s++) {
+        history.push(track, x - (9 - s) * 400.0, y + t * 300.0, 0.0, s);   // positions in projected metres, time in seconds
+    }
+    history.updateLines(trails, track, 9.0, 12.0, LineStyle.pixels(2f).withColor(0x00C0FFFF));
+    heads.add(x, y + t * 300.0, -Math.toRadians(90.0), 24f, sprite, 0xFFFFFFFF, SymbolGpu.ROTATE_WITH_MAP);
+    double[] at = new double[2];
+    view.projectedToScreen(x, y + t * 300.0, at);
+    labels.add(t, (float) at[0], (float) at[1] - 22f, 70f, 14f, 10 - t, false);
+}
+labels.solve();
+labels.apply(heads, 0, true);                                            // here the labels are the symbols' own boxes; hide or move what does not fit
+```
+
+**Recipe, terrain.** A `TerrainGrid` is a tile of heights; a `ColorRamp` made `relativeSteps` to an altitude is baked into a texture row, and the CPU (`TerrainShading`) or the GPU (`TerrainShader`) colours and shades it. `Viewshed` answers what a sensor at a point can see:
+
+```java
+// terrain coloured by height relative to the aircraft (a margin below it, at its level, above it), shaded from the north west
+TerrainGrid terrain = new TerrainGrid(heights, n, n, 400_000.0, 6_600_000.0, 400_000.0 + 127 * 90.0, 6_600_000.0 + 127 * 90.0, 1.0);   // 90 m cells
+double aircraft = 900.0;                                                   // metres; changes every second
+ColorRamp ramp = ColorRamp.relativeSteps(aircraft, new double[] {-300.0, 0.0},
+        new int[] {0x00000000, 0xE0C000FF, 0xE00000FF});                  // clear well below, amber within 300 m below, red above
+ColorRamp.Baked row = ramp.bake(0f, 1500f, 256);                           // a 256 x 1 texture; rebuild and upload it when the reference moves
+byte[] rgba = new byte[4 * n * n];
+TerrainShading.render(terrain, row, Math.toRadians(315.0), Math.toRadians(40.0), 2.0, 0.6, rgba);   // the CPU path; TerrainShader is the same on the GPU
+byte[] seen = new byte[n * n];
+int visible = Viewshed.compute(terrain, terrain.xOf(10), terrain.yOf(64), 20.0, 0.0, 6_000.0, true, seen);   // what a sensor 20 m up at the west edge sees
+```
+
+**Notes.** Which colours mean what, and which symbols, are not the library's decision (a safety-relevant scheme is a certification matter of the integrator). The strategies for symbols and areas are chosen from the capabilities of the context like those of the lines; `MapGpuCheck` in the samples compares every shader with its CPU model on a real driver.

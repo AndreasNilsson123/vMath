@@ -6,6 +6,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.IntUnaryOperator;
 import vmath.annotations.Experimental;
 import vmath.bulk.BoundsArray;
 import vmath.bulk.VisibilitySet;
@@ -111,6 +112,7 @@ public final class LineSet {
     private int[] dirtySlots = new int[16];
     private int dirtyCount;
     private boolean everythingDirty = true;
+    private IntUnaryOperator colorMap;
     private long[] ranges = new long[16];
     private int rangeCount;
 
@@ -587,6 +589,23 @@ public final class LineSet {
     }
 
     /**
+     * Sets the colour map that every colour passes through when it is written: a display palette.
+     *
+     * <p>The next {@link #update} writes the style table with the mapped colours, so a switch is
+     * one upload of the small style buffer; the hairline strategy keeps the colour in its vertices and
+     * rewrites them all (upload the ranges that {@link #dirtyRangeCount()} reports). The stored styles are unchanged, so {@code null} brings the
+     * original colours back.
+     *
+     * @param colorMap maps a colour {@code 0xRRGGBBAA} to the colour to show; {@code null} for none
+     */
+    public void setColorMap(IntUnaryOperator colorMap) {
+        this.colorMap = colorMap;
+        if (plan.strategy() == LineStrategy.HAIRLINE) {
+            everythingDirty = true;                 // the colour is in the vertices; elsewhere only the style table changes
+        }
+    }
+
+    /**
      * Counts the polylines.
      *
      * @return the number of polylines in the set
@@ -849,7 +868,7 @@ public final class LineSet {
             if (!live[slot]) {
                 continue;
             }
-            plan.writeUnits(data, unitOffset[slot], pts[slot], 0, pointCounts[slot], closedFlags[slot], styleTable.get(styleOf[slot]), styleOf[slot], originX, originY, originZ, feed);
+            plan.writeUnits(data, unitOffset[slot], pts[slot], 0, pointCounts[slot], closedFlags[slot], LineRenderPlan.mapped(styleTable.get(styleOf[slot]), colorMap), styleOf[slot], originX, originY, originZ, feed);
             if (rangeCount == ranges.length) {
                 ranges = Arrays.copyOf(ranges, rangeCount * 2);
             }
@@ -862,7 +881,7 @@ public final class LineSet {
         if (!hairline && plan.strategy() != LineStrategy.INDIRECT_DRAW_ID) {
             for (int i = 0; i < styleTable.size(); i++) {
                 if (styleRefs[i] > 0) {
-                    LineGpu.writeStyle(styleBuffer, i * LineGpu.STYLE_BYTES, styleTable.get(i));
+                    LineGpu.writeStyle(styleBuffer, i * LineGpu.STYLE_BYTES, LineRenderPlan.mapped(styleTable.get(i), colorMap));
                 }
             }
         }
@@ -875,7 +894,7 @@ public final class LineSet {
                 continue;
             }
             if (runSlot >= 0 && !continues(runSlot, slot)) {
-                plan.addDraw(draws, styleBuffer, styleTable.get(styleOf[runSlot]), styleOf[runSlot], runFirst, runUnits);
+                plan.addDraw(draws, styleBuffer, LineRenderPlan.mapped(styleTable.get(styleOf[runSlot]), colorMap), styleOf[runSlot], runFirst, runUnits);
                 runSlot = -1;
             }
             if (runSlot < 0) {
@@ -886,7 +905,7 @@ public final class LineSet {
             runUnits += unitCount[slot];
         }
         if (runSlot >= 0) {
-            plan.addDraw(draws, styleBuffer, styleTable.get(styleOf[runSlot]), styleOf[runSlot], runFirst, runUnits);
+            plan.addDraw(draws, styleBuffer, LineRenderPlan.mapped(styleTable.get(styleOf[runSlot]), colorMap), styleOf[runSlot], runFirst, runUnits);
         }
         return draws.size();
     }

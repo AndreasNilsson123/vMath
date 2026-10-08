@@ -13,4 +13,5 @@ module vmath.render {
     exports vmath.mesh;
     exports vmath.gltf;
     exports vmath.gpucull;
+    exports vmath.map;
 }

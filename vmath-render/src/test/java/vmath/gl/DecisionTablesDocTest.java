@@ -14,6 +14,8 @@ import org.junit.jupiter.api.Test;
 import vmath.gl.GraphicsCapabilities.Feature;
 import vmath.gpucull.CullBackend;
 import vmath.lines.LineStrategy;
+import vmath.map.AreaStrategy;
+import vmath.map.SymbolStrategy;
 
 /**
  * Keeps the decision tables of the guides equal to the code: each table between
@@ -86,6 +88,10 @@ class DecisionTablesDocTest {
         Map<String, Map<String, String>> docs = new LinkedHashMap<>();
         docs.put("docs/GPU.md", gpu);
         docs.put("docs/LINES.md", lines);
+        Map<String, String> maps = new LinkedHashMap<>();
+        maps.put("symbol-strategy", SymbolStrategy.chooser().markdownTable());
+        maps.put("area-strategy", AreaStrategy.chooser().markdownTable());
+        docs.put("docs/MAPS.md", maps);
         return docs;
     }
 

@@ -29,17 +29,17 @@ import vmath.util.Noise;
  * <p><b>Thread safety.</b> Stateless: every method may be called from any number of threads at the
  * same time.
  */
-final class Planet {
+public final class Planet {
 
     /**
      * The highest height that {@link #height} returns, in metres.
      */
-    static final double MAX_HEIGHT = 9000.0;
+    public static final double MAX_HEIGHT = 9000.0;
 
     /**
      * The lowest height that {@link #height} returns, in metres (the sea floor).
      */
-    static final double MIN_HEIGHT = -6000.0;
+    public static final double MIN_HEIGHT = -6000.0;
 
     private static final int SEED = 20260;
 
@@ -54,7 +54,7 @@ final class Planet {
      * @return the height in metres, from {@link #MIN_HEIGHT} to {@link #MAX_HEIGHT}; negative on the
      *     sea floor
      */
-    static double height(double longitude, double latitude) {
+    public static double height(double longitude, double latitude) {
         double cl = Math.cos(latitude);
         double x = cl * Math.cos(longitude), y = cl * Math.sin(longitude), z = Math.sin(latitude);
         double continent = Noise.fbm3(Noise.Kind.SIMPLEX, x * 1.7, y * 1.7, z * 1.7, SEED, 6, 2.0, 0.5);
@@ -82,7 +82,7 @@ final class Planet {
      *     angle from the vertical)
      * @param out receives red, green and blue from 0 to 1; must not be {@code null}
      */
-    static void albedo(double longitude, double latitude, double height, double slope, double[] out) {
+    public static void albedo(double longitude, double latitude, double height, double slope, double[] out) {
         double lat = Math.abs(Math.toDegrees(latitude));
         double cl = Math.cos(latitude);
         double nx = cl * Math.cos(longitude), ny = cl * Math.sin(longitude), nz = Math.sin(latitude);

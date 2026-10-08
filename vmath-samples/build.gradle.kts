@@ -80,6 +80,14 @@ tasks.register<JavaExec>("smoke") {
 //
 //   ./gradlew -Psamples :vmath-samples:lineCheck
 //   ./gradlew -Psamples :vmath-samples:lineCheck --args="--bench"
+tasks.register<JavaExec>("mapCheck") {
+    group = "verification"
+    description = "Runs the map shaders (symbols, areas) on the OpenGL driver and compares them with their CPU models (needs a display and OpenGL 4.6)."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("vmath.samples.verify.MapGpuCheck")
+    jvmArgs(demoJvmArgs)
+}
+
 tasks.register<JavaExec>("lineCheck") {
     group = "verification"
     description = "Runs the line shaders on the OpenGL driver and compares them with the reference (needs a display and OpenGL 4.6)."

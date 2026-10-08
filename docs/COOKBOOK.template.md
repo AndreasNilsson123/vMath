@@ -111,3 +111,25 @@ Picking needs no ray against the scene in 2D. The ray of an orthographic camera 
 is the same pixel offset (`jitteredProjection` shifts the translation, not the depth column). A camera far from the origin has a double twin (`OrthoCamerad`) and `cameraRelative()` as `Cameraf` does. Which parts of the
 library take a perspective camera, and which have an orthographic form, is the table in `docs/CAMERA.md`. For a line drawing in this view (`vmath.lines`), the number of pixels per world unit is `1 / camera.pixelSize(height)`
 and goes in `u_worldToPixel`.
+
+## 6. A moving map: own position, range rings, a route, tracks and terrain
+
+**Problem.** A map that follows a moving position: it stays centred near the bottom of the window, turns so that the course points up, shows range rings and a route that are true on the ellipsoid, tracks with trails and symbols, and terrain coloured by how high it is relative to the observer. Nothing in it is specific to aircraft; the same pieces draw a ship, a vehicle or a survey. The guide is `docs/MAPS.md`.
+
+**Recipe, the view.** `MapView2d` holds the projection, the centre, the scale in metres of ground per pixel, the orientation and the offset of the centre in the window. It converts both ways in double precision and gives the camera-relative float matrix that the shaders use, in any clip space. The projection is yours (Web Mercator for tiles, a Transverse Mercator zone for a regional display, an azimuthal equidistant map for true ranges from the centre):
+
+{{recipe:map-view}}
+
+**Recipe, shapes.** `MapShapes` samples circles, arcs, sectors, legs and corridors on the ellipsoid to a tolerance in pixels of the current view and hands them to a `LineBatch`, a `LineSet` or an `AreaBatch`. A zoom changes the tolerance, so it is made again, which is cheap:
+
+{{recipe:map-shapes}}
+
+**Recipe, tracks.** `TrailBuffer` keeps the recent positions of each track and writes them as fading lines into a `LineSet`; a `SymbolBatch` holds the symbol at the head; `Declutter` places boxes (labels, here) so that they do not overlap and keeps the result stable from frame to frame:
+
+{{recipe:map-tracks}}
+
+**Recipe, terrain.** A `TerrainGrid` is a tile of heights; a `ColorRamp` made `relativeSteps` to an altitude is baked into a texture row, and the CPU (`TerrainShading`) or the GPU (`TerrainShader`) colours and shades it. `Viewshed` answers what a sensor at a point can see:
+
+{{recipe:map-terrain}}
+
+**Notes.** Which colours mean what, and which symbols, are not the library's decision (a safety-relevant scheme is a certification matter of the integrator). The strategies for symbols and areas are chosen from the capabilities of the context like those of the lines; `MapGpuCheck` in the samples compares every shader with its CPU model on a real driver.

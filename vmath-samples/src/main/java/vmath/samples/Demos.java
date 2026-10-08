@@ -8,6 +8,10 @@ import vmath.samples.demos.globe.GlobeDemo;
 import vmath.samples.demos.gpucull.GpuCullDemo;
 import vmath.samples.demos.lights.LightsDemo;
 import vmath.samples.demos.lines.LineLabDemo;
+import vmath.samples.demos.maps.MapProjectionsDemo;
+import vmath.samples.demos.maps.MapSymbolsDemo;
+import vmath.samples.demos.maps.MapTerrainDemo;
+import vmath.samples.demos.maps.MapViewDemo;
 import vmath.samples.demos.lines.LineStreamDemo;
 import vmath.samples.demos.lines.LineStylesDemo;
 import vmath.samples.demos.occlusion.OcclusionDemo;
@@ -56,6 +60,10 @@ public final class Demos {
                 new DemoEntry(StreamingDemo.INFO, StreamingDemo::new),
                 new DemoEntry(LineLabDemo.INFO, LineLabDemo::new),
                 new DemoEntry(LineStylesDemo.INFO, LineStylesDemo::new),
-                new DemoEntry(LineStreamDemo.INFO, LineStreamDemo::new));
+                new DemoEntry(LineStreamDemo.INFO, LineStreamDemo::new),
+                new DemoEntry(MapViewDemo.INFO, MapViewDemo::new),
+                new DemoEntry(MapProjectionsDemo.INFO, MapProjectionsDemo::new),
+                new DemoEntry(MapSymbolsDemo.INFO, MapSymbolsDemo::new),
+                new DemoEntry(MapTerrainDemo.INFO, MapTerrainDemo::new));
     }
 }

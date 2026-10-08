@@ -53,14 +53,16 @@ class PackageLayeringTest {
             Map.entry("mesh", Set.of("geo", "gl", "pack", "spatial")),
             // layer 5: the widest fan-out
             Map.entry("gltf", Set.of("core", "bulk", "anim", "mesh")),
-            Map.entry("gpucull", Set.of("core", "geo", "bulk", "gl", "mesh", "occlusion"))));
+            Map.entry("gpucull", Set.of("core", "geo", "bulk", "gl", "mesh", "occlusion")),
+            // the map layer: projections and geodesy of geo, the orthographic camera, the lines, the draw and struct machinery of gl, the atlas packer of mesh and the grid of spatial
+            Map.entry("map", Set.of("core", "geo", "camera", "lines", "gl", "mesh", "spatial", "bulk"))));
 
     /** The module (by layer, bottom to top: core 0, geo 1, scene 2, render 3) each package ships in. */
     private static final Map<String, Integer> MODULE = Map.ofEntries(
             Map.entry("core", 0), Map.entry("mem", 0), Map.entry("color", 0), Map.entry("tex", 0),
             Map.entry("geo", 1), Map.entry("pack", 1), Map.entry("physics", 1),
             Map.entry("bulk", 2), Map.entry("anim", 2), Map.entry("gl", 2), Map.entry("lines", 2), Map.entry("spatial", 2), Map.entry("occlusion", 2), Map.entry("util", 2),
-            Map.entry("camera", 3), Map.entry("lighting", 3), Map.entry("sky", 3), Map.entry("mesh", 3), Map.entry("gltf", 3), Map.entry("gpucull", 3));
+            Map.entry("camera", 3), Map.entry("lighting", 3), Map.entry("sky", 3), Map.entry("mesh", 3), Map.entry("gltf", 3), Map.entry("gpucull", 3), Map.entry("map", 3));
 
     /** The measured edges between the packages of the library: package to the set of packages it uses. */
     private static Map<String, Set<String>> measure() throws Exception {

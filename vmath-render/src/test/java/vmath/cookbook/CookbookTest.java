@@ -36,6 +36,27 @@ import vmath.gpucull.CullObjectGpu;
 import vmath.gpucull.CullView;
 import vmath.gpucull.CullViewGpu;
 import vmath.gpucull.GpuCullReference;
+import vmath.geo.Ellipsoid;
+import vmath.geo.Geodesy;
+import vmath.geo.TransverseMercator;
+import vmath.geo.WebMercatorProjection;
+import vmath.gl.GraphicsCapabilities;
+import vmath.lines.LineBatch;
+import vmath.lines.LineRenderPlan;
+import vmath.lines.LineSet;
+import vmath.lines.LineStyle;
+import vmath.lines.TrailBuffer;
+import vmath.map.AreaBatch;
+import vmath.map.AreaStyle;
+import vmath.map.ColorRamp;
+import vmath.map.Declutter;
+import vmath.map.MapShapes;
+import vmath.map.MapView2d;
+import vmath.map.SymbolBatch;
+import vmath.map.SymbolGpu;
+import vmath.map.TerrainGrid;
+import vmath.map.TerrainShading;
+import vmath.map.Viewshed;
 import vmath.mem.PersistentBufferRing;
 import vmath.spatial.CullContext;
 import vmath.spatial.CullPipeline;
@@ -343,5 +364,119 @@ class CookbookTest {
         assertEquals(400.5f, onPlane.x(), 1e-3f, "the world x under the cursor is the pixel x");
         assertEquals(720f - 300.5f, onPlane.y(), 1e-3f, "the world y counts from the bottom");
         assertEquals(0f, onPlane.z(), 1e-4f);
+    }
+
+    // ================================================================ 6. a moving map
+
+    @Test
+    void aMovingMapKeepsTheOwnPositionNearTheBottomAndTurnsWithTheCourse() {
+        int width = 1280, height = 720;
+        double lat = Math.toRadians(59.65), lon = Math.toRadians(17.92);
+        double course = Math.toRadians(40.0);
+        // recipe[map-view]: a moving map: the own position at the bottom, the course up, 200 m of ground per pixel, one projection for the whole display
+        MapView2d view = MapView2d.of(new TransverseMercator(Ellipsoid.WGS84, 0.0, Math.toRadians(15.0), 0.9996, 500_000.0, 0.0), lat, lon, width, height)
+                .withMetersPerPixel(200.0)
+                .withCenterOffset(0.0, 0.3)                                      // the own position 30 percent of the height below the middle
+                .withOrientation(MapView2d.Orientation.COURSE_UP, course);
+        double[] px = new double[2];
+        view.toScreen(lat, lon, px);                                             // the own position in window pixels: x 640, y 576
+        double[] ahead = new double[2];
+        double[] where = new double[3];
+        Geodesy.direct(lat, lon, course, 50_000.0, where);                         // 50 km on the course: a point straight up the screen
+        view.toScreen(where[0], where[1], ahead);
+        double[] under = new double[2];
+        view.toGeographic(px[0] + 100.0, px[1], under);                            // what is 100 pixels to the right (the mouse), as latitude and longitude
+        double[] bar = new double[2];
+        view.scaleBar(200, bar);                                                  // a scale bar: metres on the ground and its length in pixels
+        float[] viewProjection = new float[16];
+        view.viewProjection(ClipSpace.OPENGL, view.centerX(), view.centerY(), viewProjection);   // camera-relative: the origin of the buffers is the centre
+        // recipe end
+        assertEquals(640.0, px[0], 1e-6);
+        assertEquals(576.0, px[1], 1e-6);
+        assertEquals(px[0], ahead[0], 1.0, "straight ahead is straight up");
+        assertTrue(ahead[1] < px[1] - 100.0, "and up the screen");
+        assertTrue(bar[0] > 0.0 && bar[1] <= 200.0);
+        assertEquals(Math.toDegrees(Geodesy.initialBearing(lat, lon, under[0], under[1])), Math.toDegrees(course) + 90.0, 1.0, "the right of the screen is 90 degrees from the course");
+        assertEquals(16, viewProjection.length);
+    }
+
+    @Test
+    void rangeRingsARouteAndACorridorAreShapesSampledForTheView() {
+        int width = 1280, height = 720;
+        double lat = Math.toRadians(59.65), lon = Math.toRadians(17.92);
+        MapView2d view = MapView2d.of(WebMercatorProjection.INSTANCE, lat, lon, width, height).withMetersPerPixel(100.0);
+        // recipe[map-shapes]: range rings, a route of great-circle legs and a corridor along it, sampled so that no segment is more than half a pixel off the true curve
+        LineBatch lines = new LineBatch();
+        AreaBatch areas = new AreaBatch();
+        MapShapes shapes = new MapShapes(view, 0.5);
+        LineStyle ringStyle = LineStyle.pixels(1f).withColor(0x80FF80FF);
+        LineStyle routeStyle = LineStyle.pixels(3f).withColor(0xFF00FFFF).withJoin(LineStyle.Join.ROUND);
+        int corridor = areas.style(AreaStyle.hatch(0xFF00FF20, 0xFF00FFC0, 8f, 1f, Math.toRadians(45.0)));
+        shapes.rangeRings(lat, lon, new double[] {10_000.0, 20_000.0, 40_000.0}, shapes.lines(lines, ringStyle));
+        double[] route = {lat, lon, Math.toRadians(59.90), Math.toRadians(18.60), Math.toRadians(60.20), Math.toRadians(19.10)};
+        shapes.route(route, 3, true, shapes.lines(lines, routeStyle));           // legs on the great circle
+        shapes.corridorAreas(route, 3, 6_000.0, areas.sink(corridor));            // 6 km wide, as filled polygons
+        // recipe end
+        assertTrue(lines.polylineCount() >= 4, "three rings and the route");
+        assertTrue(areas.polygonCount() >= 1 && areas.triangleCount() > 4);
+    }
+
+    @Test
+    void tracksWithTrailsAreLinesAndTheirHeadsAreSymbolsWithLabelsPlacedBySpace() {
+        int width = 1280, height = 720;
+        MapView2d view = MapView2d.of(WebMercatorProjection.INSTANCE, Math.toRadians(59.65), Math.toRadians(17.92), width, height).withMetersPerPixel(100.0);
+        GraphicsCapabilities caps = GraphicsCapabilities.openGl(3, 3, java.util.List.of());
+        // recipe[map-tracks]: tracks: a trail of positions per track as fading lines, a symbol at the head, and labels that avoid each other
+        LineRenderPlan linePlan = LineRenderPlan.choose(caps);
+        LineSet trails = new LineSet(linePlan, 4096);
+        TrailBuffer history = new TrailBuffer(16, 32, 4);
+        SymbolBatch heads = new SymbolBatch(16);
+        Declutter labels = new Declutter(64f, 16);
+        labels.useRingCandidates(18f, 1);
+        float[] sprite = {0f, 0f, 1f, 1f};                                       // the atlas rectangle of the aircraft symbol (SymbolAtlas.rect)
+        for (int t = 0; t < 3; t++) {
+            int track = history.addTrack();
+            double x = view.centerX() + t * 1_500.0, y = view.centerY();
+            for (int s = 0; s < 10; s++) {
+                history.push(track, x - (9 - s) * 400.0, y + t * 300.0, 0.0, s);   // positions in projected metres, time in seconds
+            }
+            history.updateLines(trails, track, 9.0, 12.0, LineStyle.pixels(2f).withColor(0x00C0FFFF));
+            heads.add(x, y + t * 300.0, -Math.toRadians(90.0), 24f, sprite, 0xFFFFFFFF, SymbolGpu.ROTATE_WITH_MAP);
+            double[] at = new double[2];
+            view.projectedToScreen(x, y + t * 300.0, at);
+            labels.add(t, (float) at[0], (float) at[1] - 22f, 70f, 14f, 10 - t, false);
+        }
+        labels.solve();
+        labels.apply(heads, 0, true);                                            // here the labels are the symbols' own boxes; hide or move what does not fit
+        // recipe end
+        assertEquals(3, labels.count());
+        assertTrue(trails.size() >= 3, "at least one polyline per track");
+        assertTrue(labels.shown(0));
+    }
+
+    @Test
+    void terrainIsColouredRelativeToTheAltitudeOfTheAircraftAndShadedFromTheLight() {
+        int n = 128;
+        float[] heights = new float[n * n];
+        for (int r = 0; r < n; r++) {
+            for (int c = 0; c < n; c++) {
+                heights[r * n + c] = (float) (300.0 + 900.0 * Math.exp(-((c - 64.0) * (c - 64.0) + (r - 64.0) * (r - 64.0)) / 900.0));    // one hill, 1200 m
+            }
+        }
+        // recipe[map-terrain]: terrain coloured by height relative to the aircraft (a margin below it, at its level, above it), shaded from the north west
+        TerrainGrid terrain = new TerrainGrid(heights, n, n, 400_000.0, 6_600_000.0, 400_000.0 + 127 * 90.0, 6_600_000.0 + 127 * 90.0, 1.0);   // 90 m cells
+        double aircraft = 900.0;                                                   // metres; changes every second
+        ColorRamp ramp = ColorRamp.relativeSteps(aircraft, new double[] {-300.0, 0.0},
+                new int[] {0x00000000, 0xE0C000FF, 0xE00000FF});                  // clear well below, amber within 300 m below, red above
+        ColorRamp.Baked row = ramp.bake(0f, 1500f, 256);                           // a 256 x 1 texture; rebuild and upload it when the reference moves
+        byte[] rgba = new byte[4 * n * n];
+        TerrainShading.render(terrain, row, Math.toRadians(315.0), Math.toRadians(40.0), 2.0, 0.6, rgba);   // the CPU path; TerrainShader is the same on the GPU
+        byte[] seen = new byte[n * n];
+        int visible = Viewshed.compute(terrain, terrain.xOf(10), terrain.yOf(64), 20.0, 0.0, 6_000.0, true, seen);   // what a sensor 20 m up at the west edge sees
+        // recipe end
+        int top = 4 * (64 * n + 64);
+        assertTrue((rgba[top] & 0xFF) > 0 && rgba[top + 1] == 0 && rgba[top + 3] == (byte) 0xFF, "the top of the hill is above the aircraft: red, shaded");
+        assertEquals(0, rgba[3], "the plain well below the aircraft is clear");
+        assertTrue(visible > 100 && visible < n * n);
     }
 }
