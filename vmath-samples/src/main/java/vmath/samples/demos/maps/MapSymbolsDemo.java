@@ -72,6 +72,7 @@ public final class MapSymbolsDemo implements Demo {
     private static final int TRAIL_POINTS = 16;
     private static final int SLICES = 4;
     private static final double TIME_SCALE = 250.0;
+    private static final int LABEL_CADENCE = 3;
 
     private final int count;
     private final int trailCount;
@@ -361,6 +362,9 @@ public final class MapSymbolsDemo implements Demo {
     }
 
     private void placeLabels(FrameInfo frame) {
+        if (labels && labelItems > 0 && frame.frame() % LABEL_CADENCE != 0) {
+            return;                        // the placement of the last solve stands for the frames in between: the labels follow their symbols, and stickiness keeps them from jumping
+        }
         labelItems = 0;
         labelsShown = 0;
         labelsMoved = 0;

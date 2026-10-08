@@ -80,7 +80,17 @@ public final class MapProjectionsDemo implements Demo {
     private String builtFor = "";
     private int polylines;
     private int skipped;
-    private double buildMs;
+    private double coastMs;
+    private double shapesMs;
+    private long coastBytes;
+    private int skippedShapes;
+    private double originX;
+    private double originY;
+    private String shapesFor = "";
+    private double shapesScale = Double.NaN;
+    private double lastMpp = Double.NaN;
+    private int scaleChangedAt;
+    private MapKit.LineLayer coastLayer;
     private long uploaded;
 
     /**
@@ -98,7 +108,8 @@ public final class MapProjectionsDemo implements Demo {
     @Override
     public void create(DemoContext ctx) {
         this.ctx = ctx;
-        lines = new MapKit.LineLayer(LineTier.DRAW_ID, 24L << 20);
+        lines = new MapKit.LineLayer(LineTier.DRAW_ID, 8L << 20);
+        coastLayer = new MapKit.LineLayer(LineTier.DRAW_ID, 24L << 20);
         projections[0] = WebMercatorProjection.INSTANCE;
         projections[1] = new AzimuthalEquidistant(LAT_A, LON_A);
         projections[2] = PolarStereographic.ups(true);
@@ -120,9 +131,8 @@ public final class MapProjectionsDemo implements Demo {
             case 0:
                 return Math.abs(lat) < Math.toRadians(84.0);
             case 1: {
-                double[] r = new double[3];
-                Geodesy.inverse(LAT_A, LON_A, lat, lon, r);
-                return r[0] < 19_500_000.0;
+                // the spherical distance is a hundred times cheaper and good to 0.6 percent, which is plenty for the edge of the domain
+                return Geodesy.sphericalDistance(LAT_A, LON_A, lat, lon) < 19_500_000.0;
             }
             case 2:
                 return lat > Math.toRadians(-5.0);
@@ -190,6 +200,11 @@ public final class MapProjectionsDemo implements Demo {
             }
         }
         builtFor = "";
+        shapesFor = "";
+        double[] o = new double[2];
+        projections[index].forward(centerLat, centerLon, o);
+        originX = o[0];
+        originY = o[1];
     }
 
     @Override
@@ -235,10 +250,9 @@ public final class MapProjectionsDemo implements Demo {
         view = MapView2d.of(projections[current], centerLat, centerLon, frame.width(), frame.height()).withMetersPerPixel(mpp);
     }
 
-    private void build() {
+    private void buildCoasts() {
         long t0 = System.nanoTime();
-        double ox = view.centerX(), oy = view.centerY();
-        lines.begin(ox, oy);
+        coastLayer.begin(originX, originY);
         polylines = 0;
         skipped = 0;
         MapProjection p = projections[current];
@@ -264,11 +278,20 @@ public final class MapProjectionsDemo implements Demo {
                 seg[3] = b[0];
                 seg[4] = b[1];
                 if (a[0] != b[0] || a[1] != b[1]) {
-                    lines.batch().addPolyline(seg, 0, 2, false, coast);
+                    coastLayer.batch().addPolyline(seg, 0, 2, false, coast);
                     polylines++;
                 }
             }
         }
+        coastBytes = coastLayer.end();
+        coastMs = (System.nanoTime() - t0) / 1e6;
+    }
+
+    /** The circles and lines: their sampling depends on the scale only, so a pan does not make them again. */
+    private void buildShapes() {
+        long t0 = System.nanoTime();
+        skippedShapes = 0;
+        lines.begin(originX, originY);
         MapShapes shapes = new MapShapes(view, 0.6);
         try {
             if (tissot) {
@@ -280,7 +303,7 @@ public final class MapProjectionsDemo implements Demo {
                             try {
                                 shapes.circle(lat, lon, 450_000.0, tissotSink);
                             } catch (IllegalArgumentException outside) {
-                                skipped++;
+                                skippedShapes++;
                             }
                         }
                     }
@@ -297,20 +320,37 @@ public final class MapProjectionsDemo implements Demo {
                 shapes.rhumbLeg(LAT_A, LON_A, LAT_B, LON_B, shapes.lines(lines.batch(), LineStyle.pixels(3f).withColor(0xFF4080FF)));
             }
         } catch (IllegalArgumentException domain) {
-            skipped++;
+            skippedShapes++;
         }
         uploaded = lines.end();
-        buildMs = (System.nanoTime() - t0) / 1e6;
+        shapesMs = (System.nanoTime() - t0) / 1e6;
     }
 
     @Override
     public void render(FrameInfo frame) {
-        String key = current + "|" + view.centerLatitude() + "|" + view.centerLongitude() + "|" + mpp + "|" + tissot + "|" + showCoasts + "|" + frame.width() + "x" + frame.height();
-        if (!key.equals(builtFor)) {
-            build();
-            builtFor = key;
+        String coastKey = current + "|" + showCoasts;
+        if (!coastKey.equals(builtFor)) {
+            buildCoasts();
+            builtFor = coastKey;
         }
-        lines.draw(view, frame.width(), frame.height(), view.centerX(), view.centerY());
+        // the shapes are sampled to a tolerance in pixels: made again when the scale has changed by 8 percent, the projection or the switches have changed, but not by a pan
+        String shapeKey = current + "|" + tissot;
+        // while the scale is changing the old sampling is kept (it is in projected metres: only its fineness is off); it is made again when the scale has settled
+        // for ten frames, or at once when the view has come in three times closer than the sampling was made for and its facets would show
+        if (mpp != lastMpp) {
+            lastMpp = mpp;
+            scaleChangedAt = frame.frame();
+        }
+        boolean settled = frame.frame() - scaleChangedAt >= 10;
+        if (!shapeKey.equals(shapesFor) || Double.isNaN(shapesScale) || settled && Math.abs(Math.log(mpp / shapesScale)) > 0.08 || mpp < shapesScale / 3.0) {
+            buildShapes();
+            shapesFor = shapeKey;
+            shapesScale = mpp;
+        }
+        if (showCoasts) {
+            coastLayer.draw(view, frame.width(), frame.height(), originX, originY);
+        }
+        lines.draw(view, frame.width(), frame.height(), originX, originY);
     }
 
     @Override
@@ -320,8 +360,8 @@ public final class MapProjectionsDemo implements Demo {
         hud.line(Double.isNaN(distanceError[current]) ? "the straight line between the cities is outside this projection"
                 : String.format(Locale.ROOT, "straight line A to B on the plane: %+.2f percent of the geodesic (%s)", 100 * distanceError[current], GeoFormat.distanceAuto(
                         geodesicAB(), GeoFormat.UnitSystem.METRIC)));
-        hud.line(String.format(Locale.ROOT, "scale at A %.5f; %d polylines, %d skipped, built in %.1f ms, %.1f KB, %d call%s", scaleAtA[current], polylines, skipped, buildMs, uploaded / 1024.0, lines.calls(),
-                lines.calls() == 1 ? "" : "s"));
+        hud.line(String.format(Locale.ROOT, "scale at A %.5f; coasts %d polylines (%d skipped) built in %.1f ms; shapes built in %.1f ms (a pan builds nothing); %.1f KB, %d calls", scaleAtA[current], polylines, skipped, coastMs,
+                shapesMs, (coastBytes + uploaded) / 1024.0, coastLayer.calls() + lines.calls()));
         hud.color(0.5f, 1f, 0.6f).line("green: geodesic A to B");
         hud.color(1f, 0.5f, 0.7f).line("pink: rhumb line A to B");
         hud.color(1f, 0.65f, 0.3f).line("orange: circles of 450 km on the ground (distortion ellipses)");
@@ -339,13 +379,16 @@ public final class MapProjectionsDemo implements Demo {
 
     @Override
     public void report(Stats stats) {
-        stats.note(String.format(Locale.ROOT, "last build: %d polylines, %d skipped, %.1f ms, %.1f KB", polylines, skipped, buildMs, uploaded / 1024.0));
+        stats.note(String.format(Locale.ROOT, "last builds: coasts %d polylines, %d skipped, %.1f ms; shapes %.1f ms; %.1f KB", polylines, skipped, coastMs, shapesMs, (coastBytes + uploaded) / 1024.0));
     }
 
     @Override
     public void dispose() {
         if (lines != null) {
             lines.close();
+        }
+        if (coastLayer != null) {
+            coastLayer.close();
         }
     }
 }

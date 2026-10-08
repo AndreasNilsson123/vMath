@@ -106,6 +106,10 @@ public final class MapViewDemo implements Demo {
     private double[] scaleBar = new double[2];
     private double[] cursor = new double[2];
     private int generated;
+    private double corridorScale = Double.NaN;
+    private double corridorX;
+    private double corridorY;
+    private int corridorBuilds;
     private int drawnTiles;
     private int usedFallbacks;
     private double shapesMs;
@@ -214,22 +218,41 @@ public final class MapViewDemo implements Demo {
         return (long) zoom << 50 | (x & 0x1FFFFFF) << 25 | y & 0x1FFFFFF;
     }
 
+    /** A tile image made on a worker thread, waiting to become a texture on the render thread. */
+    private record Finished(long key, byte[] image) {
+    }
+
+    private final java.util.concurrent.ExecutorService tileWorkers = java.util.concurrent.Executors.newFixedThreadPool(3, r -> {
+        Thread t = new Thread(r, "tile generator");
+        t.setDaemon(true);
+        return t;
+    });
+    private final java.util.concurrent.ConcurrentLinkedQueue<Finished> finished = new java.util.concurrent.ConcurrentLinkedQueue<>();
+    private final Set<Long> pending = new HashSet<>();
+
     private void requestTiles() {
+        // what the workers have finished becomes textures here, a few a frame
+        Finished f;
+        int uploads = 0;
+        while (uploads < 6 && (f = finished.poll()) != null) {
+            pending.remove(f.key());
+            tiles.put(f.key(), MapRenderers.texture(TILE_PIXELS, TILE_PIXELS, f.image()));
+            generated++;
+            uploads++;
+            while (tiles.size() > TILE_CACHE) {
+                var it = tiles.entrySet().iterator();
+                var eldest = it.next();
+                org.lwjgl.opengl.GL46.glDeleteTextures(eldest.getValue());
+                it.remove();
+            }
+        }
         int n = selector.select(view);
-        int budget = 3;
-        for (int i = 0; i < n && budget > 0; i++) {
-            long k = key(selector.zoom(), selector.x(i), selector.y(i));
-            if (!tiles.containsKey(k)) {
-                byte[] image = MapKit.tileImage(selector.zoom(), selector.x(i), selector.y(i), TILE_PIXELS);
-                tiles.put(k, MapRenderers.texture(TILE_PIXELS, TILE_PIXELS, image));
-                generated++;
-                budget--;
-                while (tiles.size() > TILE_CACHE) {
-                    var it = tiles.entrySet().iterator();
-                    var eldest = it.next();
-                    org.lwjgl.opengl.GL46.glDeleteTextures(eldest.getValue());
-                    it.remove();
-                }
+        int zoom = selector.zoom();
+        for (int i = 0; i < n && pending.size() < 24; i++) {
+            long x = selector.x(i), y = selector.y(i);
+            long k = key(zoom, x, y);
+            if (!tiles.containsKey(k) && pending.add(k)) {
+                tileWorkers.execute(() -> finished.add(new Finished(k, MapKit.tileImage(zoom, x, y, TILE_PIXELS))));
             }
         }
     }
@@ -242,18 +265,28 @@ public final class MapViewDemo implements Demo {
         drawTiles(vp, ox, oy);
 
         long t0 = System.nanoTime();
-        areaBatch.clear();
-        corridorStyle = areaBatch.style(AreaStyle.hatch(0x30A0FF30, 0x30A0FFC0, 9f, 1.5f, Math.toRadians(45.0)));
         MapShapes shapes = new MapShapes(view, 0.5);
         double[] wp = route.waypoints();
         double[] corridorPoints = new double[wp.length + 2];
         System.arraycopy(wp, 0, corridorPoints, 0, wp.length);
         corridorPoints[wp.length] = wp[0];
         corridorPoints[wp.length + 1] = wp[1];
-        try {
-            shapes.corridorAreas(corridorPoints, route.count() + 1, 14_000.0, areaBatch.sink(corridorStyle));
-        } catch (IllegalArgumentException cannotTriangulate) {
-            // a corridor whose pieces cross itself at this scale is skipped for the frame
+        // the corridor does not depend on the own position, only on the scale (the tolerance in pixels): it is made again when the scale has changed by 5 percent
+        if (Double.isNaN(corridorScale) || Math.abs(Math.log(mpp / corridorScale)) > 0.05) {
+            areaBatch.clear();
+            corridorStyle = areaBatch.style(AreaStyle.hatch(0x30A0FF30, 0x30A0FFC0, 9f, 1.5f, Math.toRadians(45.0)));
+            try {
+                shapes.corridorAreas(corridorPoints, route.count() + 1, 14_000.0, areaBatch.sink(corridorStyle));
+            } catch (IllegalArgumentException cannotTriangulate) {
+                // a corridor whose pieces cross itself at this scale is skipped
+            }
+            double[] c = new double[2];
+            view.projection().forward(wp[0], wp[1], c);
+            corridorX = c[0];
+            corridorY = c[1];
+            areas.upload(areaBatch, corridorX, corridorY, null);
+            corridorScale = mpp;
+            corridorBuilds++;
         }
         lines.begin(ox, oy);
         if (rings) {
@@ -280,7 +313,6 @@ public final class MapViewDemo implements Demo {
             }
         }
         uploaded = lines.end();
-        areas.upload(areaBatch, ox, oy, null);
 
         symbolBatch.clear();
         double[] xy = new double[2];
@@ -294,7 +326,9 @@ public final class MapViewDemo implements Demo {
         shapesMs = (System.nanoTime() - t0) / 1e6;
         ctx.stats().record(shapesSeries, shapesMs);
 
-        areas.draw(vp, 0f, 0f);
+        float[] areaMatrix = new float[16];
+        view.viewProjection(ClipSpace.OPENGL, corridorX, corridorY, areaMatrix);
+        areas.draw(areaMatrix, 0f, 0f);
         lines.draw(view, frame.width(), frame.height(), ox, oy);
         symbols.draw(vp, frame.width(), frame.height(), SymbolRenderPlan.mapRotation(view), (float) view.pixelsPerMapUnit());
     }
@@ -392,6 +426,7 @@ public final class MapViewDemo implements Demo {
 
     @Override
     public void dispose() {
+        tileWorkers.shutdownNow();
         for (int t : tiles.values()) {
             org.lwjgl.opengl.GL46.glDeleteTextures(t);
         }

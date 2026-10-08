@@ -844,14 +844,14 @@ The dirty ranges are 29% of the bytes and 30% of the CPU time; most of what rema
 
 | what | value |
 |---|---|
-| sampling the shapes and writing the lines and areas | 5.98 ms per frame (the corridor is triangulated every frame) |
-| wall time of a frame | 17.0 ms, with up to three 128-pixel tiles generated on the CPU per frame while the cache fills (304 generated, 300 cached) |
-| render-thread allocation | 497,118 B per frame (budget 1,048,576 B; smoke runs the demo at 600 m/s) |
+| sampling the rings and the route and writing the lines | 2.98 ms per frame (the corridor is triangulated only when the scale has changed by 5 percent) |
+| wall time of a frame | 4.68 ms; the tiles (128 pixels each) are generated on three worker threads and become textures on the render thread, six a frame at most (282 generated and cached). Generating them on the render thread, as the first version did, made a frame 17 ms and a zoom drop to 30 frames a second |
+| render-thread allocation | 245,769 B per frame (budget 1,048,576 B; smoke runs the demo at 600 m/s) |
 | line draw calls | 1 (tier 4.5 draw id) |
 
 **Verification.** The shaders it uses are those that `MapGpuCheck` compares with their CPU models on this driver (`docs/MAPS.md`); the tile images are not checked against anything, they are a procedural planet.
 
-**Findings.** (1) Rebuilding the shapes every frame is affordable at this size, but the corridor triangulation is most of the 6 ms, and a real display would rebuild it only when the view's scale changes. (2) The tiles that are not yet generated are covered by their parent, so the map never shows a hole, only a blur. (3) Course up and heading up differ only by the 9 degree wobble that the demo adds to the heading; the symbol turns by it while the map turns by the course.
+**Findings.** (1) The corridor does not depend on the own position, only on the scale, so it is built again only when the scale changes; the rings and the route follow the own position and are sampled every frame. (2) The tiles that are not yet generated are covered by their parent, so the map never shows a hole, only a blur. (3) Course up and heading up differ only by the 9 degree wobble that the demo adds to the heading; the symbol turns by it while the map turns by the course.
 
 **Does not prove.** Any real tile source (fetching, decoding and caching are not here), a real route or data, a window other than this one, or another driver.
 
@@ -876,7 +876,7 @@ The dirty ranges are 29% of the bytes and 30% of the CPU time; most of what rema
 | polar stereographic (north) | 3.2e-09 m | +11.37 percent | 1.11168 |
 | UTM zone of A | 4.9e-07 m | city B is outside the domain used | 0.99960 |
 
-The wall time of a frame was 1.7 ms and the render thread allocated 31,367 B per frame (budget 262,144 B). Building the lines for a projection takes 17 ms for UTM and, in a run read off the HUD, 437 ms for the azimuthal equidistant (a geodesic inverse for each end of each coast segment to test the domain); it happens when the projection or the view changes, not every frame.
+The wall time of a frame was 2.2 ms and the render thread allocated 32,615 B per frame (budget 262,144 B). The coasts are built when the projection changes (8.6 ms for UTM; 437 ms, read off the HUD in an earlier run, for the azimuthal equidistant, which takes a geodesic inverse for each end of each segment to test the domain), and the circles and lines once the scale has stopped changing for ten frames (or at once when the view has come three times closer than they were sampled for): 21 to 42 ms for UTM and Web Mercator, 117 ms for the azimuthal equidistant, whose every projected point is a geodesic inverse. A pan or a zoom in progress builds nothing, which is why they stay at a few hundred frames a second; in an earlier version every wheel notch rebuilt them and the azimuthal equidistant dropped to a few frames a second. The coasts of the azimuthal equidistant take 174 ms (432 ms before the domain test used the spherical distance).
 
 **Verification.** The round-trip and distance figures are computed by the demo from the library, with `Geodesy` as the reference; the projections themselves are tested against published examples (`docs/MAPS.md`).
 
@@ -904,7 +904,7 @@ The wall time of a frame was 1.7 ms and the render thread allocated 31,367 B per
 | 2 | TEXTURE_FETCH | 0.163 ms | 0.306 ms | 0.53 MB | 1 |
 | 3 | EXPANDED | 1.104 ms | 0.504 ms | 3.16 MB | 1 |
 
-Declutter solved 2,030 candidates in 4.05 ms and placed 299; the trails cost 0.37 ms a frame; the wall time of a frame was 6.36 ms and the render thread allocated 126,284 B per frame (budget 1,048,576 B; smoke runs 1,500 symbols). The GPU times vary from run to run (an earlier run of the same code gave 0.66, 0.88 and 0.86 ms for the three tiers).
+Declutter solved 2,030 candidates in 3.9 ms and placed about 300, and does it every third frame (the labels follow their symbols in between, and stickiness keeps them from jumping); the trails cost 0.37 ms a frame; the wall time of a frame was 3.13 ms and the render thread allocated 48,189 B per frame (budget 1,048,576 B; smoke runs 1,500 symbols). The GPU times vary from run to run (an earlier run of the same code gave 0.66, 0.88 and 0.86 ms for the three tiers).
 
 **Verification.** The three shaders are compared with `SymbolShaderModel` pixel by pixel on this driver at every GLSL version by `MapGpuCheck`; the test that the labels do not flicker is `DeclutterTest` (a half-pixel pan changes under 1 percent of the decisions).
 
