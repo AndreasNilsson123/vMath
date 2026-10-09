@@ -248,7 +248,7 @@ public final class RollingStats {
             return;
         }
         System.arraycopy(ring, 0, scratch, 0, size);
-        java.util.Arrays.sort(scratch, 0, size);
+        sort(scratch, size);
         for (int i = 0; i < percents.length; i++) {
             double rank = percents[i] / 100.0 * (size - 1);
             int lo = (int) Math.floor(rank);
@@ -322,6 +322,30 @@ public final class RollingStats {
             }
         }
         return a[k];
+    }
+
+    private static void sort(double[] a, int n) {
+        for (int root = n / 2 - 1; root >= 0; root--) {
+            siftDown(a, root, n);
+        }
+        for (int end = n - 1; end > 0; end--) {
+            swap(a, 0, end);
+            siftDown(a, 0, end);
+        }
+    }
+
+    private static void siftDown(double[] a, int root, int end) {
+        while (root * 2 + 1 < end) {
+            int child = root * 2 + 1;
+            if (child + 1 < end && Double.compare(a[child], a[child + 1]) < 0) {
+                child++;
+            }
+            if (Double.compare(a[root], a[child]) >= 0) {
+                return;
+            }
+            swap(a, root, child);
+            root = child;
+        }
     }
 
     private static void swap(double[] a, int i, int j) {
