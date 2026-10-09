@@ -8,7 +8,7 @@ jacoco = "0.8.15"
 pitest = "1.30.0"
 pitest-junit5 = "1.2.3"
 jmh = "1.37"
-lwjgl = "3.3.6"
+lwjgl = "3.4.3"
 
 [libraries]
 junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
