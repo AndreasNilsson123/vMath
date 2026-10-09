@@ -32,6 +32,7 @@ tasks.withType<JavaCompile>().configureEach {
     options.compilerArgs.addAll(listOf("-Xlint:all", "-Xlint:-exports", "-Xlint:-processing", "-Xlint:-incubating", "-Werror", "--add-modules=jdk.incubator.vector"))
     if (valhalla) {
         options.release.set(jdk)
+        options.compilerArgs.add("-Xlint:-preview")
         options.compilerArgs.add("--enable-preview")
     }
 }

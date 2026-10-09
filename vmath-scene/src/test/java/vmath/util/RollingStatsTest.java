@@ -59,6 +59,19 @@ class RollingStatsTest {
     }
 
     @Test
+    void bulkPercentilesOrderSignedZeroLikeDoubleSort() {
+        RollingStats s = new RollingStats(2);
+        s.add(0.0);
+        s.add(-0.0);
+        double[] out = new double[2];
+
+        s.percentiles(new double[] {0, 100}, out);
+
+        assertEquals(-0.0, out[0]);
+        assertEquals(0.0, out[1]);
+    }
+
+    @Test
     void theWindowKeepsTheLastSamplesAndCountsAllOfThem() {
         RollingStats s = new RollingStats(5);
         for (int i = 1; i <= 12; i++) {
