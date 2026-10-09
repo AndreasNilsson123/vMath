@@ -139,6 +139,7 @@ public final class DynamicAabbTree {
      * @param box the box; must not be {@code null}
      * @param userData the user data of the object
      * @return its handle
+     * @throws IllegalArgumentException if a bound of the box is NaN
      */
     public int insert(Aabbf box, int userData) {
         return insert(box.minX(), box.minY(), box.minZ(), box.maxX(), box.maxY(), box.maxZ(), userData);
@@ -148,6 +149,11 @@ public final class DynamicAabbTree {
      * Adds an object with the box given by its six bounds and returns its handle; {@code userData}
      * is returned by queries and {@link #userData}.
      *
+     * <p>A bound that is NaN is refused ({@link IllegalArgumentException}): a NaN has no place in
+     * a hierarchy of nested boxes, where it would make the box of every ancestor NaN and hide the
+     * other objects from queries. The flat kernels ({@link FrustumKernel}) keep such a box instead;
+     * see {@code docs/CULLING.md}.
+     *
      * @param minX the smallest x coordinate
      * @param minY the smallest y coordinate
      * @param minZ the smallest z coordinate
@@ -156,8 +162,10 @@ public final class DynamicAabbTree {
      * @param maxZ the largest z coordinate
      * @param userData the user data of the object
      * @return its handle
+     * @throws IllegalArgumentException if a bound is NaN
      */
     public int insert(float minX, float minY, float minZ, float maxX, float maxY, float maxZ, int userData) {
+        requireNotNaN(minX, minY, minZ, maxX, maxY, maxZ);
         int leaf = allocate();
         int o = leaf * 6;
         tight[o] = minX;
@@ -182,6 +190,12 @@ public final class DynamicAabbTree {
         insertLeaf(leaf);
         leafCount++;
         return handle;
+    }
+
+    private static void requireNotNaN(float minX, float minY, float minZ, float maxX, float maxY, float maxZ) {
+        if (minX != minX || minY != minY || minZ != minZ || maxX != maxX || maxY != maxY || maxZ != maxZ) {
+            throw new IllegalArgumentException("a box with a NaN bound cannot be held by a tree: [" + minX + ", " + minY + ", " + minZ + "] to [" + maxX + ", " + maxY + ", " + maxZ + "]");
+        }
     }
 
     /**
@@ -218,10 +232,12 @@ public final class DynamicAabbTree {
      * @param displacementZ the displacement z
      * @return {@code true} if the tree had to be changed because the object left its fat box;
      *     {@code false} if nothing needed to change
+     * @throws IllegalArgumentException if a bound is NaN (the tree is not changed)
      */
     public boolean move(int handle, float minX, float minY, float minZ, float maxX, float maxY, float maxZ,
                         float displacementX, float displacementY, float displacementZ) {
         int leaf = leafOf(handle);
+        requireNotNaN(minX, minY, minZ, maxX, maxY, maxZ);
         int o = leaf * 6;
         tight[o] = minX;
         tight[o + 1] = minY;

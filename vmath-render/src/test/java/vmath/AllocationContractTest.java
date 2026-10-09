@@ -896,6 +896,30 @@ class AllocationContractTest {
     }
 
     @Test
+    void rollingStatisticsAndTheFrameTimer() {
+        vmath.util.RollingStats stats = new vmath.util.RollingStats(240);
+        vmath.util.FrameTimer timer = new vmath.util.FrameTimer(240);
+        double[] ps = {1, 50, 99};
+        double[] out = new double[3];
+        assertNoAllocation("RollingStats", WARM, CALLS, () -> {
+            stats.add(16.6);
+            stats.add(17.2);
+            stats.mean();
+            stats.stdDev();
+            stats.percentile(99);
+            stats.percentiles(ps, out);
+            stats.countAbove(20);
+        });
+        assertNoAllocation("FrameTimer", WARM, CALLS, () -> {
+            timer.tick();
+            timer.record(16_000_000L);
+            timer.fps();
+            timer.lowFps(1);
+            timer.hitches(2);
+        });
+    }
+
+    @Test
     void springsSmoothingAndEasing() {
         vmath.util.Spring spring = new vmath.util.Spring();
         double[] out = new double[2];

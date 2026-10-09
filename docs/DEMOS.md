@@ -420,13 +420,15 @@ shader on one GPU of one vendor.
 
 | bodies | pairs | contact points | broad phase | narrow phase | solver | step | per body | allocated per frame |
 |---|---|---|---|---|---|---|---|---|
-| 250 | 426 | 803 | 0.37 ms | 5.5 ms | 1.9 ms | 7.8 ms | 31 us | 2.2 MB |
-| 1 000 | 3 609 | 4 179 | 2.8 ms | 41.3 ms | 10.1 ms | 54.3 ms | 54 us | 8.9 MB |
-| 2 000 | 10 203 | 9 508 | 10.4 ms | 105.8 ms | 27.4 ms | 143.8 ms | 72 us | 18.1 MB |
-| 3 000 | 17 280 | 14 978 | 18.9 ms | 163.2 ms | 46.5 ms | 228.9 ms | 76 us | 27.0 MB |
+| 250 | 406 | 819 | 0.31 ms | 1.0 ms | 1.6 ms | 3.0 ms | 12 us | 11 kB |
+| 1 000 | 3 548 | 3 888 | 2.8 ms | 12.9 ms | 8.2 ms | 24.1 ms | 24 us | 45 kB |
+| 2 000 | 9 751 | 7 880 | 7.9 ms | 36.6 ms | 19.8 ms | 64.6 ms | 32 us | 91 kB |
+| 3 000 | 16 018 | 11 246 | 15.6 ms | 60.3 ms | 29.2 ms | 105.4 ms | 35 us | 141 kB |
 
-No body left the pit at any check, and the kinetic energy at the end was 7.3, 16.3, 42.7 and 111.9 J (the pile never comes fully to rest: there is no sleeping and no warm starting). The smoke configuration (150 bodies) allocates 1.4 MB per frame against a budget of 4 MB.
-The narrow phase is 71% of the step at 1,000 bodies: about 11 us per box pair, and the polytope that each box needs per step is where the allocation comes from (TD-30). `PileSimulationTest` runs 120 bodies for 1,200 steps without a window and checks the same properties.
+(The first measurement, before PERF-2, was 54.3 ms for 1 000 bodies with 41.3 ms of narrow phase and 8.9 MB allocated per frame, and 228.9 ms for 3 000 bodies; the boxes now go through `ManifoldBuilder.boxes` and the spheres through GJK, which is what the narrow phase spends its time on now. The pile is not the same pile: the pair counts differ because the bodies settle differently with warm starting on.)
+
+No body left the pit at any check, and the kinetic energy at the end was 7.3, 16.3, 42.7 and 111.9 J (the pile never comes fully to rest: there is no sleeping; warm starting is on since PERF-2 and lowered the energy a little). The smoke configuration (150 bodies) allocated 1.4 MB per frame against a budget of 4 MB before PERF-2.
+Before PERF-2 the narrow phase was 71% of the step at 1,000 bodies: about 11 us per box pair, and the polytope that each box needs per step was where the allocation came from (TD-30). Now it is 54%: a box pair costs 0.5 us (`ManifoldBuilder.boxes`), and what is left is the pairs with a sphere, which go through GJK and EPA at several microseconds each. `PileSimulationTest` runs 120 bodies for 1,200 steps without a window and checks the same properties.
 
 **Findings.** (1) TD-30. (2) With drops from up to 40 m, 1 m thick walls and no speed limit, a box was thrown out of the pit at frame 240 of a 3,000-body run (the engine has no continuous collision detection); the demo drops from at most 22 m, clamps the speed to 25 m/s and has
 4 m thick walls. (3) A pit that is too small overflows: 3,000 bodies filled a 24 × 24 m pit to the top of 7 m walls and bodies sat on the wall; the pit is 32 × 32 m.
@@ -455,7 +457,7 @@ The mesh and upload rows are averages over the frames that re-meshed:
 The meshing of the whole grid is the cost (it samples every corner of every cell, with a trilinear read of the stored field), the stroke itself is a fifth of a millisecond, and the GPU draw is 0.05 ms. The 64³ run allocated 18,374 B per frame (the composed `Sdf` of each stamp and the new mesh arrays; the smoke budget is 32,768 B).
 With `--verify` the mesh had no edge without a partner at any of the 43 checks.
 
-**Findings.** (1) TD-31: 42 of the 43 checks found a few edges (at most 128 of about 54,000) that more than two triangles share; the starting shape has none, and one added sphere that is wider than a hole in the shape gives eight. (2) A torus that touched the body along a thin lens did the same before it was moved away from it.
+**Findings.** (1) TD-31: 42 of the 43 checks found a few edges (at most 128 of about 54,000) that more than two triangles share; the starting shape has none, and one added sphere that is wider than a hole in the shape gives eight. (2) A torus that touched the body along a thin lens did the same before it was moved away from it. (3) Since PERF-4, `--manifold` gives each sheet of a cell its own vertex: 15 of 21 checks (at most 6 edges) instead of 20 of 21 (at most 128); the mesh time and the allocation per frame are the same within noise (10.7 against 11.0 ms).
 
 **Does not prove.** A whole-grid re-mesh of 64³ to 128³: a tool with a larger field would mesh only the chunks that the brush touched, which `SurfaceNets` does not offer (it meshes a box). The field is a grid of samples, so the brush is as sharp as a cell; the library's `Sdf` composition is used only for the stamp.
 

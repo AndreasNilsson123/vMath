@@ -83,6 +83,19 @@ All: `equals`, `hashCode`, `toDouble`, `toString`. With a nearest point (`closes
 `Aabbf`, `Spheref`, `Planef`, `Rayf`, `Trianglef`, `Segmentf`, `Capsulef`. On purpose not: `Obbf.transform` (an oriented box under a general affine map is not a box) and `Frustumf.transform`
 (a frustum is rebuilt from its view-projection).
 
+## Text: `parse`, `toCompactString`, `format`, `toMatrixString` (CORE-12)
+
+`Vec2f`, `Vec3f`, `Vec4f`, `Quatf`, `Mat2f`, `Mat3f` and `Mat4f` (and their double twins) read and write text, and so do `Vec2i`, `Vec3i` and `Vec4i`:
+
+| | Vectors and quaternions | Matrices |
+|---|---|---|
+| `X.parse(CharSequence)` | reads the `toString` of the record (`Vec3f[x=1.0, y=2.0, z=3.0]`), the compact form, or a bare list (`1 2 3`, `[1; 2; 3]`) | the same, and the rows of `toMatrixString` |
+| `toCompactString()` | `(1.0, 2.5, -3.0)`, every number in the shortest form that reads back exactly | `((1.0, 0.0), (0.0, 1.0))`, row by row |
+| `format(decimals)` | `(1.00, 2.50, -3.00)`, for a HUD or a log | |
+| `toMatrixString(decimals)` | | rows between bars, columns right-aligned: `\| 1.0 0.0 0.0 1.0 \|` |
+
+The rules of `parse`: brackets of every kind and `|` are ignored; numbers are separated by commas, semicolons or white space; `NaN` and `Infinity` are numbers; either every number has a label (`x=1`, in any order, or `m10=3` for a matrix) or none has; **unlabelled matrix numbers are read row by row, the way a matrix is written on paper, while the record's own text lists them column by column with labels** (`m<column><row>`), so both read back to the same matrix; a type name before a bracket must be the name of the type that parses; anything else is an `IllegalArgumentException` that says how many numbers were expected and shows (shortened) the text. `parse(toCompactString())` and `parse(toString())` give back an equal value in both precisions, tested on random values (`TextFormatfTest` and its double twin). The records' own `toString` is unchanged.
+
 ## Float and double twins
 
 Every `...d` type is generated from its `...f` template, and the test checks the result: each public method of a float type exists on the double twin with the

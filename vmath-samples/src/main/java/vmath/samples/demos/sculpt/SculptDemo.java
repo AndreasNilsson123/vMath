@@ -154,7 +154,7 @@ public final class SculptDemo implements Demo {
     public void create(DemoContext ctx) {
         this.ctx = ctx;
         field = new SculptField(options.grid(), HALF, startingShape());
-        nets.normals(options.normals()).projection(options.projection());
+        nets.normals(options.normals()).projection(options.projection()).manifold(options.manifold());
         program = Gl.program("""
                 #version 450 core
                 layout(location = 0) in vec3 position;

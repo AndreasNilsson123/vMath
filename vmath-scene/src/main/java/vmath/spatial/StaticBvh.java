@@ -198,6 +198,16 @@ public final class StaticBvh {
         return (float) (cost / rootArea);
     }
 
+    private static void requireNoNaN(BoundsArray bounds) {
+        float[] x0 = bounds.minXs(), y0 = bounds.minYs(), z0 = bounds.minZs();
+        float[] x1 = bounds.maxXs(), y1 = bounds.maxYs(), z1 = bounds.maxZs();
+        for (int i = 0, n = bounds.size(); i < n; i++) {
+            if (x0[i] != x0[i] || y0[i] != y0[i] || z0[i] != z0[i] || x1[i] != x1[i] || y1[i] != y1[i] || z1[i] != z1[i]) {
+                throw new IllegalArgumentException("the box " + i + " has a NaN bound, which a tree cannot hold");
+            }
+        }
+    }
+
     // ------------------------------------------------------------------ refit
 
     /**
@@ -206,12 +216,14 @@ public final class StaticBvh {
      * <p>The array must have the same size as when the tree was built.
      *
      * @param bounds the bounds; must not be {@code null}
-     * @throws IllegalArgumentException if {@code bounds} does not have the size of the build
+     * @throws IllegalArgumentException if {@code bounds} does not have the size of the build, or if
+     *     a box has a NaN bound (checked before anything is changed)
      */
     public void refit(BoundsArray bounds) {
         if (bounds.size() != order.length) {
             throw new IllegalArgumentException("bounds size " + bounds.size() + " differs from build size " + order.length);
         }
+        requireNoNaN(bounds);
         float[] x0 = bounds.minXs(), y0 = bounds.minYs(), z0 = bounds.minZs();
         float[] x1 = bounds.maxXs(), y1 = bounds.maxYs(), z1 = bounds.maxZs();
         for (int node = nodeCount - 1; node >= 0; node--) {
@@ -270,7 +282,9 @@ public final class StaticBvh {
      * @param maxLeafSize the max leaf size
      * @return top-down binned SAH build: at each node the centroids are binned along their widest
      *     axis into 16 bins, and the split plane with the lowest surface-area cost wins
-     * @throws IllegalArgumentException if {@code maxLeafSize} is below 1
+     * @throws IllegalArgumentException if {@code maxLeafSize} is below 1, or if a box has a NaN
+     *     bound (a NaN has no place in a hierarchy of nested boxes; the flat kernels keep such a
+     *     box, see {@code docs/CULLING.md})
      */
     public static StaticBvh build(BoundsArray bounds, int maxLeafSize) {
         if (maxLeafSize < 1) {
@@ -282,6 +296,7 @@ public final class StaticBvh {
         }
         float[] x0 = bounds.minXs(), y0 = bounds.minYs(), z0 = bounds.minZs();
         float[] x1 = bounds.maxXs(), y1 = bounds.maxYs(), z1 = bounds.maxZs();
+        requireNoNaN(bounds);
         float[][] cen = new float[3][n];
         int[] idx = new int[n];
         for (int i = 0; i < n; i++) {

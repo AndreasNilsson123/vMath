@@ -46,6 +46,9 @@ The tests measure the convergence order of each on a harmonic oscillator (1, 1, 
 
 ## Contact manifolds: `ManifoldBuilder` and `ContactManifold`
 
+**Boxes (PERF-2).** `ManifoldBuilder.boxes(a, b, margin, out)` takes two `OrientedBox`es (a centre, half extents and the three axes in `double`, set from a pose with `set(...)` or `set(body, hx, hy, hz)`, without allocation) and gives the manifold that `polytopes` gives for the same boxes, without building polytopes. The separating axis test uses the three axes of each box and the nine dot products between them (fifteen axes, with the Ericson formulas for the edge pairs and the same preference for a face over an edge pair of nearly equal separation), the incident face is clipped in the plane of the reference face against its rectangle, and the result is reduced to four points or is the closest points of two edges, with the same rules. It is tested against `polytopes` on 18 000 random pairs (three margins): the same answer to "do they touch" every time, the same normal, and the same points in all but 0.4% of the touching pairs, where five or more clipped points are reduced to four and two of them are at nearly the same distance from the line the reduction measures from (a tie that rounding decides). It allocates nothing. `OrientedBox` is also a `ConvexShape`, so a sphere or a capsule can be tested against a box with `shapes` without a polytope. `ConvexPolytope.transformed` no longer rebuilds the topology (it shares it and rotates the planes and directions) and `transformInto` writes into the arrays of an earlier copy. Warm starting was already in `ContactManifold.warmStartFrom`; the rigid-pile demo now uses it. Measured: a box pair 14.1 us with `polytopes`, 0.53 us with `boxes`; `transformed` 14.7 us and 15.3 kB before, 0.3 us and 576 B after.
+
+
 `ManifoldBuilder.polytopes(a, b, margin, out)` builds the contact manifold of two `ConvexPolytope`s (the facets and edges this needs were added to `ConvexPolytope`: `facetCount`, `facetPlane`, `facetVertex`,
 `edgeCount`, `edgeStart`, `edgeEnd`) in the standard way:
 
@@ -95,7 +98,10 @@ box sliding at 3 m/s with `mu = 0.5` stops after the distance `v^2 / (2 mu g)` t
 
 | Operation | Time |
 |---|---|
-| `ManifoldBuilder.polytopes`, two overlapping boxes (8 vertices, 6 facets, 12 edges each) | about 9 us |
+| `ManifoldBuilder.polytopes`, two overlapping boxes (8 vertices, 6 facets, 12 edges each) | about 9 us (14 us in the PERF-2 measurement of random touching pairs) |
+| `ManifoldBuilder.boxes`, two oriented boxes (PERF-2, random poses, 96% touching) | 0.53 us |
+| `ConvexPolytope.transformed` of a box (since PERF-2) | 0.3 us and 576 B (was 14.7 us and 15.3 kB) |
+| `ConvexPolytope.transformInto`, reusing the target | 0.2 us and 0 B |
 | `ContactSolver.solveAll`, one box on the ground, 4 points, 10 iterations | 9.5 us |
 | `RigidBody.integrate`, with the implicit gyroscopic step | 119 ns |
 

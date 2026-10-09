@@ -758,4 +758,40 @@ public record Quatf(float x, float y, float z, float w) {
     public Quatf toFloat() {
         return new Quatf((float) x, (float) y, (float) z, (float) w);
     }
+
+    /**
+     * Reads a quaternion from text in any of the forms the types print or people write: the {@code toString} of the record
+     * ({@code Quatf[x=1.0, y=1.0, z=1.0, w=1.0]}), the compact form of {@link #toCompactString()}, or a bare list such as {@code 1 2 3}.
+     * Brackets and bars are ignored and the numbers are separated by commas, semicolons or white space. Labelled numbers may come in any
+     * order; without labels they are taken in the order of the components. {@code NaN} and {@code Infinity} are numbers.
+     *
+     * @param text the text; must not be {@code null}
+     * @return the quaternion with the 4 numbers of the text
+     * @throws IllegalArgumentException if the text does not hold exactly 4 numbers, mixes labelled and unlabelled ones, names a component
+     *     twice or not at all, starts with the name of another type, or holds a malformed number
+     */
+    public static Quatf parse(CharSequence text) {
+        String[] t = Text.tokens(text, "Quatf", Text.VEC4, null);
+        return new Quatf(Float.parseFloat(t[0]), Float.parseFloat(t[1]), Float.parseFloat(t[2]), Float.parseFloat(t[3]));
+    }
+
+    /**
+     * Gives the compact text of the quaternion, such as {@code (1.0, 2.0, 3.0)}, with every component in the shortest form that reads back exactly.
+     *
+     * @return the components in order between parentheses; {@link #parse(CharSequence)} gives back an equal quaternion
+     */
+    public String toCompactString() {
+        return "(" + x + ", " + y + ", " + z + ", " + w + ")";
+    }
+
+    /**
+     * Gives the text of the quaternion with a fixed number of decimals, for a HUD or a log.
+     *
+     * @param decimals the digits after the point, 0 to 17
+     * @return the components in order between parentheses, each rounded to {@code decimals} digits (not read back exactly)
+     * @throws IllegalArgumentException if {@code decimals} is outside 0 to 17
+     */
+    public String format(int decimals) {
+        return "(" + Text.fixed(x, decimals) + ", " + Text.fixed(y, decimals) + ", " + Text.fixed(z, decimals) + ", " + Text.fixed(w, decimals) + ")";
+    }
 }

@@ -1,15 +1,13 @@
 package vmath.samples.demos.physics;
 
 import vmath.bulk.IntList;
-import vmath.core.Quatf;
-import vmath.core.Vec3f;
 import vmath.geo.Aabbf;
-import vmath.geo.ConvexPolytope;
 import vmath.geo.ConvexShape;
 import vmath.physics.ContactManifold;
 import vmath.physics.ContactSolver;
 import vmath.physics.ManifoldBuilder;
 import vmath.physics.MassProperties;
+import vmath.physics.OrientedBox;
 import vmath.physics.RigidBody;
 import vmath.spatial.DynamicAabbTree;
 import vmath.util.Rng;
@@ -21,8 +19,9 @@ import vmath.util.Rng;
  * patch, up to four points) and between a sphere and anything (one point, from GJK), and
  * {@link ContactSolver} for the impulses, friction and position correction.
  *
- * <p>It is a toy engine on purpose: there are no islands, no sleeping and no warm starting, and the
- * pile never comes fully to rest. Its job is to show what the pieces do together and what they
+ * <p>It is a toy engine on purpose: there are no islands and no sleeping, and the pile never comes
+ * fully to rest. Warm starting is on by default ({@link #warmStart}): the manifold of a pair in the
+ * last step gives its impulses to the matching points of this step. Its job is to show what the pieces do together and what they
  * cost. A step is gravity, the broad phase (moving the boxes of the tree and asking it for the
  * overlaps of every body), the narrow phase (one manifold per overlapping pair that touches), the
  * solver (ten sweeps over all manifolds), and the integration, each timed by the caller through
@@ -48,6 +47,7 @@ final class PileSimulation {
     private static final double MAX_SPEED = 25.0;
     private static final float TREE_MARGIN = 0.1f;
     private static final double CONTACT_MARGIN = 0.02;
+    private static final double WARM_START_DISTANCE = 0.05;
 
     private final int capacity;
     private final int staticCount;
@@ -56,8 +56,7 @@ final class PileSimulation {
     private final double[] hx;
     private final double[] hy;
     private final double[] hz;
-    private final ConvexPolytope[] baseBox;
-    private final ConvexPolytope[] current;
+    private final OrientedBox[] orient;
     private final ConvexShape[] shapes;
     private final int[] handles;
     private final DynamicAabbTree tree = new DynamicAabbTree(TREE_MARGIN, 1024);
@@ -67,6 +66,12 @@ final class PileSimulation {
     private final ContactSolver.Params params = new ContactSolver.Params();
     private final Rng rng = new Rng(21);
     private ContactManifold[] manifolds = new ContactManifold[1024];
+    private ContactManifold[] previous = new ContactManifold[1024];
+    private long[] pairKeys = new long[1024];
+    private long[] previousKeys = new long[1024];
+    private int previousCount;
+    private int[] table = new int[4096];
+    private boolean warmStart = true;
     private RigidBody[] sideA = new RigidBody[1024];
     private RigidBody[] sideB = new RigidBody[1024];
     private int count;
@@ -90,8 +95,7 @@ final class PileSimulation {
         hx = new double[total];
         hy = new double[total];
         hz = new double[total];
-        baseBox = new ConvexPolytope[total];
-        current = new ConvexPolytope[total];
+        orient = new OrientedBox[total];
         shapes = new ConvexShape[total];
         handles = new int[total];
         params.friction = 0.5;
@@ -114,7 +118,7 @@ final class PileSimulation {
         hx[i] = ex;
         hy[i] = ey;
         hz[i] = ez;
-        current[i] = ConvexPolytope.of(new Aabbf((float) (x - ex), (float) (y - ey), (float) (z - ez), (float) (x + ex), (float) (y + ey), (float) (z + ez)));
+        orient[i] = new OrientedBox().set(x, y, z, 0, 0, 0, 1, ex, ey, ez);
         handles[i] = tree.insert((float) (x - ex), (float) (y - ey), (float) (z - ez), (float) (x + ex), (float) (y + ey), (float) (z + ez), i);
     }
 
@@ -214,7 +218,7 @@ final class PileSimulation {
             hy[i] = rng.nextDouble(0.3, 0.7);
             hz[i] = rng.nextDouble(0.3, 0.7);
             b = new RigidBody(MassProperties.box(hx[i], hy[i], hz[i], 8 * hx[i] * hy[i] * hz[i]));
-            baseBox[i] = ConvexPolytope.of(new Aabbf((float) -hx[i], (float) -hy[i], (float) -hz[i], (float) hx[i], (float) hy[i], (float) hz[i]));
+            orient[i] = new OrientedBox();
         }
         double ax = rng.nextGaussian(), ay = rng.nextGaussian(), az = rng.nextGaussian(), aw = rng.nextGaussian();
         double n = Math.sqrt(ax * ax + ay * ay + az * az + aw * aw);
@@ -276,10 +280,18 @@ final class PileSimulation {
         long t1 = System.nanoTime();
         for (int i = staticCount; i < count; i++) {
             if (!sphere[i]) {
-                RigidBody b = bodies[i];
-                current[i] = baseBox[i].transformed(new Quatf((float) b.qx, (float) b.qy, (float) b.qz, (float) b.qw), new Vec3f((float) b.px, (float) b.py, (float) b.pz));
+                orient[i].set(bodies[i], hx[i], hy[i], hz[i]);
             }
         }
+        // the manifolds of the last step are the previous ones now, found again by the pair of bodies
+        ContactManifold[] swap = manifolds;
+        manifolds = previous;
+        previous = swap;
+        long[] swapKeys = pairKeys;
+        pairKeys = previousKeys;
+        previousKeys = swapKeys;
+        previousCount = manifoldCount;
+        indexPrevious();
         pairs = 0;
         contacts = 0;
         int manifoldCount = 0;
@@ -309,9 +321,17 @@ final class PileSimulation {
                 if (sphere[a] || sphere[b]) {
                     touching = builder.shapes(shape(a), shape(b), m);
                 } else {
-                    touching = builder.polytopes(current[a], current[b], CONTACT_MARGIN, m);
+                    touching = builder.boxes(orient[a], orient[b], CONTACT_MARGIN, m);
                 }
                 if (touching && m.count() > 0) {
+                    long key = (long) a * (capacity + 5) + b;
+                    pairKeys[manifoldCount] = key;
+                    if (warmStart) {
+                        int before = findPrevious(key);
+                        if (before >= 0) {
+                            m.warmStartFrom(previous[before], WARM_START_DISTANCE);
+                        }
+                    }
                     sideA[manifoldCount] = bodies[a];
                     sideB[manifoldCount] = bodies[b];
                     contacts += m.count();
@@ -347,12 +367,65 @@ final class PileSimulation {
     }
 
     private ConvexShape shape(int i) {
-        return sphere[i] ? shapes[i] : current[i];
+        return sphere[i] ? shapes[i] : orient[i];
+    }
+
+    /**
+     * Turns warm starting on or off. When on (the default), the impulses that the solver found for a
+     * pair in the last step are the first guess in this one, matched point by point.
+     *
+     * @param enabled whether to carry the impulses from step to step
+     */
+    void warmStart(boolean enabled) {
+        this.warmStart = enabled;
+    }
+
+    // an open-addressing table from the key of a pair to its index among the previous manifolds, plus one (0 is empty); at most half full
+    private void indexPrevious() {
+        int size = Integer.highestOneBit(Math.max(4, 4 * previousCount - 1)) << 1;
+        if (table.length < size) {
+            table = new int[size];
+        } else {
+            java.util.Arrays.fill(table, 0, size, 0);
+        }
+        int mask = size - 1;
+        for (int k = 0; k < previousCount; k++) {
+            int h = hash(previousKeys[k]) & mask;
+            while (table[h] != 0) {
+                h = (h + 1) & mask;
+            }
+            table[h] = k + 1;
+        }
+        tableMask = mask;
+    }
+
+    private int tableMask;
+
+    private int findPrevious(long key) {
+        if (previousCount == 0) {
+            return -1;
+        }
+        int h = hash(key) & tableMask;
+        while (table[h] != 0) {
+            if (previousKeys[table[h] - 1] == key) {
+                return table[h] - 1;
+            }
+            h = (h + 1) & tableMask;
+        }
+        return -1;
+    }
+
+    private static int hash(long key) {
+        long h = key * 0x9E3779B97F4A7C15L;
+        return (int) (h >>> 32);
     }
 
     private void grow() {
         int n = manifolds.length * 2;
         manifolds = java.util.Arrays.copyOf(manifolds, n);
+        previous = java.util.Arrays.copyOf(previous, n);
+        pairKeys = java.util.Arrays.copyOf(pairKeys, n);
+        previousKeys = java.util.Arrays.copyOf(previousKeys, n);
         sideA = java.util.Arrays.copyOf(sideA, n);
         sideB = java.util.Arrays.copyOf(sideB, n);
     }

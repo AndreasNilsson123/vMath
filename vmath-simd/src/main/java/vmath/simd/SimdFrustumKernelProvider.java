@@ -4,7 +4,9 @@ import vmath.spatial.FrustumKernel;
 import vmath.spatial.FrustumKernelProvider;
 
 /**
- * Registers {@link SimdFrustumCuller} with {@code FrustumKernels.best()}.
+ * Registers the SIMD frustum kernel with {@code FrustumKernels.best()}: {@link SimdFrustumCuller}
+ * once {@link SimdWarmUp} has seen it beat the scalar kernel, the scalar kernel until then (the
+ * results are bit-identical).
  *
  * <p><b>Thread safety.</b> Not specified: the library does not define the threading behavior of
  * implementations of this interface; see the methods for what they promise.
@@ -20,6 +22,6 @@ public final class SimdFrustumKernelProvider extends SimdProvider implements Fru
 
     @Override
     public FrustumKernel create() {
-        return new SimdFrustumCuller();
+        return new WarmedSimdFrustumKernel();
     }
 }

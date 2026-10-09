@@ -1,6 +1,8 @@
 package vmath.occlusion;
 
 import java.util.Arrays;
+import vmath.bulk.BoundsArray;
+import vmath.bulk.VisibilitySet;
 import vmath.core.Mat4f;
 import vmath.geo.Aabbf;
 import vmath.geo.DepthRange;
@@ -91,6 +93,8 @@ public final class DepthBuffer {
     private double depthBias;
     private boolean begun;
     private boolean mipsValid;
+    // the largest stored value of the finished buffer: a box whose nearest point is nearer than this cannot be hidden by anything
+    private float maxStored;
 
     // scratch (one more vertex than a polygon may have, for the near-plane clip): clip-space x, y, w and the near-plane coordinate s per vertex
     // (s is w for a perspective view, where the plane is w = nearW, and the fraction of the way to the far plane for an orthographic one, where it is s = 0)
@@ -519,6 +523,11 @@ public final class DepthBuffer {
                 }
             }
         }
+        float max = 0f;
+        for (float v : level[0]) {
+            max = Math.max(max, v);
+        }
+        maxStored = max;
         mipsValid = true;
     }
 
@@ -599,23 +608,145 @@ public final class DepthBuffer {
             return false;
         }
         finish();
+        return hidden(x0, y0, z0, x1, y1, z1);
+    }
+
+    /**
+     * Tests the objects of {@code bounds} that are set in {@code visible} and clears those that are
+     * certainly hidden: the batch form of {@link #isHidden(float, float, float, float, float, float)}
+     * with the same answers.
+     *
+     * <p>Faster than a loop over {@code isHidden}: the setup is done once, and the test per box
+     * shares the products of the projection between the corners and stops early where it can (a box
+     * nearer than every occluder is visible without projecting it to the screen). It only reads the
+     * buffer, so threads can take disjoint ranges: {@link #finish()} first, then
+     * {@link #cull(BoundsArray, int, int, VisibilitySet)} with ranges that start at multiples of 64
+     * (no two threads then write the same word of the set).
+     *
+     * @param bounds the boxes; must not be {@code null}
+     * @param visible the objects still visible, indexed like {@code bounds}; the hidden ones are
+     *     cleared; must not be {@code null}
+     */
+    public void cull(BoundsArray bounds, VisibilitySet visible) {
+        cull(bounds, 0, bounds.size(), visible);
+    }
+
+    /**
+     * Tests objects {@code [from, to)} of {@code bounds} that are set in {@code visible} and clears
+     * those that are certainly hidden; see {@link #cull(BoundsArray, VisibilitySet)}.
+     *
+     * <p>Does nothing before {@link #begin} (nothing is known to be hidden).
+     *
+     * @param bounds the boxes; must not be {@code null}
+     * @param from the first index, inclusive; a multiple of 64
+     * @param to the last index, exclusive; at most {@code bounds.size()}
+     * @param visible the objects still visible, indexed like {@code bounds}; must not be {@code null}
+     * @throws IllegalArgumentException if {@code from} is not a multiple of 64, or the range is not
+     *     inside {@code bounds}
+     */
+    public void cull(BoundsArray bounds, int from, int to, VisibilitySet visible) {
+        if ((from & 63) != 0 || from < 0 || to > bounds.size() || from > to) {
+            throw new IllegalArgumentException("the range must start at a multiple of 64 and lie inside the bounds: [" + from + ", " + to + ") of " + bounds.size());
+        }
+        if (!begun) {
+            return;
+        }
+        finish();
+        float[] x0 = bounds.minXs(), y0 = bounds.minYs(), z0 = bounds.minZs();
+        float[] x1 = bounds.maxXs(), y1 = bounds.maxYs(), z1 = bounds.maxZs();
+        long[] words = visible.words();
+        for (int i = visible.nextSetBit(from); i >= 0 && i < to; i = visible.nextSetBit(i + 1)) {
+            if (hidden(x0[i], y0[i], z0[i], x1[i], y1[i], z1[i])) {
+                words[i >>> 6] &= ~(1L << i);
+            }
+        }
+    }
+
+    private boolean hidden(float x0, float y0, float z0, float x1, float y1, float z1) {
+        return ortho ? hiddenOrthographic(x0, y0, z0, x1, y1, z1) : hiddenPerspective(x0, y0, z0, x1, y1, z1);
+    }
+
+    /**
+     * The test of a box for a perspective view, in three steps that each can end it:
+     * <ol>
+     *   <li>The distance. The clip w of a box point is linear in the point, so its smallest value over the box is a sum of one
+     *       term per axis, found without visiting the corners. A box that reaches the near plane is visible; so is a box nearer
+     *       than every occluder in the buffer (the largest stored value is known), which needs no projection at all.</li>
+     *   <li>The centre and the extent. The centre and half extent give an interval for each of the clip x, y and w, and from them a
+     *       screen rectangle that contains the projection of the box (a few multiplications and two reciprocals instead of eight
+     *       corners). If the buffer hides that rectangle it hides the box. The rectangle is larger than the box's own, so this
+     *       decides most boxes that are far from the camera and small, and a box that it cannot decide goes on to the next step.</li>
+     *   <li>The eight corners, the exact rectangle. The clip coordinates of the corners are sums of the same six products
+     *       (row times bound, one per axis and bound), so the products are formed once and each corner costs additions only.</li>
+     * </ol>
+     * Everything stays in {@code double}: the guarantee rests on margins of a thousandth of a pixel and 1e-4 in depth, which single
+     * precision would not leave room for with large world coordinates (it was not tried for that reason; the roadmap item had suggested it).
+     */
+    private boolean hiddenPerspective(float x0, float y0, float z0, float x1, float y1, float z1) {
+        final double[] rw = rowW, rx = rowX, ry = rowY;
+        double wx0 = rw[0] * x0, wx1 = rw[0] * x1, wy0 = rw[1] * y0, wy1 = rw[1] * y1, wz0 = rw[2] * z0, wz1 = rw[2] * z1, w3 = rw[3];
+        // 1. the distance
+        double minW = w3 + Math.min(wx0, wx1) + Math.min(wy0, wy1) + Math.min(wz0, wz1);
+        if (!(minW >= nearW)) {
+            return false; // reaches the near plane (or NaN)
+        }
+        double needed = (1.0 / minW) * (1.0 + QUERY_SAFETY);
+        if (!(needed > 0.0) || !Double.isFinite(needed) || needed > maxStored) {
+            return false;
+        }
+        // 2. the centre and the extent
+        double hx = 0.5 * Math.abs((double) x1 - x0), hy = 0.5 * Math.abs((double) y1 - y0), hz = 0.5 * Math.abs((double) z1 - z0);
+        double mx = 0.5 * ((double) x0 + x1), my = 0.5 * ((double) y0 + y1), mz = 0.5 * ((double) z0 + z1);
+        double wm = rw[0] * mx + rw[1] * my + rw[2] * mz + w3;
+        double wr = Math.abs(rw[0]) * hx + Math.abs(rw[1]) * hy + Math.abs(rw[2]) * hz;
+        double cxm = rx[0] * mx + rx[1] * my + rx[2] * mz + rx[3];
+        double cxr = Math.abs(rx[0]) * hx + Math.abs(rx[1]) * hy + Math.abs(rx[2]) * hz;
+        double cym = ry[0] * mx + ry[1] * my + ry[2] * mz + ry[3];
+        double cyr = Math.abs(ry[0]) * hx + Math.abs(ry[1]) * hy + Math.abs(ry[2]) * hz;
+        double wLo = wm - wr * (1.0 + 1e-12), wHi = wm + wr * (1.0 + 1e-12);
+        if (wLo >= nearW && wLo > 0.0) {
+            double invLo = 1.0 / wLo, invHi = 1.0 / wHi;
+            double xa = cxm - cxr * (1.0 + 1e-12), xb = cxm + cxr * (1.0 + 1e-12), ya = cym - cyr * (1.0 + 1e-12), yb = cym + cyr * (1.0 + 1e-12);
+            // the smallest of numerator/w over the two intervals is the smaller of the two products with the reciprocals of the near and far w (the far w when the numerator is positive, the near w when it is negative); the largest is the larger one. No branch, since the sign is not predictable
+            double sx0 = (Math.min(xa * invHi, xa * invLo) * 0.5 + 0.5) * width, sx1 = (Math.max(xb * invLo, xb * invHi) * 0.5 + 0.5) * width;
+            double sy0 = (Math.min(ya * invHi, ya * invLo) * 0.5 + 0.5) * height, sy1 = (Math.max(yb * invLo, yb * invHi) * 0.5 + 0.5) * height;
+            // the larger rectangle may only decide when it lies on the screen: the exact one is inside it then, and a box that is entirely off screen is not this test's business
+            if (sx0 >= 0.0 && sx1 <= width && sy0 >= 0.0 && sy1 <= height && coveredAtLeast(sx0, sx1, sy0, sy1, invLo * (1.0 + QUERY_SAFETY))) {
+                return true;
+            }
+        }
+        // 3. the corners
+        double cx0 = rx[0] * x0, cx1 = rx[0] * x1, cy0 = ry[0] * x0, cy1 = ry[0] * x1;
+        double ex0 = rx[1] * y0, ex1 = rx[1] * y1, ey0 = ry[1] * y0, ey1 = ry[1] * y1;
+        double fx0 = rx[2] * z0, fx1 = rx[2] * z1, fy0 = ry[2] * z0, fy1 = ry[2] * z1;
         double minSx = Double.POSITIVE_INFINITY, minSy = minSx;
         double maxSx = Double.NEGATIVE_INFINITY, maxSy = maxSx;
-        double nearest = 0.0; // the largest 1 / w over the corners: the box's nearest point
+        for (int i = 0; i < 8; i++) {
+            boolean bx = (i & 1) != 0, by = (i & 2) != 0, bz = (i & 4) != 0;
+            double w = (bx ? wx1 : wx0) + (by ? wy1 : wy0) + (bz ? wz1 : wz0) + w3;
+            double cx = (bx ? cx1 : cx0) + (by ? ex1 : ex0) + (bz ? fx1 : fx0) + rx[3];
+            double cy = (bx ? cy1 : cy0) + (by ? ey1 : ey0) + (bz ? fy1 : fy0) + ry[3];
+            double inv = 1.0 / w;
+            double px = (cx * inv * 0.5 + 0.5) * width, py = (cy * inv * 0.5 + 0.5) * height;
+            minSx = Math.min(minSx, px);
+            maxSx = Math.max(maxSx, px);
+            minSy = Math.min(minSy, py);
+            maxSy = Math.max(maxSy, py);
+        }
+        return coveredAtLeast(minSx, maxSx, minSy, maxSy, needed);
+    }
+
+    /** The test of a box for an orthographic view: the clip w is the same for every point, the depth comes from the matrix. */
+    private boolean hiddenOrthographic(float x0, float y0, float z0, float x1, float y1, float z1) {
+        double minSx = Double.POSITIVE_INFINITY, minSy = minSx;
+        double maxSx = Double.NEGATIVE_INFINITY, maxSy = maxSx;
+        double nearest = 0.0; // the largest nearness over the corners: the box's nearest point
         for (int i = 0; i < 8; i++) {
             float x = (i & 1) == 0 ? x0 : x1, y = (i & 2) == 0 ? y0 : y1, z = (i & 4) == 0 ? z0 : z1;
             double w = rowW[0] * x + rowW[1] * y + rowW[2] * z + rowW[3];
-            double key; // the stored quantity of the corner: 1 / w, or the nearness
-            if (ortho) {
-                key = nearness(x, y, z, w);
-                if (!(key <= 1.0)) {
-                    return false; // reaches the near plane (or NaN)
-                }
-            } else {
-                if (!(w >= nearW)) {
-                    return false; // reaches the near plane (or NaN)
-                }
-                key = 1.0 / w;
+            double key = nearness(x, y, z, w);
+            if (!(key <= 1.0)) {
+                return false; // reaches the near plane (or NaN)
             }
             double cx = rowX[0] * x + rowX[1] * y + rowX[2] * z + rowX[3];
             double cy = rowY[0] * x + rowY[1] * y + rowY[2] * z + rowY[3];
@@ -627,19 +758,29 @@ public final class DepthBuffer {
             nearest = Math.max(nearest, key);
         }
         double needed = nearest * (1.0 + QUERY_SAFETY);
-        if (!(needed > 0.0) || !Double.isFinite(needed) || !Double.isFinite(minSx) || !Double.isFinite(maxSx)
-                || !Double.isFinite(minSy) || !Double.isFinite(maxSy)) {
+        if (!(needed > 0.0) || !Double.isFinite(needed) || needed > maxStored) {
             return false;
         }
-        int px0 = (int) Math.max(0, Math.floor(minSx)), px1 = (int) Math.min(width, Math.ceil(maxSx));
-        int py0 = (int) Math.max(0, Math.floor(minSy)), py1 = (int) Math.min(height, Math.ceil(maxSy));
+        return coveredAtLeast(minSx, maxSx, minSy, maxSy, needed);
+    }
+
+    /** Whether every pixel of the screen rectangle (rounded outwards) holds an occluder at least as near as {@code needed}. */
+    private boolean coveredAtLeast(double minSx, double maxSx, double minSy, double maxSy, double needed) {
+        if (!(minSx > Double.NEGATIVE_INFINITY && maxSx < Double.POSITIVE_INFINITY && minSy > Double.NEGATIVE_INFINITY && maxSy < Double.POSITIVE_INFINITY)) {
+            return false; // non-finite (NaN fails every comparison)
+        }
+        // rounded outwards and clamped to the screen; a cast truncates towards zero, which is the floor for the values that survive the clamp
+        int px0 = minSx <= 0.0 ? 0 : (int) Math.min(minSx, width);
+        int py0 = minSy <= 0.0 ? 0 : (int) Math.min(minSy, height);
+        int px1 = maxSx >= width ? width : ceilPositive(maxSx);
+        int py1 = maxSy >= height ? height : ceilPositive(maxSy);
         if (px0 >= px1 || py0 >= py1) {
             return false; // off screen: not this stage's business
         }
-        // the coarsest level at which the rectangle still spans at most four texels either way
-        int l = 0;
-        while (l + 1 < level.length
-                && (((px1 - 1) >> l) - (px0 >> l) >= 4 || ((py1 - 1) >> l) - (py0 >> l) >= 4)) {
+        // the coarsest level at which the rectangle still spans at most four texels either way; the starting level is a guess from the larger span
+        int span = Math.max(px1 - 1 - px0, py1 - 1 - py0);
+        int l = span < 4 ? 0 : Math.min(level.length - 1, 29 - Integer.numberOfLeadingZeros(span));
+        while (l + 1 < level.length && (((px1 - 1) >> l) - (px0 >> l) >= 4 || ((py1 - 1) >> l) - (py0 >> l) >= 4)) {
             l++;
         }
         float[] lv = level[l];
@@ -652,5 +793,11 @@ public final class DepthBuffer {
             }
         }
         return true;
+    }
+
+    /** The smallest integer that is not below {@code x}, for {@code x} between 0 and the width of the screen. */
+    private static int ceilPositive(double x) {
+        int t = (int) x;
+        return x > t ? t + 1 : t;
     }
 }

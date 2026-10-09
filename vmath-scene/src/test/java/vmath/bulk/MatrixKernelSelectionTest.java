@@ -19,6 +19,17 @@ class MatrixKernelSelectionTest {
     @AfterEach
     void clearForcedKernel() {
         System.clearProperty("vmath.matrixKernel");
+        System.clearProperty(KernelSelector.DETERMINISTIC);
+    }
+
+    @Test
+    void theDeterministicModeSelectsTheScalarKernelEvenWhenAProviderIsNamed() {
+        System.setProperty("vmath.matrixKernel", "test-zero");
+        assertEquals("test-zero", MatrixKernels.best().name());
+        System.setProperty(KernelSelector.DETERMINISTIC, "true");
+        assertEquals("scalar", MatrixKernels.best().name());
+        System.clearProperty(KernelSelector.DETERMINISTIC);
+        assertEquals("test-zero", MatrixKernels.best().name(), "the property is read on every call");
     }
 
     @Test

@@ -124,11 +124,13 @@ class SculptFieldTest {
         assertTrue(d.normals());
         assertEquals(0, d.projection());
         assertFalse(d.verify());
-        SculptOptions o = SculptOptions.parse(List.of("--grid", "32", "--no-normals", "--projection", "2", "--verify"));
+        assertFalse(d.manifold());
+        SculptOptions o = SculptOptions.parse(List.of("--grid", "32", "--no-normals", "--projection", "2", "--verify", "--manifold"));
         assertEquals(32, o.grid());
         assertFalse(o.normals());
         assertEquals(2, o.projection());
         assertTrue(o.verify());
+        assertTrue(o.manifold());
         assertThrows(IllegalArgumentException.class, () -> SculptOptions.parse(List.of("--grid", "4")));
         assertThrows(IllegalArgumentException.class, () -> SculptOptions.parse(List.of("--bogus")));
     }

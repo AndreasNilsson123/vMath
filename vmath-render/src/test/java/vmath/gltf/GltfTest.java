@@ -181,6 +181,25 @@ class GltfTest {
     }
 
     @Test
+    void theBinaryChunkIsReadInPlaceAndABufferCannotReachPastIt() {
+        String json = "{\"asset\":{\"version\":\"2.0\"},\"buffers\":[{\"byteLength\":104}]," + TRIANGLE_REST + "}";
+        byte[] plain = glb(json, triangleBuffer());
+        // another chunk after the binary one: its bytes lie in the same array but are not part of the buffer
+        ByteBuffer withExtra = ByteBuffer.allocate(plain.length + 8 + 16).order(ByteOrder.LITTLE_ENDIAN);
+        withExtra.put(plain).putInt(16).putInt(0x12345678).put(new byte[16]);
+        withExtra.putInt(8, withExtra.capacity());
+        Gltf g = Gltf.parse(withExtra.array(), null);
+        assertArrayEquals(Gltf.parse(plain, null).toMesh(0, 0).positions(), g.toMesh(0, 0).positions());
+        assertEquals(1f, g.toMesh(0, 0).positions()[3]);
+        String past = json.replace("\"byteOffset\":96,\"byteLength\":6", "\"byteOffset\":100,\"byteLength\":6");
+        byte[] pastBytes = glb(past, triangleBuffer());
+        ByteBuffer pastExtra = ByteBuffer.allocate(pastBytes.length + 8 + 16).order(ByteOrder.LITTLE_ENDIAN);
+        pastExtra.put(pastBytes).putInt(16).putInt(0x12345678).put(new byte[16]);
+        pastExtra.putInt(8, pastExtra.capacity());
+        assertThrows(GltfException.class, () -> Gltf.parse(pastExtra.array(), null), "the view ends 2 bytes after the 104-byte buffer, inside the file");
+    }
+
+    @Test
     void glbContainerIsValidated() {
         byte[] good = glb("{\"asset\":{\"version\":\"2.0\"}}", null);
         Gltf.parse(good, null);
@@ -823,7 +842,10 @@ class GltfTest {
         try {
             Files.createSymbolicLink(models.resolve("link.bin"), outside.resolve("tri.bin"));
         } catch (UnsupportedOperationException | IOException | SecurityException e) {
-            org.junit.jupiter.api.Assumptions.abort("this machine does not allow symbolic links: " + e); // not an environment CI requires: Windows needs a privilege for links
+            // Windows needs a privilege for links, so it may skip; anywhere else a missing link is the environment's fault and CI (-Dvmath.requireEnvironment=true) fails
+            boolean windows = System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).contains("win");
+            vmath.Environment.require(windows, "this machine does not allow symbolic links: " + e);
+            org.junit.jupiter.api.Assumptions.abort("this machine does not allow symbolic links: " + e);
         }
         String json = "{\"asset\":{\"version\":\"2.0\"},\"buffers\":[{\"byteLength\":104,\"uri\":\"link.bin\"}]," + TRIANGLE_REST + "}";
         Files.writeString(models.resolve("tri.gltf"), json);

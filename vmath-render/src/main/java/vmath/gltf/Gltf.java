@@ -582,7 +582,8 @@ public final class Gltf {
 
     private final Map<String, Object> root;
     private final List<byte[]> buffers = new ArrayList<>();
-    private final long[][] views;          // buffer, offset, length, stride
+    private final List<Integer> bufferStarts = new ArrayList<>(), bufferLengths = new ArrayList<>(); // where each buffer starts in its array, and how long it is
+    private final long[][] views;          // buffer, position in the array of the buffer (its start plus the byteOffset), length, stride
     private final List<Map<String, Object>> accessors;
     private final List<MeshData> meshes = new ArrayList<>();
     private final List<Material> materials = new ArrayList<>();
@@ -676,7 +677,7 @@ public final class Gltf {
      *     version, a length that does not match, a chunk past the end or no JSON chunk
      */
     public static Gltf parse(byte[] data, UriResolver resolver) {
-        byte[] bin = null;
+        int binStart = 0, binLength = -1;
         String json;
         if (data.length >= 12 && le32(data, 0) == GLB_MAGIC) {
             if (le32(data, 4) != 2) {
@@ -697,8 +698,10 @@ public final class Gltf {
                 }
                 if (type == CHUNK_JSON && jsonText == null) {
                     jsonText = new String(data, (int) pos, (int) len, StandardCharsets.UTF_8);
-                } else if (type == CHUNK_BIN && bin == null) {
-                    bin = Arrays.copyOfRange(data, (int) pos, (int) (pos + len));
+                } else if (type == CHUNK_BIN && binLength < 0) {
+                    // not copied: the buffer reads from this offset of the file bytes
+                    binStart = (int) pos;
+                    binLength = (int) len;
                 }
                 pos += len;
             }
@@ -714,10 +717,10 @@ public final class Gltf {
         if (!(parsed instanceof JsonObject root)) {
             throw new GltfException("the top level of a glTF file must be an object");
         }
-        return new Gltf(root, bin, resolver);
+        return new Gltf(root, binLength < 0 ? null : data, binStart, binLength, resolver);
     }
 
-    private Gltf(Map<String, Object> root, byte[] glbBin, UriResolver resolver) {
+    private Gltf(Map<String, Object> root, byte[] glbBin, int glbStart, int glbLength, UriResolver resolver) {
         this.root = root;
         this.resolver = resolver;
         Map<String, Object> asset = obj(root.get("asset"), "asset");
@@ -740,18 +743,25 @@ public final class Gltf {
             }
             String uri = str(b, "uri", null);
             byte[] bytes;
+            int start = 0, available;
             if (uri == null) {
                 if (i != 0 || glbBin == null) {
                     throw new GltfException("buffers[" + i + "] has no uri and is not the GLB binary chunk");
                 }
+                // the binary chunk is read in place, from its offset in the bytes of the file
                 bytes = glbBin;
+                start = glbStart;
+                available = glbLength;
             } else {
                 bytes = loadUri(uri, "buffers[" + i + "]");
+                available = bytes.length;
             }
-            if (bytes.length < length) {
-                throw new GltfException("buffers[" + i + "] is shorter than its byteLength: " + bytes.length + " < " + length);
+            if (available < length) {
+                throw new GltfException("buffers[" + i + "] is shorter than its byteLength: " + available + " < " + length);
             }
             buffers.add(bytes);
+            bufferStarts.add(start);
+            bufferLengths.add(available);
         }
         // buffer views
         List<Object> viewList = list(root.get("bufferViews"));
@@ -760,14 +770,14 @@ public final class Gltf {
             Map<String, Object> v = obj(viewList.get(i), "bufferViews[" + i + "]");
             int buffer = (int) lng(v, "buffer", -1);
             long offset = lng(v, "byteOffset", 0), length = lng(v, "byteLength", -1), stride = lng(v, "byteStride", 0);
-            if (buffer < 0 || buffer >= buffers.size() || offset < 0 || length < 1 || offset > buffers.get(buffer).length
-                    || length > buffers.get(buffer).length - offset) {
+            if (buffer < 0 || buffer >= buffers.size() || offset < 0 || length < 1 || offset > bufferLengths.get(buffer)
+                    || length > bufferLengths.get(buffer) - offset) {
                 throw new GltfException("bufferViews[" + i + "] lies outside its buffer");
             }
             if (stride != 0 && (stride < 4 || stride > 252 || stride % 4 != 0)) {
                 throw new GltfException("bufferViews[" + i + "] has an invalid byteStride " + stride);
             }
-            views[i] = new long[] {buffer, offset, length, stride};
+            views[i] = new long[] {buffer, bufferStarts.get(buffer) + offset, length, stride}; // the offset is an index into the array of the buffer
         }
         // accessors are kept as JSON and validated when read
         accessors = new ArrayList<>();

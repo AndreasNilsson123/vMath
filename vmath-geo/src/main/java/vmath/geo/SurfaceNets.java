@@ -8,9 +8,19 @@ import java.util.Arrays;
  * points where the surface crosses the cell's edges, found by linear interpolation of the samples),
  * and every grid edge that the surface crosses becomes a quad joining the four cells around it.
  *
- * <p>The result is a closed, consistently wound triangle mesh with the triangles counter-clockwise
- * seen from outside (the side where the field is positive), so it can go to
- * {@code MassProperties.ofMesh} or to a renderer as it is.
+ * <p>The triangles are counter-clockwise seen from outside (the side where the field is
+ * positive), so the mesh can go to {@code MassProperties.ofMesh} or to a renderer as it is.
+ *
+ * <p><b>What holds.</b> Where the surface is thicker than a cell the mesh is closed (every edge
+ * has a partner) and consistently wound, and every edge is shared by exactly two triangles. Where
+ * the surface is <em>thinner</em> than a cell, so that one cell holds two sheets of it (a thin
+ * wall, a crease where a body meets itself, a lens between two bodies that nearly touch), the
+ * method makes one vertex for both sheets and a few edges can be shared by more than two
+ * triangles; the mesh stays closed (no edge loses its partner), but it is not a manifold there. The
+ * mesh is open at the border of the box (see below). {@link #overSharedEdgeCount()} counts the
+ * edges that break the rule, and {@link #manifold(boolean)} turns on a pass that gives each sheet
+ * of such a cell its own vertex, which removes the cases it can tell apart (see there for what it
+ * does not do).
  *
  * <p><b>What you get.</b> About one vertex per surface cell, quads of the same size, no sliver
  * triangles worth the name (a quad is split along its shorter diagonal), and no sharp features:
@@ -51,6 +61,8 @@ public final class SurfaceNets {
     private float iso;
     private int projection;
     private boolean computeNormals;
+    private boolean manifold;
+    private short[] cellCode = new short[0];
 
     private float[] field = new float[0];
     private int[] cellVertex = new int[0];
@@ -68,6 +80,119 @@ public final class SurfaceNets {
     // the 12 edges of a cell as pairs of corner numbers; the corner number is x + 2 y + 4 z
     private static final int[] EDGE_A = {0, 2, 4, 6, 0, 1, 4, 5, 0, 1, 2, 3};
     private static final int[] EDGE_B = {1, 3, 5, 7, 2, 3, 6, 7, 4, 5, 6, 7};
+
+    // the corners of the six faces of a cell, in cyclic order; the same physical face of the neighbouring cell lists the same corners in the same order (x0 and x1, y0 and y1, z0 and z1)
+    private static final int[][] FACES = {{0, 2, 6, 4}, {1, 3, 7, 5}, {0, 1, 5, 4}, {2, 3, 7, 6}, {0, 1, 3, 2}, {4, 5, 7, 6}};
+
+    /**
+     * For every corner mask and every decision on the ambiguous faces, the number of separate sheets
+     * in the cell and the sheet (0..) that each edge belongs to (-1 if the surface does not cross
+     * it). Loaded the first time {@link #manifold(boolean)} is used.
+     *
+     * <p>Two crossed edges belong to the same sheet when a face joins them. A face with two crossed
+     * edges joins them. A face with four (opposite corners inside) is decided by its four corner
+     * values alone, so both cells that share it read it the same way: if the saddle of the bilinear
+     * field on the face is inside, the inside corners are connected and the outside ones are cut off
+     * one by one, else the other way round. Every crossed edge then has exactly one partner on each
+     * of its two faces, so a sheet is a closed loop and its vertex has a single cycle of
+     * neighbours.
+     */
+    private static final class Sheets {
+        static final byte[] COUNT = new byte[256 << 6];
+        static final byte[] OF_EDGE = new byte[(256 << 6) * 12];
+
+        static {
+            for (int code = 0; code < (256 << 6); code++) {
+                int mask = code & 255, joinInside = code >> 8;
+                int[] parent = new int[12];
+                for (int e = 0; e < 12; e++) {
+                    parent[e] = e;
+                }
+                for (int f = 0; f < 6; f++) {
+                    int[] face = FACES[f];
+                    int[] crossed = new int[4];
+                    int n = 0;
+                    for (int c = 0; c < 4; c++) {
+                        int a = face[c], b = face[(c + 1) % 4];
+                        if (((mask >> a) & 1) != ((mask >> b) & 1)) {
+                            crossed[n++] = edgeOf(a, b);
+                        }
+                    }
+                    if (n == 2) {
+                        union(parent, crossed[0], crossed[1]);
+                    } else if (n == 4) {
+                        // the corners that are cut off one by one: the outside ones if the inside is joined, else the inside ones
+                        int cutOff = ((joinInside >> f) & 1) != 0 ? 0 : 1;
+                        for (int c = 0; c < 4; c++) {
+                            if (((mask >> face[c]) & 1) == cutOff) {
+                                union(parent, edgeOf(face[(c + 3) % 4], face[c]), edgeOf(face[c], face[(c + 1) % 4]));
+                            }
+                        }
+                    }
+                }
+                int[] rootSheet = new int[12];
+                Arrays.fill(rootSheet, -1);
+                int sheets = 0;
+                for (int e = 0; e < 12; e++) {
+                    if (((mask >> EDGE_A[e]) & 1) == ((mask >> EDGE_B[e]) & 1)) {
+                        OF_EDGE[code * 12 + e] = -1;
+                        continue;
+                    }
+                    int root = find(parent, e);
+                    if (rootSheet[root] < 0) {
+                        rootSheet[root] = sheets++;
+                    }
+                    OF_EDGE[code * 12 + e] = (byte) rootSheet[root];
+                }
+                COUNT[code] = (byte) sheets;
+            }
+        }
+    }
+
+    /**
+     * The mask of the corners that are inside, completed with one bit per ambiguous face (opposite
+     * corners inside) that says whether the saddle of the bilinear field on that face is inside,
+     * which makes the inside corners connected on it. Bits of faces that are not ambiguous are 0.
+     */
+    private static int sheetCode(int mask, float c0, float c1, float c2, float c3, float c4, float c5, float c6, float c7) {
+        int joined = 0;
+        for (int f = 0; f < 6; f++) {
+            int[] face = FACES[f];
+            int b0 = (mask >> face[0]) & 1, b1 = (mask >> face[1]) & 1, b2 = (mask >> face[2]) & 1, b3 = (mask >> face[3]) & 1;
+            if (b0 == b2 && b1 == b3 && b0 != b1) {
+                float v0 = corner(face[0], c0, c1, c2, c3, c4, c5, c6, c7), v1 = corner(face[1], c0, c1, c2, c3, c4, c5, c6, c7);
+                float v2 = corner(face[2], c0, c1, c2, c3, c4, c5, c6, c7), v3 = corner(face[3], c0, c1, c2, c3, c4, c5, c6, c7);
+                // the value at the saddle of the bilinear interpolation: the sums of opposite corners have opposite signs, so the denominator is not zero
+                float saddle = (v0 * v2 - v1 * v3) / (v0 + v2 - v1 - v3);
+                if (saddle < 0f) {
+                    joined |= 1 << f;
+                }
+            }
+        }
+        return mask | joined << 8;
+    }
+
+    private static int edgeOf(int a, int b) {
+        int lo = Math.min(a, b), hi = Math.max(a, b);
+        for (int e = 0; e < 12; e++) {
+            if (EDGE_A[e] == lo && EDGE_B[e] == hi) {
+                return e;
+            }
+        }
+        throw new IllegalStateException("not an edge of a cell: " + a + ", " + b);
+    }
+
+    private static int find(int[] parent, int x) {
+        while (parent[x] != x) {
+            parent[x] = parent[parent[x]];
+            x = parent[x];
+        }
+        return x;
+    }
+
+    private static void union(int[] parent, int a, int b) {
+        parent[find(parent, a)] = find(parent, b);
+    }
 
     /**
      * Creates a mesher with the iso value 0, no projection and no normals.
@@ -107,6 +232,34 @@ public final class SurfaceNets {
             throw new IllegalArgumentException("the number of projection steps must not be negative: " + steps);
         }
         this.projection = steps;
+        return this;
+    }
+
+    /**
+     * Turns on the pass that gives every separate sheet of the surface in a cell its own vertex
+     * (default off).
+     *
+     * <p>Without it a cell has one vertex, and a cell that holds two sheets of the surface (the
+     * surface is thinner than a cell there) can make edges that more than two triangles share. With
+     * it the crossed edges of a cell are grouped into sheets by the faces of the cell (two crossed
+     * edges of a face belong together; on a face whose opposite corners are inside, the value at the
+     * saddle of the bilinear field on the face decides whether the inside corners are joined or cut
+     * off one by one, the same way for both cells that share the face), and each sheet gets a vertex
+     * at the average of its own crossings. Cells with up to four sheets exist. The cost is a table
+     * lookup per cell (the table of 16 384 entries is built when this is first used) and two more
+     * bytes per cell of working storage; a mesh where no cell has two sheets is the same as without
+     * the pass.
+     *
+     * <p>What it does not do: two sheets that the faces of a cell connect, although they are
+     * different parts of the surface, still share a vertex, and a sheet thinner than a cell may be
+     * missed altogether, as with any sampling of a field. {@link #overSharedEdgeCount()} tells
+     * whether a mesh is clean.
+     *
+     * @param enabled whether to split the vertices of cells that hold several sheets
+     * @return this mesher, for chaining
+     */
+    public SurfaceNets manifold(boolean enabled) {
+        this.manifold = enabled;
         return this;
     }
 
@@ -160,6 +313,9 @@ public final class SurfaceNets {
         int cells = nx * ny * nz;
         if (cellVertex.length < cells) {
             cellVertex = new int[cells];
+        }
+        if (manifold && cellCode.length < cells) {
+            cellCode = new short[cells];
         }
         grid.set(minX, minY, minZ, cx, cy, cz, nx, ny, nz);
         sampleField(sdf, grid);
@@ -248,11 +404,16 @@ public final class SurfaceNets {
                         cellVertex[cell] = -1;
                         continue;
                     }
+                    int code = manifold ? sheetCode(mask, c0, c1, c2, c3, c4, c5, c6, c7) : mask;
+                    if (manifold) {
+                        cellCode[cell] = (short) code;
+                    }
+                    for (int sheet = 0, sheets = manifold ? Sheets.COUNT[code] : 1; sheet < sheets; sheet++) {
                     float sumX = 0, sumY = 0, sumZ = 0;
                     int crossings = 0;
                     for (int e = 0; e < 12; e++) {
                         int a = EDGE_A[e], b = EDGE_B[e];
-                        if (((mask >> a) & 1) == ((mask >> b) & 1)) {
+                        if (((mask >> a) & 1) == ((mask >> b) & 1) || manifold && Sheets.OF_EDGE[code * 12 + e] != sheet) {
                             continue;
                         }
                         float da = corner(a, c0, c1, c2, c3, c4, c5, c6, c7), db = corner(b, c0, c1, c2, c3, c4, c5, c6, c7);
@@ -273,7 +434,11 @@ public final class SurfaceNets {
                         py = Math.max(minY + cy * j, Math.min(minY + cy * (j + 1), q[1]));
                         pz = Math.max(minZ + cz * k, Math.min(minZ + cz * (k + 1), q[2]));
                     }
-                    cellVertex[cell] = addVertex(px, py, pz, Math.min(cx, Math.min(cy, cz)));
+                    int vertex = addVertex(px, py, pz, Math.min(cx, Math.min(cy, cz)));
+                    if (sheet == 0) {
+                        cellVertex[cell] = vertex; // the other sheets of the cell follow it
+                    }
+                    }
                 }
             }
         }
@@ -289,19 +454,24 @@ public final class SurfaceNets {
                     boolean in0 = d0 < 0f;
                     if (i < nx && j > 0 && j < ny && k > 0 && k < nz && in0 != field[i + 1 + sx * j + sxy * k] < 0f) {
                         // x edge: the four cells around it, counter-clockwise seen from +x
-                        quad(cellVertex[i + nx * (j - 1 + ny * (k - 1))], cellVertex[i + nx * (j + ny * (k - 1))], cellVertex[i + nx * (j + ny * k)], cellVertex[i + nx * (j - 1 + ny * k)], in0);
+                        quad(vertexOf(i + nx * (j - 1 + ny * (k - 1)), 3), vertexOf(i + nx * (j + ny * (k - 1)), 2), vertexOf(i + nx * (j + ny * k), 0), vertexOf(i + nx * (j - 1 + ny * k), 1), in0);
                     }
                     if (j < ny && i > 0 && i < nx && k > 0 && k < nz && in0 != field[i + sx * (j + 1) + sxy * k] < 0f) {
                         // y edge: counter-clockwise seen from +y
-                        quad(cellVertex[i - 1 + nx * (j + ny * (k - 1))], cellVertex[i - 1 + nx * (j + ny * k)], cellVertex[i + nx * (j + ny * k)], cellVertex[i + nx * (j + ny * (k - 1))], in0);
+                        quad(vertexOf(i - 1 + nx * (j + ny * (k - 1)), 7), vertexOf(i - 1 + nx * (j + ny * k), 5), vertexOf(i + nx * (j + ny * k), 4), vertexOf(i + nx * (j + ny * (k - 1)), 6), in0);
                     }
                     if (k < nz && i > 0 && i < nx && j > 0 && j < ny && in0 != field[i + sx * j + sxy * (k + 1)] < 0f) {
                         // z edge: counter-clockwise seen from +z
-                        quad(cellVertex[i - 1 + nx * (j - 1 + ny * k)], cellVertex[i + nx * (j - 1 + ny * k)], cellVertex[i + nx * (j + ny * k)], cellVertex[i - 1 + nx * (j + ny * k)], in0);
+                        quad(vertexOf(i - 1 + nx * (j - 1 + ny * k), 11), vertexOf(i + nx * (j - 1 + ny * k), 10), vertexOf(i + nx * (j + ny * k), 8), vertexOf(i - 1 + nx * (j + ny * k), 9), in0);
                     }
                 }
             }
         }
+    }
+
+    // the vertex of a cell for one of its edges: the only one, or that of the sheet that the edge belongs to
+    private int vertexOf(int cell, int edge) {
+        return manifold ? cellVertex[cell] + Sheets.OF_EDGE[cellCode[cell] * 12 + edge] : cellVertex[cell];
     }
 
     private static float corner(int c, float c0, float c1, float c2, float c3, float c4, float c5, float c6, float c7) {
@@ -398,6 +568,33 @@ public final class SurfaceNets {
      */
     public int triangleCount() {
         return triangleCount;
+    }
+
+    /**
+     * Counts the directed edges that more than one triangle of the last mesh runs along. In a mesh
+     * with a consistent winding that is the number of edges that more than two triangles share, so
+     * 0 means that no edge breaks the rule (see the class comment).
+     *
+     * <p>A diagnostic: it sorts one {@code long} per triangle edge, so it allocates and takes time
+     * of the order of the mesh size times its logarithm.
+     *
+     * @return the number of distinct directed edges that are used by two or more triangles
+     */
+    public int overSharedEdgeCount() {
+        long[] keys = new long[3 * triangleCount];
+        for (int t = 0, n = 0; t < triangleCount; t++) {
+            for (int e = 0; e < 3; e++) {
+                keys[n++] = ((long) indices[3 * t + e] << 32) | (indices[3 * t + (e + 1) % 3] & 0xFFFFFFFFL);
+            }
+        }
+        Arrays.sort(keys);
+        int over = 0;
+        for (int i = 1; i < keys.length; i++) {
+            if (keys[i] == keys[i - 1] && (i == 1 || keys[i] != keys[i - 2])) {
+                over++;
+            }
+        }
+        return over;
     }
 
     /**

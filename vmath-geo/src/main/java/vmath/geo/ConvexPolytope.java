@@ -47,162 +47,237 @@ public final class ConvexPolytope implements ConvexShape {
     private final double[] facetPlane; // 4 doubles per facet: the unit outward normal and d, so that n . x = d on the facet
     private final int[] edgeVertex; // 2 vertex indices per edge, the edges between facets (not the diagonals inside a planar facet)
 
+    /**
+     * A copy of {@code source} with its own geometry arrays and the topology (triangles, facets,
+     * edges) shared; {@link #place} fills the geometry.
+     */
+    private ConvexPolytope(ConvexPolytope source) {
+        this.vertices = new float[source.vertices.length];
+        this.triangles = source.triangles;
+        this.faceNormals = new double[source.faceNormals.length];
+        this.edgeDirections = new double[source.edgeDirections.length];
+        this.volume = source.volume;
+        this.facetStart = source.facetStart;
+        this.facetVertex = source.facetVertex;
+        this.facetPlane = new double[source.facetPlane.length];
+        this.edgeVertex = source.edgeVertex;
+    }
+
     private ConvexPolytope(float[] vertices, int[] triangles) {
         this.vertices = vertices;
         this.triangles = triangles;
-        List<double[]> normals = new ArrayList<>();
-        double vol = 0;
-        int nf = triangles.length / 3;
-        double[][] faceNormal = new double[nf][];
-        for (int f = 0; f < nf; f++) {
-            int a = triangles[3 * f], b = triangles[3 * f + 1], c = triangles[3 * f + 2];
-            double[] n = cross(a, b, c);
-            double len = Math.sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
-            faceNormal[f] = new double[] {n[0] / len, n[1] / len, n[2] / len};
-            vol += (n[0] * vertices[3 * a] + n[1] * vertices[3 * a + 1] + n[2] * vertices[3 * a + 2]) / 6.0;
-            boolean known = false;
-            for (double[] m : normals) {
-                known |= Math.abs(m[0] * faceNormal[f][0] + m[1] * faceNormal[f][1] + m[2] * faceNormal[f][2]) > 1 - 1e-12; // an axis: up to sign
-            }
-            if (!known) {
-                normals.add(faceNormal[f]);
-            }
+        Derived d = new Derived(vertices, triangles);
+        this.volume = d.volume;
+        this.faceNormals = d.faceNormals;
+        this.edgeDirections = d.edgeDirections;
+        this.facetStart = d.facetStart;
+        this.facetVertex = d.facetVertex;
+        this.facetPlane = d.facetPlane;
+        this.edgeVertex = d.edgeVertex;
+    }
+
+    /**
+     * Everything that is worked out from the vertices and the triangles when a polytope is made, step by step: the normals and the volume, the
+     * distinct edge directions, the facets (the triangles of one plane form one polygon), the order of the vertices around each facet, and the edges
+     * between facets.
+     */
+    private static final class Derived {
+        private final float[] vertices;
+        private final int[] triangles;
+        private final int nf;
+        private double[][] faceNormal;
+        private final java.util.Map<Long, Integer> faceOf = new java.util.HashMap<>();
+        private int[] facetOf;
+        private final List<double[]> planes = new ArrayList<>();
+        private final List<List<Integer>> facetTriangles = new ArrayList<>();
+        double volume;
+        double[] faceNormals;
+        double[] edgeDirections;
+        int[] facetStart;
+        int[] facetVertex;
+        double[] facetPlane;
+        int[] edgeVertex;
+
+        Derived(float[] vertices, int[] triangles) {
+            this.vertices = vertices;
+            this.triangles = triangles;
+            this.nf = triangles.length / 3;
+            normalsAndVolume();
+            indexDirectedEdges();
+            collectEdgeDirections();
+            groupFacets();
+            orderFacetVertices();
+            collectEdges();
         }
-        this.volume = vol;
-        this.faceNormals = flatten(normals);
-        // an edge is listed once, unless the two triangles on it are coplanar; its direction once among parallel edges
-        Set<Long> seen = new HashSet<>();
-        java.util.Map<Long, Integer> faceOf = new java.util.HashMap<>();
-        for (int f = 0; f < nf; f++) {
-            for (int k = 0; k < 3; k++) {
-                faceOf.put(((long) triangles[3 * f + k] << 32) | triangles[3 * f + (k + 1) % 3], f);
-            }
-        }
-        List<double[]> dirs = new ArrayList<>();
-        for (int f = 0; f < nf; f++) {
-            for (int k = 0; k < 3; k++) {
-                int u = triangles[3 * f + k], v = triangles[3 * f + (k + 1) % 3];
-                long key = ((long) Math.min(u, v) << 32) | Math.max(u, v);
-                if (!seen.add(key)) {
-                    continue;
-                }
-                Integer g = faceOf.get(((long) v << 32) | u);
-                if (g != null && faceNormal[g][0] * faceNormal[f][0] + faceNormal[g][1] * faceNormal[f][1] + faceNormal[g][2] * faceNormal[f][2] > 1 - 1e-12) {
-                    continue; // inside a planar facet
-                }
-                double ex = vertices[3 * v] - vertices[3 * u], ey = vertices[3 * v + 1] - vertices[3 * u + 1], ez = vertices[3 * v + 2] - vertices[3 * u + 2];
-                double len = Math.sqrt(ex * ex + ey * ey + ez * ez);
-                double[] d = {ex / len, ey / len, ez / len};
+
+        // the unit normal of every triangle, the enclosed volume, and the distinct normals up to sign
+        private void normalsAndVolume() {
+            List<double[]> normals = new ArrayList<>();
+            double vol = 0;
+            faceNormal = new double[nf][];
+            for (int f = 0; f < nf; f++) {
+                int a = triangles[3 * f], b = triangles[3 * f + 1], c = triangles[3 * f + 2];
+                double[] n = cross(a, b, c);
+                double len = Math.sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
+                faceNormal[f] = new double[] {n[0] / len, n[1] / len, n[2] / len};
+                vol += (n[0] * vertices[3 * a] + n[1] * vertices[3 * a + 1] + n[2] * vertices[3 * a + 2]) / 6.0;
                 boolean known = false;
-                for (double[] m : dirs) {
-                    known |= Math.abs(m[0] * d[0] + m[1] * d[1] + m[2] * d[2]) > 1 - 1e-12;
+                for (double[] m : normals) {
+                    known |= Math.abs(m[0] * faceNormal[f][0] + m[1] * faceNormal[f][1] + m[2] * faceNormal[f][2]) > 1 - 1e-12; // an axis: up to sign
                 }
                 if (!known) {
-                    dirs.add(d);
+                    normals.add(faceNormal[f]);
+                }
+            }
+            volume = vol;
+            faceNormals = flatten(normals);
+        }
+
+        // which triangle runs along each directed edge
+        private void indexDirectedEdges() {
+            for (int f = 0; f < nf; f++) {
+                for (int k = 0; k < 3; k++) {
+                    faceOf.put(((long) triangles[3 * f + k] << 32) | triangles[3 * f + (k + 1) % 3], f);
                 }
             }
         }
-        this.edgeDirections = flatten(dirs);
-        // facets: the triangles of one plane form one polygon
-        int[] facetOf = new int[nf];
-        java.util.Arrays.fill(facetOf, -1);
-        List<double[]> planes = new ArrayList<>();
-        List<List<Integer>> facetTriangles = new ArrayList<>();
-        for (int f = 0; f < nf; f++) {
-            if (facetOf[f] >= 0) {
-                continue;
+
+        // an edge is listed once, unless the two triangles on it are coplanar; its direction once among parallel edges
+        private void collectEdgeDirections() {
+            Set<Long> seen = new HashSet<>();
+            List<double[]> dirs = new ArrayList<>();
+            for (int f = 0; f < nf; f++) {
+                for (int k = 0; k < 3; k++) {
+                    int u = triangles[3 * f + k], v = triangles[3 * f + (k + 1) % 3];
+                    long key = ((long) Math.min(u, v) << 32) | Math.max(u, v);
+                    if (!seen.add(key)) {
+                        continue;
+                    }
+                    Integer g = faceOf.get(((long) v << 32) | u);
+                    if (g != null && faceNormal[g][0] * faceNormal[f][0] + faceNormal[g][1] * faceNormal[f][1] + faceNormal[g][2] * faceNormal[f][2] > 1 - 1e-12) {
+                        continue; // inside a planar facet
+                    }
+                    double ex = vertices[3 * v] - vertices[3 * u], ey = vertices[3 * v + 1] - vertices[3 * u + 1], ez = vertices[3 * v + 2] - vertices[3 * u + 2];
+                    double len = Math.sqrt(ex * ex + ey * ey + ez * ez);
+                    double[] d = {ex / len, ey / len, ez / len};
+                    boolean known = false;
+                    for (double[] m : dirs) {
+                        known |= Math.abs(m[0] * d[0] + m[1] * d[1] + m[2] * d[2]) > 1 - 1e-12;
+                    }
+                    if (!known) {
+                        dirs.add(d);
+                    }
+                }
             }
-            double d = faceNormal[f][0] * vertices[3 * triangles[3 * f]] + faceNormal[f][1] * vertices[3 * triangles[3 * f] + 1] + faceNormal[f][2] * vertices[3 * triangles[3 * f] + 2];
-            int id = planes.size();
-            planes.add(new double[] {faceNormal[f][0], faceNormal[f][1], faceNormal[f][2], d});
-            List<Integer> members = new ArrayList<>();
-            for (int g = f; g < nf; g++) {
-                if (facetOf[g] >= 0 || faceNormal[g][0] * faceNormal[f][0] + faceNormal[g][1] * faceNormal[f][1] + faceNormal[g][2] * faceNormal[f][2] < 1 - 1e-10) {
+            edgeDirections = flatten(dirs);
+        }
+
+        // facets: the triangles of one plane form one polygon
+        private void groupFacets() {
+            facetOf = new int[nf];
+            java.util.Arrays.fill(facetOf, -1);
+            for (int f = 0; f < nf; f++) {
+                if (facetOf[f] >= 0) {
                     continue;
                 }
-                double dg = faceNormal[f][0] * vertices[3 * triangles[3 * g]] + faceNormal[f][1] * vertices[3 * triangles[3 * g] + 1] + faceNormal[f][2] * vertices[3 * triangles[3 * g] + 2];
-                if (Math.abs(dg - d) <= 1e-5 * (1 + Math.abs(d))) {
-                    facetOf[g] = id;
-                    members.add(g);
+                double d = faceNormal[f][0] * vertices[3 * triangles[3 * f]] + faceNormal[f][1] * vertices[3 * triangles[3 * f] + 1] + faceNormal[f][2] * vertices[3 * triangles[3 * f] + 2];
+                int id = planes.size();
+                planes.add(new double[] {faceNormal[f][0], faceNormal[f][1], faceNormal[f][2], d});
+                List<Integer> members = new ArrayList<>();
+                for (int g = f; g < nf; g++) {
+                    if (facetOf[g] >= 0 || faceNormal[g][0] * faceNormal[f][0] + faceNormal[g][1] * faceNormal[f][1] + faceNormal[g][2] * faceNormal[f][2] < 1 - 1e-10) {
+                        continue;
+                    }
+                    double dg = faceNormal[f][0] * vertices[3 * triangles[3 * g]] + faceNormal[f][1] * vertices[3 * triangles[3 * g] + 1] + faceNormal[f][2] * vertices[3 * triangles[3 * g] + 2];
+                    if (Math.abs(dg - d) <= 1e-5 * (1 + Math.abs(d))) {
+                        facetOf[g] = id;
+                        members.add(g);
+                    }
                 }
+                facetTriangles.add(members);
             }
-            facetTriangles.add(members);
         }
-        int facets = planes.size();
-        facetStart = new int[facets + 1];
-        facetPlane = new double[4 * facets];
-        List<Integer> ordered = new ArrayList<>();
-        for (int f = 0; f < facets; f++) {
-            double[] pl = planes.get(f);
-            System.arraycopy(pl, 0, facetPlane, 4 * f, 4);
-            Set<Integer> verts = new java.util.LinkedHashSet<>();
-            for (int g : facetTriangles.get(f)) {
-                verts.add(triangles[3 * g]);
-                verts.add(triangles[3 * g + 1]);
-                verts.add(triangles[3 * g + 2]);
+
+        // the vertices of each facet, ordered counter-clockwise about the normal: by the angle in a basis of the plane around the centroid
+        private void orderFacetVertices() {
+            int facets = planes.size();
+            facetStart = new int[facets + 1];
+            facetPlane = new double[4 * facets];
+            List<Integer> ordered = new ArrayList<>();
+            for (int f = 0; f < facets; f++) {
+                double[] pl = planes.get(f);
+                System.arraycopy(pl, 0, facetPlane, 4 * f, 4);
+                Set<Integer> verts = new java.util.LinkedHashSet<>();
+                for (int g : facetTriangles.get(f)) {
+                    verts.add(triangles[3 * g]);
+                    verts.add(triangles[3 * g + 1]);
+                    verts.add(triangles[3 * g + 2]);
+                }
+                double cx = 0, cy = 0, cz = 0;
+                for (int v : verts) {
+                    cx += vertices[3 * v];
+                    cy += vertices[3 * v + 1];
+                    cz += vertices[3 * v + 2];
+                }
+                cx /= verts.size();
+                cy /= verts.size();
+                cz /= verts.size();
+                double ax = Math.abs(pl[0]) < 0.9 ? 1 : 0, ay = Math.abs(pl[0]) < 0.9 ? 0 : 1;
+                double ux = pl[1] * 0 - pl[2] * ay, uy = pl[2] * ax - pl[0] * 0, uz = pl[0] * ay - pl[1] * ax; // a x n ... any vector in the plane
+                double ul = Math.sqrt(ux * ux + uy * uy + uz * uz);
+                ux /= ul;
+                uy /= ul;
+                uz /= ul;
+                double vx = pl[1] * uz - pl[2] * uy, vy = pl[2] * ux - pl[0] * uz, vz = pl[0] * uy - pl[1] * ux; // n x u
+                List<Integer> list = new ArrayList<>(verts);
+                final double fcx = cx, fcy = cy, fcz = cz, fux = ux, fuy = uy, fuz = uz, fvx = vx, fvy = vy, fvz = vz;
+                list.sort(java.util.Comparator.comparingDouble(v -> {
+                    double dx = vertices[3 * v] - fcx, dy = vertices[3 * v + 1] - fcy, dz = vertices[3 * v + 2] - fcz;
+                    return Math.atan2(dx * fvx + dy * fvy + dz * fvz, dx * fux + dy * fuy + dz * fuz);
+                }));
+                ordered.addAll(list);
+                facetStart[f + 1] = ordered.size();
             }
-            // order counter-clockwise about the normal: by the angle in a basis of the plane around the centroid
-            double cx = 0, cy = 0, cz = 0;
-            for (int v : verts) {
-                cx += vertices[3 * v];
-                cy += vertices[3 * v + 1];
-                cz += vertices[3 * v + 2];
+            facetVertex = new int[ordered.size()];
+            for (int i = 0; i < facetVertex.length; i++) {
+                facetVertex[i] = ordered.get(i);
             }
-            cx /= verts.size();
-            cy /= verts.size();
-            cz /= verts.size();
-            double ax = Math.abs(pl[0]) < 0.9 ? 1 : 0, ay = Math.abs(pl[0]) < 0.9 ? 0 : 1;
-            double ux = pl[1] * 0 - pl[2] * ay, uy = pl[2] * ax - pl[0] * 0, uz = pl[0] * ay - pl[1] * ax; // a x n ... any vector in the plane
-            double ul = Math.sqrt(ux * ux + uy * uy + uz * uz);
-            ux /= ul;
-            uy /= ul;
-            uz /= ul;
-            double vx = pl[1] * uz - pl[2] * uy, vy = pl[2] * ux - pl[0] * uz, vz = pl[0] * uy - pl[1] * ux; // n x u
-            List<Integer> list = new ArrayList<>(verts);
-            final double fcx = cx, fcy = cy, fcz = cz, fux = ux, fuy = uy, fuz = uz, fvx = vx, fvy = vy, fvz = vz;
-            list.sort(java.util.Comparator.comparingDouble(v -> {
-                double dx = vertices[3 * v] - fcx, dy = vertices[3 * v + 1] - fcy, dz = vertices[3 * v + 2] - fcz;
-                return Math.atan2(dx * fvx + dy * fvy + dz * fvz, dx * fux + dy * fuy + dz * fuz);
-            }));
-            ordered.addAll(list);
-            facetStart[f + 1] = ordered.size();
         }
-        facetVertex = new int[ordered.size()];
-        for (int i = 0; i < facetVertex.length; i++) {
-            facetVertex[i] = ordered.get(i);
-        }
+
         // edges between facets: an edge of a triangle whose neighbour triangle belongs to another facet
-        List<int[]> edgeList = new ArrayList<>();
-        Set<Long> edgesSeen = new HashSet<>();
-        for (int f = 0; f < nf; f++) {
-            for (int k = 0; k < 3; k++) {
-                int u = triangles[3 * f + k], v = triangles[3 * f + (k + 1) % 3];
-                Integer g = faceOf.get(((long) v << 32) | u);
-                long key = ((long) Math.min(u, v) << 32) | Math.max(u, v);
-                if (g != null && facetOf[g] != facetOf[f] && edgesSeen.add(key)) {
-                    edgeList.add(new int[] {u, v});
+        private void collectEdges() {
+            List<int[]> edgeList = new ArrayList<>();
+            Set<Long> edgesSeen = new HashSet<>();
+            for (int f = 0; f < nf; f++) {
+                for (int k = 0; k < 3; k++) {
+                    int u = triangles[3 * f + k], v = triangles[3 * f + (k + 1) % 3];
+                    Integer g = faceOf.get(((long) v << 32) | u);
+                    long key = ((long) Math.min(u, v) << 32) | Math.max(u, v);
+                    if (g != null && facetOf[g] != facetOf[f] && edgesSeen.add(key)) {
+                        edgeList.add(new int[] {u, v});
+                    }
                 }
             }
+            edgeVertex = new int[2 * edgeList.size()];
+            for (int i = 0; i < edgeList.size(); i++) {
+                edgeVertex[2 * i] = edgeList.get(i)[0];
+                edgeVertex[2 * i + 1] = edgeList.get(i)[1];
+            }
         }
-        edgeVertex = new int[2 * edgeList.size()];
-        for (int i = 0; i < edgeList.size(); i++) {
-            edgeVertex[2 * i] = edgeList.get(i)[0];
-            edgeVertex[2 * i + 1] = edgeList.get(i)[1];
-        }
-    }
 
-    private double[] cross(int a, int b, int c) {
-        double ux = (double) vertices[3 * b] - vertices[3 * a], uy = (double) vertices[3 * b + 1] - vertices[3 * a + 1], uz = (double) vertices[3 * b + 2] - vertices[3 * a + 2];
-        double vx = (double) vertices[3 * c] - vertices[3 * a], vy = (double) vertices[3 * c + 1] - vertices[3 * a + 1], vz = (double) vertices[3 * c + 2] - vertices[3 * a + 2];
-        return new double[] {uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx};
-    }
-
-    private static double[] flatten(List<double[]> list) {
-        double[] a = new double[3 * list.size()];
-        for (int i = 0; i < list.size(); i++) {
-            System.arraycopy(list.get(i), 0, a, 3 * i, 3);
+        private double[] cross(int a, int b, int c) {
+            double ux = (double) vertices[3 * b] - vertices[3 * a], uy = (double) vertices[3 * b + 1] - vertices[3 * a + 1], uz = (double) vertices[3 * b + 2] - vertices[3 * a + 2];
+            double vx = (double) vertices[3 * c] - vertices[3 * a], vy = (double) vertices[3 * c + 1] - vertices[3 * a + 1], vz = (double) vertices[3 * c + 2] - vertices[3 * a + 2];
+            return new double[] {uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx};
         }
-        return a;
+
+        private static double[] flatten(List<double[]> list) {
+            double[] a = new double[3 * list.size()];
+            for (int i = 0; i < list.size(); i++) {
+                System.arraycopy(list.get(i), 0, a, 3 * i, 3);
+            }
+            return a;
+        }
     }
 
     /**
@@ -266,14 +341,94 @@ public final class ConvexPolytope implements ConvexShape {
      *     then moved by {@code translation}; the faces keep their indices
      */
     public ConvexPolytope transformed(Quatf rotation, Vec3f translation) {
-        float[] v = new float[vertices.length];
-        for (int i = 0; i < vertices.length / 3; i++) {
-            Vec3f p = rotation.transform(new Vec3f(vertices[3 * i], vertices[3 * i + 1], vertices[3 * i + 2])).add(translation);
-            v[3 * i] = p.x();
-            v[3 * i + 1] = p.y();
-            v[3 * i + 2] = p.z();
+        ConvexPolytope moved = new ConvexPolytope(this);
+        place(moved, rotation.x(), rotation.y(), rotation.z(), rotation.w(), translation.x(), translation.y(), translation.z());
+        return moved;
+    }
+
+    /**
+     * Applies a rigid transform to the polytope like {@link #transformed(Quatf, Vec3f)}, but into
+     * the arrays of {@code target}, which an earlier {@code transformed} of this polytope made, so
+     * that a body that moves every step allocates nothing.
+     *
+     * <p>The quaternion is normalised here (a rotation that is a few parts in 10^8 off unit length,
+     * as one of {@code float} components is, still gives unit normals); the numbers are those of
+     * the polytope made by {@code transformed} from the same rotation and translation (the same
+     * arithmetic in {@code double}, rounded to {@code float} for the vertices). The
+     * topology is shared, so the facets, edges and triangles keep their indices.
+     *
+     * @param qx the x component of the quaternion of the rotation
+     * @param qy the y component
+     * @param qz the z component
+     * @param qw the w component
+     * @param tx the x component of the translation
+     * @param ty the y component of the translation
+     * @param tz the z component of the translation
+     * @param target the polytope that receives the result; must have been made by
+     *     {@link #transformed(Quatf, Vec3f)} or {@link #copyTopology()} of this polytope, and is
+     *     changed
+     * @return {@code target}
+     * @throws IllegalArgumentException if {@code target} has not the topology of this polytope
+     */
+    public ConvexPolytope transformInto(double qx, double qy, double qz, double qw, double tx, double ty, double tz, ConvexPolytope target) {
+        if (target.triangles != triangles || target.vertices.length != vertices.length) {
+            throw new IllegalArgumentException("the target was not made from this polytope");
         }
-        return new ConvexPolytope(v, triangles.clone());
+        place(target, qx, qy, qz, qw, tx, ty, tz);
+        return target;
+    }
+
+    /**
+     * Makes a polytope with the topology of this one and the same vertices, to be moved with
+     * {@link #transformInto} and read afterwards.
+     *
+     * @return a new polytope that shares the topology of this one; its geometry is a copy of this one's
+     */
+    public ConvexPolytope copyTopology() {
+        ConvexPolytope copy = new ConvexPolytope(this);
+        place(copy, 0, 0, 0, 1, 0, 0, 0);
+        return copy;
+    }
+
+    /**
+     * Writes the geometry of this polytope rotated by the unit quaternion and moved by the
+     * translation into {@code to}: the vertices, the facet planes, the face and edge directions.
+     * The plane offsets are taken from the rounded vertices, as the constructor does.
+     */
+    private void place(ConvexPolytope to, double qx, double qy, double qz, double qw, double tx, double ty, double tz) {
+        double norm = Math.sqrt(qx * qx + qy * qy + qz * qz + qw * qw); // a quaternion of float components is a few 1e-8 off unit length, which would show in the unit normals
+        qx /= norm;
+        qy /= norm;
+        qz /= norm;
+        qw /= norm;
+        double r00 = 1 - 2 * (qy * qy + qz * qz), r01 = 2 * (qx * qy - qz * qw), r02 = 2 * (qx * qz + qy * qw);
+        double r10 = 2 * (qx * qy + qz * qw), r11 = 1 - 2 * (qx * qx + qz * qz), r12 = 2 * (qy * qz - qx * qw);
+        double r20 = 2 * (qx * qz - qy * qw), r21 = 2 * (qy * qz + qx * qw), r22 = 1 - 2 * (qx * qx + qy * qy);
+        float[] v = to.vertices;
+        for (int i = 0; i < vertices.length; i += 3) {
+            double x = vertices[i], y = vertices[i + 1], z = vertices[i + 2];
+            v[i] = (float) (r00 * x + r01 * y + r02 * z + tx);
+            v[i + 1] = (float) (r10 * x + r11 * y + r12 * z + ty);
+            v[i + 2] = (float) (r20 * x + r21 * y + r22 * z + tz);
+        }
+        for (int i = 0; i < faceNormals.length; i += 3) {
+            rotate(faceNormals, i, to.faceNormals, r00, r01, r02, r10, r11, r12, r20, r21, r22);
+        }
+        for (int i = 0; i < edgeDirections.length; i += 3) {
+            rotate(edgeDirections, i, to.edgeDirections, r00, r01, r02, r10, r11, r12, r20, r21, r22);
+        }
+        for (int f = 0; f < facetPlane.length / 4; f++) {
+            rotate(facetPlane, 4 * f, to.facetPlane, r00, r01, r02, r10, r11, r12, r20, r21, r22);
+            int first = 3 * facetVertex[facetStart[f]];
+            to.facetPlane[4 * f + 3] = to.facetPlane[4 * f] * v[first] + to.facetPlane[4 * f + 1] * v[first + 1] + to.facetPlane[4 * f + 2] * v[first + 2];
+        }
+    }
+
+    private static void rotate(double[] from, int at, double[] to, double r00, double r01, double r02, double r10, double r11, double r12, double r20, double r21, double r22) {
+        double x = from[at], y = from[at + 1], z = from[at + 2];
+        to[at] = r00 * x + r01 * y + r02 * z;
+        to[at + 1] = r10 * x + r11 * y + r12 * z;
+        to[at + 2] = r20 * x + r21 * y + r22 * z;
     }
 
     /**

@@ -15,8 +15,10 @@ import java.util.List;
  * @param projection the number of Newton steps that move each vertex onto the surface
  * @param verify whether every 10 frames the mesh is checked to be closed and consistently wound,
  *     which fails the run if it is not
+ * @param manifold whether the mesher gives every sheet of the surface in a cell its own vertex
+ *     ({@code SurfaceNets.manifold}), which removes the edges that more than two triangles share
  */
-record SculptOptions(int grid, boolean normals, int projection, boolean verify) {
+record SculptOptions(int grid, boolean normals, int projection, boolean verify, boolean manifold) {
 
     /**
      * The usage text of the demo's own options.
@@ -27,6 +29,7 @@ record SculptOptions(int grid, boolean normals, int projection, boolean verify) 
               --no-normals         do not compute normals in the mesher (flat shading)
               --projection N       Newton steps that move each vertex onto the surface (default 0)
               --verify             every 10 frames, fail if the mesh has an edge without a partner
+              --manifold           split the vertex of a cell that holds several sheets of the surface (no edge shared by more than two triangles)
             """;
 
     /**
@@ -39,20 +42,21 @@ record SculptOptions(int grid, boolean normals, int projection, boolean verify) 
      */
     static SculptOptions parse(List<String> args) {
         int grid = 64, projection = 0;
-        boolean normals = true, verify = false;
+        boolean normals = true, verify = false, manifold = false;
         for (int i = 0; i < args.size(); i++) {
             switch (args.get(i)) {
                 case "--grid" -> grid = intValue(args, ++i);
                 case "--projection" -> projection = intValue(args, ++i);
                 case "--no-normals" -> normals = false;
                 case "--verify" -> verify = true;
+                case "--manifold" -> manifold = true;
                 default -> throw new IllegalArgumentException("unknown argument " + args.get(i) + "\n" + USAGE);
             }
         }
         if (grid < 16 || grid > 192 || projection < 0 || projection > 8) {
             throw new IllegalArgumentException("--grid must be from 16 to 192 and --projection from 0 to 8\n" + USAGE);
         }
-        return new SculptOptions(grid, normals, projection, verify);
+        return new SculptOptions(grid, normals, projection, verify, manifold);
     }
 
     private static int intValue(List<String> args, int i) {

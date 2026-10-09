@@ -517,4 +517,223 @@ class OcclusionTest {
         }
         assertTrue(hidden > 100, "the test must hide something to mean anything, hid " + hidden + " of " + tested);
     }
+
+    // ------------------------------------------------------------ the batch test (PERF-1)
+
+    /**
+     * The test as it was before the batch entry point: all eight corners projected one by one, the rectangle rounded outwards, the
+     * pyramid walked at the finest level that spans at most four texels either way. The new code must give the same answers.
+     */
+    private static boolean eightCornerReference(DepthBuffer d, Mat4f m, float nearW, float x0, float y0, float z0, float x1, float y1, float z1) {
+        double[] rx = {m.m00(), m.m10(), m.m20(), m.m30()}, ry = {m.m01(), m.m11(), m.m21(), m.m31()}, rw = {m.m03(), m.m13(), m.m23(), m.m33()};
+        double minSx = Double.POSITIVE_INFINITY, minSy = minSx, maxSx = Double.NEGATIVE_INFINITY, maxSy = maxSx, nearest = 0.0;
+        for (int i = 0; i < 8; i++) {
+            float x = (i & 1) == 0 ? x0 : x1, y = (i & 2) == 0 ? y0 : y1, z = (i & 4) == 0 ? z0 : z1;
+            double w = rw[0] * x + rw[1] * y + rw[2] * z + rw[3];
+            if (!(w >= nearW)) {
+                return false;
+            }
+            double cx = rx[0] * x + rx[1] * y + rx[2] * z + rx[3], cy = ry[0] * x + ry[1] * y + ry[2] * z + ry[3];
+            double px = (cx / w * 0.5 + 0.5) * d.width(), py = (cy / w * 0.5 + 0.5) * d.height();
+            minSx = Math.min(minSx, px);
+            maxSx = Math.max(maxSx, px);
+            minSy = Math.min(minSy, py);
+            maxSy = Math.max(maxSy, py);
+            nearest = Math.max(nearest, 1.0 / w);
+        }
+        double needed = nearest * (1.0 + 1e-4);
+        if (!(needed > 0.0) || !Double.isFinite(needed) || !Double.isFinite(minSx) || !Double.isFinite(maxSx) || !Double.isFinite(minSy) || !Double.isFinite(maxSy)) {
+            return false;
+        }
+        int px0 = (int) Math.max(0, Math.floor(minSx)), px1 = (int) Math.min(d.width(), Math.ceil(maxSx));
+        int py0 = (int) Math.max(0, Math.floor(minSy)), py1 = (int) Math.min(d.height(), Math.ceil(maxSy));
+        if (px0 >= px1 || py0 >= py1) {
+            return false;
+        }
+        int l = 0;
+        while (l + 1 < d.levels() && (((px1 - 1) >> l) - (px0 >> l) >= 4 || ((py1 - 1) >> l) - (py0 >> l) >= 4)) {
+            l++;
+        }
+        for (int ty = py0 >> l; ty <= (py1 - 1) >> l; ty++) {
+            for (int tx = px0 >> l; tx <= (px1 - 1) >> l; tx++) {
+                if (d.invDepth(tx, ty, l) < needed) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    /** A scene of big occluders in front of the camera and many small boxes around and behind them. */
+    private record Scene(Mat4f vp, DepthBuffer buffer, BoundsArray boxes) {
+    }
+
+    private Scene scene(int boxCount, int w, int h) {
+        Vec3f eye = rnd.nextVec3f().mul(20f);
+        Vec3f forward = rnd.nextVec3f().normalize();
+        Mat4f vp = viewProjection(eye, eye.add(forward.mul(10f)));
+        DepthBuffer d = new DepthBuffer(w, h);
+        d.begin(vp, NEAR);
+        int count = 3 + (int) rnd.range(0, 12);
+        List<Aabbf> occluders = new ArrayList<>();
+        for (int i = 0; i < count; i++) {
+            Vec3f c = eye.add(forward.mul((float) rnd.range(6, 40))).add(rnd.nextVec3f().mul(10f));
+            Aabbf o = Aabbf.fromCenterHalfExtent(c, new Vec3f((float) rnd.range(3, 14), (float) rnd.range(3, 14), (float) rnd.range(0.3, 8)));
+            occluders.add(o);
+            d.addBox(o);
+        }
+        d.finish();
+        BoundsArray boxes = new BoundsArray(boxCount);
+        for (int k = 0; k < boxCount; k++) {
+            Vec3f where;
+            if (k % 3 != 0) { // most boxes sit behind some occluder, as seen from the eye
+                Aabbf o = occluders.get((int) rnd.range(0, occluders.size()));
+                Vec3f away = o.center().sub(eye).normalize();
+                where = o.center().add(away.mul((float) rnd.range(2, 60))).add(rnd.nextVec3f().mul(o.halfSize().length() * 0.4f));
+            } else {
+                where = eye.add(forward.mul((float) rnd.range(-3, 160))).add(rnd.nextVec3f().mul(30f));
+            }
+            float size = k % 7 == 0 ? (float) rnd.range(2, 15) : (float) rnd.range(0.1, 2);
+            boxes.add(Aabbf.fromCenterHalfExtent(where, new Vec3f(size * (float) rnd.range(0.2, 1), size * (float) rnd.range(0.2, 1), size * (float) rnd.range(0.2, 1))));
+        }
+        return new Scene(vp, d, boxes);
+    }
+
+    @Test
+    void theBatchTestGivesTheAnswersOfTheEightCornerTest() {
+        int hidden = 0, total = 0;
+        for (int trial = 0; trial < 40; trial++) {
+            Scene sc = scene(1500, trial % 2 == 0 ? 128 : 200, trial % 2 == 0 ? 64 : 90);
+            VisibilitySet vis = new VisibilitySet(1500);
+            vis.setAll(1500);
+            sc.buffer().cull(sc.boxes(), vis);
+            for (int i = 0; i < 1500; i++) {
+                boolean expected = eightCornerReference(sc.buffer(), sc.vp(), NEAR, sc.boxes().minXs()[i], sc.boxes().minYs()[i], sc.boxes().minZs()[i],
+                        sc.boxes().maxXs()[i], sc.boxes().maxYs()[i], sc.boxes().maxZs()[i]);
+                assertEquals(expected, !vis.get(i), "trial " + trial + " box " + i);
+                assertEquals(expected, sc.buffer().isHidden(sc.boxes().minXs()[i], sc.boxes().minYs()[i], sc.boxes().minZs()[i], sc.boxes().maxXs()[i], sc.boxes().maxYs()[i], sc.boxes().maxZs()[i]));
+                total++;
+                if (expected) {
+                    hidden++;
+                }
+            }
+        }
+        assertTrue(hidden > 200 && hidden < total - 500, "the scenes must hide some boxes and show some, hid " + hidden + " of " + total);
+    }
+
+    @Test
+    void boxesTheTestCannotJudgeAreVisibleInTheBatchToo() {
+        Mat4f vp = viewProjection(Vec3f.ZERO, new Vec3f(0f, 0f, -1f));
+        DepthBuffer d = buffer(vp, box(0f, 0f, -20f, 50f, 50f, 0.5f)); // a wall that covers the whole screen
+        BoundsArray b = new BoundsArray(8);
+        b.add(box(0f, 0f, -40f, 1f, 1f, 1f));                                     // hidden
+        b.add(new Aabbf(Float.NaN, 0f, -40f, 1f, 1f, -39f));                      // NaN bound
+        b.add(new Aabbf(-1f, -1f, -30f, Float.POSITIVE_INFINITY, 1f, -29f));       // infinite
+        b.add(box(0f, 0f, -0.05f, 1f, 1f, 1f));                                   // reaches the near plane
+        b.add(box(0f, 0f, 30f, 1f, 1f, 1f));                                      // behind the camera
+        b.add(box(0f, 0f, -10f, 1f, 1f, 1f));                                     // in front of the wall
+        b.add(box(500f, 0f, -40f, 1f, 1f, 1f));                                   // far off to the side
+        b.add(new Aabbf(1f, 1f, -39f, -1f, -1f, -41f));                           // min above max: the same box as the first, written the other way round
+        VisibilitySet vis = new VisibilitySet(8);
+        vis.setAll(8);
+        d.cull(b, vis);
+        boolean[] expectedHidden = {true, false, false, false, false, false, false, true};
+        for (int i = 0; i < 8; i++) {
+            assertEquals(expectedHidden[i], !vis.get(i), "box " + i);
+            assertEquals(expectedHidden[i], d.isHidden(b.minXs()[i], b.minYs()[i], b.minZs()[i], b.maxXs()[i], b.maxYs()[i], b.maxZs()[i]), "box " + i);
+        }
+        // before begin nothing is known to be hidden
+        DepthBuffer fresh = new DepthBuffer(128, 64);
+        VisibilitySet all = new VisibilitySet(8);
+        all.setAll(8);
+        fresh.cull(b, all);
+        assertEquals(8, all.count());
+    }
+
+    @Test
+    void theBatchTestOnlyTouchesTheObjectsInTheRangeThatAreSet() {
+        Scene sc = scene(640, 128, 64);
+        VisibilitySet whole = new VisibilitySet(640);
+        whole.setAll(640);
+        sc.buffer().cull(sc.boxes(), whole);
+        VisibilitySet parts = new VisibilitySet(640);
+        parts.setAll(640);
+        sc.buffer().cull(sc.boxes(), 0, 192, parts);
+        sc.buffer().cull(sc.boxes(), 192, 640, parts);
+        assertArrayEquals(whole.words(), parts.words());
+        // objects already cleared stay cleared, objects outside the range stay as they were
+        VisibilitySet some = new VisibilitySet(640);
+        some.set(3);
+        some.set(300);
+        sc.buffer().cull(sc.boxes(), 0, 64, some);
+        assertTrue(some.get(300), "outside the range");
+        assertFalse(some.get(4));
+        assertThrows(IllegalArgumentException.class, () -> sc.buffer().cull(sc.boxes(), 10, 100, some));
+        assertThrows(IllegalArgumentException.class, () -> sc.buffer().cull(sc.boxes(), 0, 641, some));
+        assertThrows(IllegalArgumentException.class, () -> sc.buffer().cull(sc.boxes(), 128, 64, some));
+    }
+
+    @Test
+    void theStageOnSeveralThreadsGivesTheSerialResult() throws Exception {
+        int n = 30000;
+        Scene sc = scene(n, 256, 128);
+        VisibilitySet serial = new VisibilitySet(n);
+        serial.setAll(n);
+        new OcclusionStage(sc.buffer()).cull(null, sc.boxes(), serial);
+        var pool = java.util.concurrent.Executors.newFixedThreadPool(3);
+        try {
+            OcclusionStage stage = new OcclusionStage(sc.buffer(), pool, 4);
+            for (int round = 0; round < 3; round++) {
+                VisibilitySet parallel = new VisibilitySet(n);
+                parallel.setAll(n);
+                stage.cull(null, sc.boxes(), parallel);
+                assertArrayEquals(serial.words(), parallel.words(), "round " + round);
+            }
+            // a small set is tested on the calling thread
+            BoundsArray small = new BoundsArray(100);
+            for (int i = 0; i < 100; i++) {
+                small.add(sc.boxes().get(i));
+            }
+            VisibilitySet a = new VisibilitySet(100), b = new VisibilitySet(100);
+            a.setAll(100);
+            b.setAll(100);
+            stage.cull(null, small, a);
+            new OcclusionStage(sc.buffer()).cull(null, small, b);
+            assertArrayEquals(b.words(), a.words());
+            // an executor that refuses: the call fails, and the stage still works afterwards
+            OcclusionStage refusing = new OcclusionStage(sc.buffer(), r -> {
+                throw new java.util.concurrent.RejectedExecutionException("no");
+            }, 4);
+            VisibilitySet c = new VisibilitySet(n);
+            c.setAll(n);
+            assertThrows(java.util.concurrent.RejectedExecutionException.class, () -> refusing.cull(null, sc.boxes(), c));
+            assertThrows(IllegalArgumentException.class, () -> new OcclusionStage(sc.buffer(), pool, 0));
+            assertThrows(NullPointerException.class, () -> new OcclusionStage(sc.buffer(), null, 2));
+            assertThrows(NullPointerException.class, () -> new OcclusionStage(null));
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    @Test
+    void anOrthographicBatchGivesTheAnswersOfTheSingleTest() {
+        for (DepthRange depth : DepthRange.values()) {
+            Mat4f vp = orthographic(new Vec3f(0f, 0f, 10f), Vec3f.ZERO, depth);
+            DepthBuffer d = orthographicBuffer(vp, depth, box(0f, 0f, 0f, 6f, 3f, 0.5f));
+            BoundsArray b = new BoundsArray(300);
+            for (int i = 0; i < 300; i++) {
+                b.add(box((float) rnd.range(-12, 12), (float) rnd.range(-7, 7), (float) rnd.range(-40, 8), (float) rnd.range(0.1, 2), (float) rnd.range(0.1, 2), (float) rnd.range(0.1, 2)));
+            }
+            VisibilitySet vis = new VisibilitySet(300);
+            vis.setAll(300);
+            d.cull(b, vis);
+            int hidden = 0;
+            for (int i = 0; i < 300; i++) {
+                boolean single = d.isHidden(b.minXs()[i], b.minYs()[i], b.minZs()[i], b.maxXs()[i], b.maxYs()[i], b.maxZs()[i]);
+                assertEquals(single, !vis.get(i), depth + " box " + i);
+                hidden += single ? 1 : 0;
+            }
+            assertTrue(hidden > 5 && hidden < 295, depth + ": hid " + hidden);
+        }
+    }
 }

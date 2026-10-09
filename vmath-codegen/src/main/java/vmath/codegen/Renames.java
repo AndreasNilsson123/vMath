@@ -30,7 +30,8 @@ public final class Renames {
             "JAVA_FLOAT_UNALIGNED", "JAVA_DOUBLE_UNALIGNED",
             "getFloat", "getDouble",
             "putFloat", "putDouble",
-            "asFloatBuffer", "asDoubleBuffer");
+            "asFloatBuffer", "asDoubleBuffer",
+            "parseFloat", "parseDouble");
 
     private static final Pattern WORD = Pattern.compile("[A-Za-z_][A-Za-z0-9_]*");
 

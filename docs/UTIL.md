@@ -122,3 +122,20 @@ plane, every capsule point at exactly the radius from the axis, the frustum corn
 | `DebugLines`: a box, a sphere and a capsule (12 + 72 + 52 lines) | 4.87 µs ± 0.29 µs |
 
 JMH `RoadmapBench`, JDK 25, single thread, 2026-10-03. The `project` and `prefilterGgx` figures include the cost of the environment lambda and have wide intervals.
+
+## `RollingStats` and `FrameTimer` (UTIL-4)
+
+`RollingStats(window)` keeps the last `window` samples of a stream in a ring and answers `min`, `max`, `mean` (Kahan summation), `stdDev` (population), `countAbove` and exact percentiles
+(`percentile(p)`, `percentiles(ps, out)`). A percentile is the linear interpolation between the closest ranks (NumPy's `linear`, Excel's `PERCENTILE.INC`): the median of 1, 2, 3, 4 is 2.5. One
+percentile is a quickselect on a copy of the window in a scratch array the object owns; several are one sort of that copy. Nothing is cached, so a query is right after any sequence of additions.
+An empty window gives `NaN`; a NaN or infinite sample is refused with an exception, since it would spoil every later figure. Tested against a sorted copy on 300 random windows with many repeated
+values (the case that breaks a careless partition), around the wrap of the ring, and for the refused inputs.
+
+`FrameTimer(window)` is a `RollingStats` of frame times in milliseconds: `tick()` once per frame (`tick(nowNanos)` with your own clock, `record(nanos)` for a duration you measured), then `fps()`,
+`averageMillis()`, `medianMillis()`, `percentileMillis(p)`, `minMillis()`, `maxMillis()`, `lowFps(percent)` (`lowFps(1)` is the "1% low": the frame rate at the 99th percentile of the frame time) and
+`hitches(factor)` (the frames that took more than `factor` times the median). The test builds a smooth run and a run with four 59 ms stalls among 9 ms frames that have the same mean frame time
+(10 ms, 100 fps): `fps()` cannot tell them apart, `lowFps(1)` gives 100 against 17, and `hitches(2)` counts the four.
+
+Neither allocates after construction (`AllocationContractTest`). JMH was not used; a plain loop on one machine (JDK 25, after warm-up): `add` 1.9 ns, `percentile` 0.41 us for a window of 240 and
+0.84 us for 1 024, four percentiles with one sort 2.3 us and 7.1 us, `mean` plus `stdDev` 1.9 us and 8.7 us. A frame loop that asks for the figures every frame spends a few microseconds; ask
+every 10th frame if that matters.

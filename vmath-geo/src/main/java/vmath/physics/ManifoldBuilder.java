@@ -24,6 +24,13 @@ import vmath.geo.Gjk;
  * solver can stop a fast body before it penetrates (the solver lets the body approach by that
  * distance and no more).
  *
+ * <p>{@link #boxes} is the same for two {@link OrientedBox}es, written for boxes: the fifteen axes of
+ * the separating axis test come from the three axes of each box and the nine dot products between
+ * them (no loop over vertices), and the incident face is clipped in the plane of the reference face
+ * against its rectangle. It gives the contacts of {@code polytopes} on the same boxes (tested on
+ * random poses against it, which is the oracle) and needs no polytope, so a world of boxes
+ * allocates nothing per step; PERF-2 measured it against {@code polytopes} (see {@code docs/PHYSICS.md}).
+ *
  * <p>{@link #shapes} is the general fallback for any two {@link ConvexShape}s (spheres, capsules,
  * rounded boxes, any support function): one contact point from the penetration query of
  * {@link Gjk}.
@@ -61,6 +68,10 @@ public final class ManifoldBuilder {
     private final double[] plane = new double[4], incidentPlane = new double[4];
     private final double[] axis = new double[3];
     private final double[] closest = new double[6];
+    // the box path: the dot products between the axes, their absolute values, the centre distance in each frame, the half extents
+    private final double[] boxR = new double[9], boxAbs = new double[9], boxDa = new double[3], boxDb = new double[3];
+    private final double[] boxHa = new double[3], boxHb = new double[3], boxCorner = new double[12];
+    private double[] uvIn = new double[2 * 16], uvOut = new double[2 * 16];
 
     /**
      * Creates a builder with its scratch memory.
@@ -88,6 +99,22 @@ public final class ManifoldBuilder {
         if (!(margin >= 0)) {
             throw new IllegalArgumentException("the margin must not be negative: " + margin);
         }
+        centroidsAndScale(a, b);
+        if (!faceAxes(a, b, margin) || !edgeAxes(a, b, margin)) {
+            return false; // a separating axis
+        }
+        if (edgeA >= 0 && bestEdge > bestFace + 1e-4 * (1 + extent)) {
+            edgeContact(a, b, edgeA, edgeB, edgeNx, edgeNy, edgeNz, bestEdge, out);
+            return out.count() > 0;
+        }
+        faceContact(a, b, faceOwner, faceIndex, margin, out);
+        return out.count() > 0;
+    }
+
+    // the centre of each polytope (the mean of its vertices, which orients the edge axes from A to B) and the largest coordinate of any vertex (the scale of the tolerances)
+    private double centreAx, centreAy, centreAz, centreBx, centreBy, centreBz, extent;
+
+    private void centroidsAndScale(ConvexPolytope a, ConvexPolytope b) {
         int na = a.vertexCount(), nb = b.vertexCount();
         double cax = 0, cay = 0, caz = 0, cbx = 0, cby = 0, cbz = 0, scale = 0;
         for (int i = 0; i < na; i++) {
@@ -102,15 +129,28 @@ public final class ManifoldBuilder {
             cbz += b.vertex(i, 2);
             scale = Math.max(scale, Math.max(Math.abs(b.vertex(i, 0)), Math.max(Math.abs(b.vertex(i, 1)), Math.abs(b.vertex(i, 2)))));
         }
-        cax /= na;
-        cay /= na;
-        caz /= na;
-        cbx /= nb;
-        cby /= nb;
-        cbz /= nb;
-        // the facets of both: the least separation (the greatest penetration is the most negative one, so the "best" axis has the largest separation)
-        double bestFace = Double.NEGATIVE_INFINITY;
-        int faceOwner = -1, faceIndex = -1;
+        centreAx = cax / na;
+        centreAy = cay / na;
+        centreAz = caz / na;
+        centreBx = cbx / nb;
+        centreBy = cby / nb;
+        centreBz = cbz / nb;
+        extent = scale;
+    }
+
+    // the result of the facet axes: the facet of least penetration (the largest separation, so the most negative one is the deepest), and who owns it
+    private double bestFace;
+    private int faceOwner, faceIndex;
+
+    /**
+     * Tests the facet normals of both polytopes as axes and remembers the best one.
+     *
+     * @return {@code false} if one of them separates the polytopes by more than {@code margin}
+     */
+    private boolean faceAxes(ConvexPolytope a, ConvexPolytope b, double margin) {
+        bestFace = Double.NEGATIVE_INFINITY;
+        faceOwner = -1;
+        faceIndex = -1;
         for (int owner = 0; owner < 2; owner++) {
             ConvexPolytope p = owner == 0 ? a : b, q = owner == 0 ? b : a;
             for (int f = 0; f < p.facetCount(); f++) {
@@ -130,10 +170,23 @@ public final class ManifoldBuilder {
                 }
             }
         }
-        // the edge pairs
-        double bestEdge = Double.NEGATIVE_INFINITY;
-        int edgeA = -1, edgeB = -1;
-        double enx = 0, eny = 0, enz = 0;
+        return true;
+    }
+
+    // the result of the edge axes: the pair of edges of least penetration and the axis (from A to B)
+    private double bestEdge, edgeNx, edgeNy, edgeNz;
+    private int edgeA, edgeB;
+
+    /**
+     * Tests the cross products of every pair of edges as axes and remembers the best one.
+     *
+     * @return {@code false} if one of them separates the polytopes by more than {@code margin}
+     */
+    private boolean edgeAxes(ConvexPolytope a, ConvexPolytope b, double margin) {
+        int na = a.vertexCount(), nb = b.vertexCount();
+        bestEdge = Double.NEGATIVE_INFINITY;
+        edgeA = -1;
+        edgeB = -1;
         for (int i = 0; i < a.edgeCount(); i++) {
             double ax = a.vertex(a.edgeEnd(i), 0) - a.vertex(a.edgeStart(i), 0), ay = a.vertex(a.edgeEnd(i), 1) - a.vertex(a.edgeStart(i), 1), az = a.vertex(a.edgeEnd(i), 2) - a.vertex(a.edgeStart(i), 2);
             double la = Math.sqrt(ax * ax + ay * ay + az * az);
@@ -148,7 +201,7 @@ public final class ManifoldBuilder {
                 x /= l;
                 y /= l;
                 z /= l;
-                if (x * (cbx - cax) + y * (cby - cay) + z * (cbz - caz) < 0) {
+                if (x * (centreBx - centreAx) + y * (centreBy - centreAy) + z * (centreBz - centreAz) < 0) {
                     x = -x;
                     y = -y;
                     z = -z;
@@ -168,18 +221,13 @@ public final class ManifoldBuilder {
                     bestEdge = sep;
                     edgeA = i;
                     edgeB = j;
-                    enx = x;
-                    eny = y;
-                    enz = z;
+                    edgeNx = x;
+                    edgeNy = y;
+                    edgeNz = z;
                 }
             }
         }
-        if (edgeA >= 0 && bestEdge > bestFace + 1e-4 * (1 + scale)) {
-            edgeContact(a, b, edgeA, edgeB, enx, eny, enz, bestEdge, out);
-            return out.count() > 0;
-        }
-        faceContact(a, b, faceOwner, faceIndex, margin, out);
-        return out.count() > 0;
+        return true;
     }
 
     private void edgeContact(ConvexPolytope a, ConvexPolytope b, int ea, int eb, double nx, double ny, double nz, double separation, ContactManifold out) {
@@ -226,7 +274,22 @@ public final class ManifoldBuilder {
         ConvexPolytope ref = owner == 0 ? a : b, inc = owner == 0 ? b : a;
         ref.facetPlane(facet, plane);
         double rnx = plane[0], rny = plane[1], rnz = plane[2], rd = plane[3];
-        // the incident facet: the most anti-parallel to the reference normal
+        int incFacet = incidentFacet(inc, rnx, rny, rnz);
+        int n = clipIncident(ref, facet, inc, incFacet, rnx, rny, rnz);
+        int count = candidatesBelow(owner, n, rnx, rny, rnz, rd, margin);
+        if (count == 0) {
+            count = deepestVertex(owner, inc, rnx, rny, rnz, rd, margin);
+        }
+        if (owner == 0) {
+            out.setNormal(rnx, rny, rnz);
+        } else {
+            out.setNormal(-rnx, -rny, -rnz);
+        }
+        reduce(count, out);
+    }
+
+    /** The facet of {@code inc} that is the most anti-parallel to the reference normal. */
+    private int incidentFacet(ConvexPolytope inc, double rnx, double rny, double rnz) {
         int incFacet = 0;
         double bestDot = Double.POSITIVE_INFINITY;
         for (int f = 0; f < inc.facetCount(); f++) {
@@ -237,6 +300,15 @@ public final class ManifoldBuilder {
                 incFacet = f;
             }
         }
+        return incFacet;
+    }
+
+    /**
+     * Clips the incident facet against the side planes of the reference facet (inside is the left of each edge seen from outside, n x edge).
+     *
+     * @return the number of vertices of the clipped polygon, which is in {@code polyIn} with the ids in {@code idIn}
+     */
+    private int clipIncident(ConvexPolytope ref, int facet, ConvexPolytope inc, int incFacet, double rnx, double rny, double rnz) {
         int n = Math.min(inc.facetVertexCount(incFacet), CAPACITY / 2);
         for (int k = 0; k < n; k++) {
             int v = inc.facetVertex(incFacet, k);
@@ -245,7 +317,6 @@ public final class ManifoldBuilder {
             polyIn[3 * k + 2] = inc.vertex(v, 2);
             idIn[k] = (facet << 16) ^ (incFacet << 8) ^ (k + 1);
         }
-        // clip against the side planes of the reference facet: inside is the left of each edge seen from outside, n x edge
         int rn = ref.facetVertexCount(facet);
         for (int k = 0; k < rn && n > 0; k++) {
             int v0 = ref.facetVertex(facet, k), v1 = ref.facetVertex(facet, (k + 1) % rn);
@@ -256,37 +327,47 @@ public final class ManifoldBuilder {
             if (!(ml > 0)) {
                 continue;
             }
-            mx /= ml;
-            my /= ml;
-            mz /= ml;
-            int m = 0;
-            for (int i = 0; i < n; i++) {
-                int j = (i + 1) % n;
-                double di = mx * (polyIn[3 * i] - p0x) + my * (polyIn[3 * i + 1] - p0y) + mz * (polyIn[3 * i + 2] - p0z);
-                double dj = mx * (polyIn[3 * j] - p0x) + my * (polyIn[3 * j + 1] - p0y) + mz * (polyIn[3 * j + 2] - p0z);
-                if (di >= 0 && m < CAPACITY - 1) {
-                    polyOut[3 * m] = polyIn[3 * i];
-                    polyOut[3 * m + 1] = polyIn[3 * i + 1];
-                    polyOut[3 * m + 2] = polyIn[3 * i + 2];
-                    idOut[m++] = idIn[i];
-                }
-                if ((di >= 0) != (dj >= 0) && m < CAPACITY - 1) {
-                    double t = di / (di - dj);
-                    polyOut[3 * m] = polyIn[3 * i] + t * (polyIn[3 * j] - polyIn[3 * i]);
-                    polyOut[3 * m + 1] = polyIn[3 * i + 1] + t * (polyIn[3 * j + 1] - polyIn[3 * i + 1]);
-                    polyOut[3 * m + 2] = polyIn[3 * i + 2] + t * (polyIn[3 * j + 2] - polyIn[3 * i + 2]);
-                    idOut[m++] = 0x4000 + k * 64 + (idIn[i] & 0x3F);
-                }
-            }
-            double[] td = polyIn;
-            polyIn = polyOut;
-            polyOut = td;
-            int[] ti = idIn;
-            idIn = idOut;
-            idOut = ti;
-            n = m;
+            n = clipAgainst(n, k, mx / ml, my / ml, mz / ml, p0x, p0y, p0z);
         }
-        // the points below (or within the margin of) the reference plane are the contacts
+        return n;
+    }
+
+    /** One step of Sutherland-Hodgman: keeps the part of {@code polyIn[0, n)} on the inside of the plane through p0 with the normal m, and swaps the buffers. */
+    private int clipAgainst(int n, int side, double mx, double my, double mz, double p0x, double p0y, double p0z) {
+        int m = 0;
+        for (int i = 0; i < n; i++) {
+            int j = (i + 1) % n;
+            double di = mx * (polyIn[3 * i] - p0x) + my * (polyIn[3 * i + 1] - p0y) + mz * (polyIn[3 * i + 2] - p0z);
+            double dj = mx * (polyIn[3 * j] - p0x) + my * (polyIn[3 * j + 1] - p0y) + mz * (polyIn[3 * j + 2] - p0z);
+            if (di >= 0 && m < CAPACITY - 1) {
+                polyOut[3 * m] = polyIn[3 * i];
+                polyOut[3 * m + 1] = polyIn[3 * i + 1];
+                polyOut[3 * m + 2] = polyIn[3 * i + 2];
+                idOut[m++] = idIn[i];
+            }
+            if ((di >= 0) != (dj >= 0) && m < CAPACITY - 1) {
+                double t = di / (di - dj);
+                polyOut[3 * m] = polyIn[3 * i] + t * (polyIn[3 * j] - polyIn[3 * i]);
+                polyOut[3 * m + 1] = polyIn[3 * i + 1] + t * (polyIn[3 * j + 1] - polyIn[3 * i + 1]);
+                polyOut[3 * m + 2] = polyIn[3 * i + 2] + t * (polyIn[3 * j + 2] - polyIn[3 * i + 2]);
+                idOut[m++] = 0x4000 + side * 64 + (idIn[i] & 0x3F);
+            }
+        }
+        double[] td = polyIn;
+        polyIn = polyOut;
+        polyOut = td;
+        int[] ti = idIn;
+        idIn = idOut;
+        idOut = ti;
+        return m;
+    }
+
+    /**
+     * The points of the clipped polygon below (or within the margin of) the reference plane are the contacts.
+     *
+     * @return the number of candidates written
+     */
+    private int candidatesBelow(int owner, int n, double rnx, double rny, double rnz, double rd, double margin) {
         int count = 0;
         double deepest = Double.POSITIVE_INFINITY;
         int deepestIndex = -1;
@@ -303,28 +384,30 @@ public final class ManifoldBuilder {
         if (count == 0 && deepestIndex >= 0 && deepest <= margin) {
             addCandidate(count++, owner, polyIn[3 * deepestIndex], polyIn[3 * deepestIndex + 1], polyIn[3 * deepestIndex + 2], deepest, rnx, rny, rnz, idIn[deepestIndex]);
         }
-        if (count == 0) {
-            // Nothing is left of the incident facet: with deep penetration of a general hull it can lie outside the side planes of the reference facet. The axis is still the one of least
-            // penetration, so the vertex of the incident body that reaches deepest below the reference plane is a valid single contact.
-            int bestVertex = -1;
-            double bestSep = Double.POSITIVE_INFINITY;
-            for (int v = 0; v < inc.vertexCount(); v++) {
-                double sep = rnx * inc.vertex(v, 0) + rny * inc.vertex(v, 1) + rnz * inc.vertex(v, 2) - rd;
-                if (sep < bestSep) {
-                    bestSep = sep;
-                    bestVertex = v;
-                }
-            }
-            if (bestVertex >= 0 && bestSep <= margin) {
-                addCandidate(count++, owner, inc.vertex(bestVertex, 0), inc.vertex(bestVertex, 1), inc.vertex(bestVertex, 2), bestSep, rnx, rny, rnz, 0x7000 + bestVertex);
+        return count;
+    }
+
+    /**
+     * Nothing is left of the incident facet: with deep penetration of a general hull it can lie outside the side planes of the reference facet. The axis is still
+     * the one of least penetration, so the vertex of the incident body that reaches deepest below the reference plane is a valid single contact.
+     *
+     * @return 1 if there is such a vertex within the margin, else 0
+     */
+    private int deepestVertex(int owner, ConvexPolytope inc, double rnx, double rny, double rnz, double rd, double margin) {
+        int bestVertex = -1;
+        double bestSep = Double.POSITIVE_INFINITY;
+        for (int v = 0; v < inc.vertexCount(); v++) {
+            double sep = rnx * inc.vertex(v, 0) + rny * inc.vertex(v, 1) + rnz * inc.vertex(v, 2) - rd;
+            if (sep < bestSep) {
+                bestSep = sep;
+                bestVertex = v;
             }
         }
-        if (owner == 0) {
-            out.setNormal(rnx, rny, rnz);
-        } else {
-            out.setNormal(-rnx, -rny, -rnz);
+        if (bestVertex >= 0 && bestSep <= margin) {
+            addCandidate(0, owner, inc.vertex(bestVertex, 0), inc.vertex(bestVertex, 1), inc.vertex(bestVertex, 2), bestSep, rnx, rny, rnz, 0x7000 + bestVertex);
+            return 1;
         }
-        reduce(count, out);
+        return 0;
     }
 
     /**
@@ -450,6 +533,291 @@ public final class ManifoldBuilder {
 
     private static double clamp(double v) {
         return Math.max(0, Math.min(1, v));
+    }
+
+    /**
+     * Fills {@code out} with the contacts of two oriented boxes: the same result as
+     * {@link #polytopes} on the boxes as polytopes (the separating axis test over the six face axes
+     * and the nine edge pairs, a face preferred to an edge pair of almost equal separation, the
+     * incident face clipped against the reference face and reduced to four points, or the closest
+     * points of two edges), without building polytopes.
+     *
+     * <p>Returns false, with {@code out} empty, when the boxes are apart by more than
+     * {@code margin} along some axis, and also when a number is NaN (nothing can be said about such
+     * a pose). The contact ids differ from those of {@code polytopes}, since the faces are numbered
+     * {@code 2 axis} for the positive side and {@code 2 axis + 1} for the negative one, but they are
+     * stable from step to step for a pair of boxes, which is what {@link ContactManifold#warmStartFrom}
+     * needs.
+     *
+     * @param a the first box; must not be {@code null}
+     * @param b the second box; must not be {@code null}
+     * @param margin the margin; contacts are made for boxes that are apart by less than this
+     * @param out receives the result; must not be {@code null}
+     * @return {@code true} if the boxes touch or overlap within the margin, in which case {@code out}
+     *     holds the contacts; {@code false} if they are further apart
+     * @throws IllegalArgumentException if {@code margin} is negative
+     */
+    public boolean boxes(OrientedBox a, OrientedBox b, double margin, ContactManifold out) {
+        out.clear();
+        if (!(margin >= 0)) {
+            throw new IllegalArgumentException("the margin must not be negative: " + margin);
+        }
+        final double[] axA = a.axes, axB = b.axes, r = boxR, ar = boxAbs, da = boxDa, db = boxDb, ha = boxHa, hb = boxHb;
+        ha[0] = a.hx;
+        ha[1] = a.hy;
+        ha[2] = a.hz;
+        hb[0] = b.hx;
+        hb[1] = b.hy;
+        hb[2] = b.hz;
+        double dx = b.cx - a.cx, dy = b.cy - a.cy, dz = b.cz - a.cz;
+        for (int i = 0; i < 3; i++) {
+            for (int j = 0; j < 3; j++) {
+                double v = axA[3 * i] * axB[3 * j] + axA[3 * i + 1] * axB[3 * j + 1] + axA[3 * i + 2] * axB[3 * j + 2];
+                r[3 * i + j] = v;
+                ar[3 * i + j] = Math.abs(v);
+            }
+            da[i] = dx * axA[3 * i] + dy * axA[3 * i + 1] + dz * axA[3 * i + 2];
+            db[i] = dx * axB[3 * i] + dy * axB[3 * i + 1] + dz * axB[3 * i + 2];
+        }
+        // the six face axes: the separation is the distance from the face plane to the nearest point of the other box
+        double bestFace = Double.NEGATIVE_INFINITY, faceSign = 1;
+        int faceOwner = -1, faceAxis = -1;
+        for (int i = 0; i < 3; i++) {
+            double sep = Math.abs(da[i]) - (ha[i] + hb[0] * ar[3 * i] + hb[1] * ar[3 * i + 1] + hb[2] * ar[3 * i + 2]);
+            if (sep > margin) {
+                return false;
+            }
+            if (sep > bestFace) {
+                bestFace = sep;
+                faceOwner = 0;
+                faceAxis = i;
+                faceSign = da[i] >= 0 ? 1 : -1; // the face of A that looks at B
+            }
+        }
+        for (int j = 0; j < 3; j++) {
+            double sep = Math.abs(db[j]) - (hb[j] + ha[0] * ar[j] + ha[1] * ar[3 + j] + ha[2] * ar[6 + j]);
+            if (sep > margin) {
+                return false;
+            }
+            if (sep > bestFace) {
+                bestFace = sep;
+                faceOwner = 1;
+                faceAxis = j;
+                faceSign = db[j] >= 0 ? -1 : 1; // the face of B that looks at A
+            }
+        }
+        if (faceOwner < 0) {
+            return false; // NaN
+        }
+        // the nine edge pairs (the cross product of two parallel axes has no direction: the faces cover them)
+        double bestEdge = Double.NEGATIVE_INFINITY;
+        int edgeI = -1, edgeJ = -1;
+        for (int i = 0; i < 3; i++) {
+            int i1 = (i + 1) % 3, i2 = (i + 2) % 3;
+            for (int j = 0; j < 3; j++) {
+                int j1 = (j + 1) % 3, j2 = (j + 2) % 3;
+                double rij = r[3 * i + j], len2 = 1 - rij * rij;
+                if (len2 <= 1e-12) {
+                    continue;
+                }
+                double ra = ha[i1] * ar[3 * i2 + j] + ha[i2] * ar[3 * i1 + j];
+                double rb = hb[j1] * ar[3 * i + j2] + hb[j2] * ar[3 * i + j1];
+                double dist = Math.abs(da[i2] * r[3 * i1 + j] - da[i1] * r[3 * i2 + j]);
+                double sep = (dist - ra - rb) / Math.sqrt(len2);
+                if (sep > margin) {
+                    return false;
+                }
+                if (sep > bestEdge) {
+                    bestEdge = sep;
+                    edgeI = i;
+                    edgeJ = j;
+                }
+            }
+        }
+        double scale = 0;
+        for (int c = 0; c < 3; c++) {
+            double ea = ha[0] * Math.abs(axA[c]) + ha[1] * Math.abs(axA[3 + c]) + ha[2] * Math.abs(axA[6 + c]);
+            double eb = hb[0] * Math.abs(axB[c]) + hb[1] * Math.abs(axB[3 + c]) + hb[2] * Math.abs(axB[6 + c]);
+            scale = Math.max(scale, Math.max(Math.abs(c == 0 ? a.cx : c == 1 ? a.cy : a.cz) + ea, Math.abs(c == 0 ? b.cx : c == 1 ? b.cy : b.cz) + eb));
+        }
+        if (edgeI >= 0 && bestEdge > bestFace + 1e-4 * (1 + scale)) {
+            boxEdgeContact(a, b, edgeI, edgeJ, dx, dy, dz, bestEdge, out);
+            return out.count() > 0;
+        }
+        boxFaceContact(a, b, faceOwner, faceAxis, faceSign, margin, out);
+        return out.count() > 0;
+    }
+
+    private void boxEdgeContact(OrientedBox a, OrientedBox b, int i, int j, double dx, double dy, double dz, double separation, ContactManifold out) {
+        final double[] axA = a.axes, axB = b.axes, ha = boxHa, hb = boxHb, c = boxCorner;
+        double nx = axA[3 * i + 1] * axB[3 * j + 2] - axA[3 * i + 2] * axB[3 * j + 1];
+        double ny = axA[3 * i + 2] * axB[3 * j] - axA[3 * i] * axB[3 * j + 2];
+        double nz = axA[3 * i] * axB[3 * j + 1] - axA[3 * i + 1] * axB[3 * j];
+        double l = Math.sqrt(nx * nx + ny * ny + nz * nz);
+        nx /= l;
+        ny /= l;
+        nz /= l;
+        if (nx * dx + ny * dy + nz * dz < 0) {
+            nx = -nx;
+            ny = -ny;
+            nz = -nz;
+        }
+        // the edges that touch are the ones, among the four parallel to the axis, that reach furthest along the axis of separation
+        int idA = edgeEnds(a, axA, ha, i, nx, ny, nz, 1.0, c, 0), idB = edgeEnds(b, axB, hb, j, nx, ny, nz, -1.0, c, 6);
+        segmentSegment(c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7], c[8], c[9], c[10], c[11], closest);
+        out.setNormal(nx, ny, nz);
+        out.add(closest[0], closest[1], closest[2], closest[3], closest[4], closest[5], -separation, 0x5000 + idA * 131 + idB);
+    }
+
+    /**
+     * Writes the two ends of the edge of {@code box} along its axis {@code along} that lies furthest
+     * along {@code (nx, ny, nz)} (times {@code toward}: +1 for the box on the side of the normal's
+     * origin, -1 for the other), and returns the number of that edge, 0 to 11.
+     */
+    private static int edgeEnds(OrientedBox box, double[] ax, double[] h, int along, double nx, double ny, double nz, double toward, double[] out, int at) {
+        double px = box.cx, py = box.cy, pz = box.cz;
+        int code = along * 4, bit = 1;
+        for (int k = 0; k < 3; k++) {
+            if (k == along) {
+                continue;
+            }
+            double side = (nx * ax[3 * k] + ny * ax[3 * k + 1] + nz * ax[3 * k + 2]) * toward >= 0 ? 1 : -1;
+            px += side * h[k] * ax[3 * k];
+            py += side * h[k] * ax[3 * k + 1];
+            pz += side * h[k] * ax[3 * k + 2];
+            if (side > 0) {
+                code += bit;
+            }
+            bit <<= 1;
+        }
+        double ex = h[along] * ax[3 * along], ey = h[along] * ax[3 * along + 1], ez = h[along] * ax[3 * along + 2];
+        out[at] = px - ex;
+        out[at + 1] = py - ey;
+        out[at + 2] = pz - ez;
+        out[at + 3] = px + ex;
+        out[at + 4] = py + ey;
+        out[at + 5] = pz + ez;
+        return code;
+    }
+
+    private void boxFaceContact(OrientedBox a, OrientedBox b, int owner, int axis, double sign, double margin, ContactManifold out) {
+        OrientedBox ref = owner == 0 ? a : b, inc = owner == 0 ? b : a;
+        final double[] rx = ref.axes, ix = inc.axes;
+        double[] rh = owner == 0 ? boxHa : boxHb, ih = owner == 0 ? boxHb : boxHa;
+        int k1 = (axis + 1) % 3, k2 = (axis + 2) % 3;
+        double rnx = sign * rx[3 * axis], rny = sign * rx[3 * axis + 1], rnz = sign * rx[3 * axis + 2];
+        double rd = rnx * ref.cx + rny * ref.cy + rnz * ref.cz + rh[axis];
+        // the incident face: the face of the other box that is the most anti-parallel to the reference normal
+        int m = 0;
+        double bestAbs = -1, bestDot = 0;
+        for (int q = 0; q < 3; q++) {
+            double dot = rnx * ix[3 * q] + rny * ix[3 * q + 1] + rnz * ix[3 * q + 2];
+            if (Math.abs(dot) > bestAbs) {
+                bestAbs = Math.abs(dot);
+                m = q;
+                bestDot = dot;
+            }
+        }
+        double side = bestDot > 0 ? -1 : 1;
+        int u = (m + 1) % 3, v = (m + 2) % 3;
+        double fx = inc.cx + side * ih[m] * ix[3 * m], fy = inc.cy + side * ih[m] * ix[3 * m + 1], fz = inc.cz + side * ih[m] * ix[3 * m + 2];
+        int refFace = 2 * axis + (sign > 0 ? 0 : 1), incFace = 2 * m + (side > 0 ? 0 : 1);
+        double[] pin = polyIn, uin = uvIn;
+        int n = 4;
+        for (int q = 0; q < 4; q++) {
+            double su = (q == 0 || q == 3) ? 1 : -1, sv = (q < 2) ? 1 : -1;
+            double px = fx + su * ih[u] * ix[3 * u] + sv * ih[v] * ix[3 * v];
+            double py = fy + su * ih[u] * ix[3 * u + 1] + sv * ih[v] * ix[3 * v + 1];
+            double pz = fz + su * ih[u] * ix[3 * u + 2] + sv * ih[v] * ix[3 * v + 2];
+            pin[3 * q] = px;
+            pin[3 * q + 1] = py;
+            pin[3 * q + 2] = pz;
+            double qx = px - ref.cx, qy = py - ref.cy, qz = pz - ref.cz;
+            uin[2 * q] = qx * rx[3 * k1] + qy * rx[3 * k1 + 1] + qz * rx[3 * k1 + 2];
+            uin[2 * q + 1] = qx * rx[3 * k2] + qy * rx[3 * k2 + 1] + qz * rx[3 * k2 + 2];
+            idIn[q] = (refFace << 16) ^ (incFace << 8) ^ (q + 1);
+        }
+        // clip against the four sides of the reference face: |u| <= half extent of the first other axis, |v| <= that of the second
+        for (int plane = 0; plane < 4 && n > 0; plane++) {
+            int comp = plane >> 1;
+            double half = rh[comp == 0 ? k1 : k2], sgn = (plane & 1) == 0 ? -1 : 1; // inside: half + sgn * coordinate >= 0
+            int cnt = 0;
+            for (int i = 0; i < n; i++) {
+                int j = (i + 1) % n;
+                double di = half + sgn * uvIn[2 * i + comp], dj = half + sgn * uvIn[2 * j + comp];
+                if (di >= 0 && cnt < CAPACITY - 1) {
+                    polyOut[3 * cnt] = polyIn[3 * i];
+                    polyOut[3 * cnt + 1] = polyIn[3 * i + 1];
+                    polyOut[3 * cnt + 2] = polyIn[3 * i + 2];
+                    uvOut[2 * cnt] = uvIn[2 * i];
+                    uvOut[2 * cnt + 1] = uvIn[2 * i + 1];
+                    idOut[cnt++] = idIn[i];
+                }
+                if ((di >= 0) != (dj >= 0) && cnt < CAPACITY - 1) {
+                    double t = di / (di - dj);
+                    polyOut[3 * cnt] = polyIn[3 * i] + t * (polyIn[3 * j] - polyIn[3 * i]);
+                    polyOut[3 * cnt + 1] = polyIn[3 * i + 1] + t * (polyIn[3 * j + 1] - polyIn[3 * i + 1]);
+                    polyOut[3 * cnt + 2] = polyIn[3 * i + 2] + t * (polyIn[3 * j + 2] - polyIn[3 * i + 2]);
+                    uvOut[2 * cnt] = uvIn[2 * i] + t * (uvIn[2 * j] - uvIn[2 * i]);
+                    uvOut[2 * cnt + 1] = uvIn[2 * i + 1] + t * (uvIn[2 * j + 1] - uvIn[2 * i + 1]);
+                    idOut[cnt++] = 0x4000 + plane * 64 + (idIn[i] & 0x3F);
+                }
+            }
+            double[] td = polyIn;
+            polyIn = polyOut;
+            polyOut = td;
+            td = uvIn;
+            uvIn = uvOut;
+            uvOut = td;
+            int[] ti = idIn;
+            idIn = idOut;
+            idOut = ti;
+            n = cnt;
+        }
+        // the points below (or within the margin of) the reference plane are the contacts
+        int count = 0;
+        double deepest = Double.POSITIVE_INFINITY;
+        int deepestIndex = -1;
+        for (int i = 0; i < n; i++) {
+            double sep = rnx * polyIn[3 * i] + rny * polyIn[3 * i + 1] + rnz * polyIn[3 * i + 2] - rd;
+            if (sep < deepest) {
+                deepest = sep;
+                deepestIndex = i;
+            }
+            if (sep <= margin) {
+                addCandidate(count++, owner, polyIn[3 * i], polyIn[3 * i + 1], polyIn[3 * i + 2], sep, rnx, rny, rnz, idIn[i]);
+            }
+        }
+        if (count == 0 && deepestIndex >= 0 && deepest <= margin) {
+            addCandidate(count++, owner, polyIn[3 * deepestIndex], polyIn[3 * deepestIndex + 1], polyIn[3 * deepestIndex + 2], deepest, rnx, rny, rnz, idIn[deepestIndex]);
+        }
+        if (count == 0) {
+            // nothing is left of the incident face: the corner of the incident box that reaches deepest below the reference plane is a valid single contact
+            int bestCorner = -1;
+            double bestSep = Double.POSITIVE_INFINITY;
+            for (int c = 0; c < 8; c++) {
+                double sx = (c & 1) == 0 ? -1 : 1, sy = (c & 2) == 0 ? -1 : 1, sz = (c & 4) == 0 ? -1 : 1;
+                double px = inc.cx + sx * ih[0] * ix[0] + sy * ih[1] * ix[3] + sz * ih[2] * ix[6];
+                double py = inc.cy + sx * ih[0] * ix[1] + sy * ih[1] * ix[4] + sz * ih[2] * ix[7];
+                double pz = inc.cz + sx * ih[0] * ix[2] + sy * ih[1] * ix[5] + sz * ih[2] * ix[8];
+                double sep = rnx * px + rny * py + rnz * pz - rd;
+                if (sep < bestSep) {
+                    bestSep = sep;
+                    bestCorner = c;
+                }
+            }
+            if (bestCorner >= 0 && bestSep <= margin) {
+                double sx = (bestCorner & 1) == 0 ? -1 : 1, sy = (bestCorner & 2) == 0 ? -1 : 1, sz = (bestCorner & 4) == 0 ? -1 : 1;
+                addCandidate(count++, owner, inc.cx + sx * ih[0] * ix[0] + sy * ih[1] * ix[3] + sz * ih[2] * ix[6], inc.cy + sx * ih[0] * ix[1] + sy * ih[1] * ix[4] + sz * ih[2] * ix[7],
+                        inc.cz + sx * ih[0] * ix[2] + sy * ih[1] * ix[5] + sz * ih[2] * ix[8], bestSep, rnx, rny, rnz, 0x7000 + bestCorner);
+            }
+        }
+        if (owner == 0) {
+            out.setNormal(rnx, rny, rnz);
+        } else {
+            out.setNormal(-rnx, -rny, -rnz);
+        }
+        reduce(count, out);
     }
 
     /**

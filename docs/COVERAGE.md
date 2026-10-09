@@ -41,6 +41,8 @@ Measured on the full test suite on 2026-10-03 (JDK 25; since the module split th
 spatial 92% / 82%, bulk 90% / 80%, mem 84% / 80%, and so on; the table is `coverageFloors` in `build.gradle.kts`), and below 94% of lines or 87% of branches overall. They are there so that a change that adds untested code
 is noticed, not to chase a number: raise a floor when you raise the coverage, lower one only with a reason in the commit. The least covered package by lines is `vmath.spatial` (96.5%), and by branches `vmath.spatial` (88.1%), then `vmath.color` and `vmath.gl` (89.3%); the floors of `vmath.physics` are 95% / 86%.
 
+**Measured 2026-10-08 (QA-5)**, `./gradlew coverageSummary` over the whole build: total 97.9% of lines (31 125 of 31 780) and 90.9% of branches (14 563 of 16 021). `vmath.lighting` 99.8% / 88.7% and `vmath.sky` 100% / 100% (only 29 branches), whose floors had been copied from `camera` (95% / 85%), are now 97% / 86% and 97% / 96%; `vmath.map`, which had no floor, is 94.9% / 82.2% and got 92% / 80%. The others: spatial 96.4% / 88.4%, geo 96.9% / 90.1%, gltf 96.7% / 89.7%, lines 96.2% / 87.7%, physics 98.4% / 87.7%, bulk 97.9% / 89.3%, gl 98.4% / 94.3%, mesh 98.5% / 93.1%. (`vmath.map` has the lowest branch figure of the main packages; the GPU checks in `vmath-samples` are not part of this figure.)
+
 ## Mutation testing
 
 ```bash

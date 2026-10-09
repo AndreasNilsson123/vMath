@@ -1,6 +1,7 @@
 package vmath.gpucull;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.lang.foreign.MemorySegment;
 import java.util.ArrayList;
@@ -113,6 +114,35 @@ class CullCopiesAgreeTest {
             Mat4f vp = Mat4f.ortho(-1f, 1f, -1f, 1f, 1f, 20f, space);
             agree(Frustumf.fromViewProjection(vp, range), vp, range, touching(), space + " orthographic, boxes on the planes");
         }
+    }
+
+    @Test
+    void everyStructureThatNestsBoxesRefusesANaNBoundAndLeavesItselfUnchanged() {
+        // QA-2: the flat kernels keep a box they cannot judge, which costs nothing to the other boxes; in a hierarchy the NaN would poison the box of every ancestor and hide other objects,
+        // so the trees refuse it with a clear exception, as the octree and the grid always did
+        float nan = Float.NaN;
+        DynamicAabbTree dynamic = new DynamicAabbTree();
+        int h = dynamic.insert(0, 0, 0, 1, 1, 1, 7);
+        assertThrows(IllegalArgumentException.class, () -> dynamic.insert(0, 0, nan, 1, 1, 1, 8));
+        assertThrows(IllegalArgumentException.class, () -> dynamic.insert(new Aabbf(nan, 0, 0, 1, 1, 1), 8));
+        assertThrows(IllegalArgumentException.class, () -> dynamic.move(h, 0, 0, 0, 1, nan, 1, 0, 0, 0));
+        assertEquals(1, dynamic.size(), "nothing was added");
+        dynamic.move(h, 5, 5, 5, 6, 6, 6, 0, 0, 0); // still usable
+        BoundsArray bounds = new BoundsArray(2);
+        bounds.add(new Aabbf(0, 0, 0, 1, 1, 1));
+        bounds.add(new Aabbf(2, 2, 2, nan, 3, 3));
+        assertThrows(IllegalArgumentException.class, () -> StaticBvh.build(bounds));
+        BoundsArray fine = new BoundsArray(2);
+        fine.add(new Aabbf(0, 0, 0, 1, 1, 1));
+        fine.add(new Aabbf(2, 2, 2, 3, 3, 3));
+        StaticBvh bvh = StaticBvh.build(fine);
+        BoundsArray poisoned = new BoundsArray(2);
+        poisoned.add(new Aabbf(0, 0, 0, 1, 1, 1));
+        poisoned.add(new Aabbf(2, nan, 2, 3, 3, 3));
+        assertThrows(IllegalArgumentException.class, () -> bvh.refit(poisoned));
+        bvh.refit(fine); // still usable
+        assertThrows(IllegalArgumentException.class, () -> new vmath.spatial.LooseOctree(10f).insert(nan, 0, 0, 1, 1, 1, 0));
+        assertThrows(IllegalArgumentException.class, () -> new vmath.spatial.UniformGrid(2f).insert(nan, 0, 0, 1, 1, 1, 0));
     }
 
     @Test

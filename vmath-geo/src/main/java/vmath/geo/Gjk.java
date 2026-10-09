@@ -596,22 +596,13 @@ public final class Gjk {
     // ---------------------------------------------------------------- EPA
 
     private void epa(ConvexShape a, ConvexShape b, Result r) {
-        double[][] ev = poly.ev, eva = poly.eva, evb = poly.evb;
-        int[] fv = poly.fv;
-        double[] fn = poly.fn, fd = poly.fd;
-        boolean[] fAlive = poly.fAlive;
         // the polytope starts as a tetrahedron around the origin: the GJK simplex, grown to four points when it ended on a face, an edge or a vertex
         poly.clear();
         for (int i = 0; i < size; i++) {
             poly.addVertexCopy(w[i], wa[i], wb[i]);
         }
         if (!growToTetrahedron(a, b)) {
-            // a shape without volume: report touching along the last search direction
-            witness(r);
-            r.depth = 0;
-            r.normal[0] = 0;
-            r.normal[1] = 1;
-            r.normal[2] = 0;
+            touching(r); // a shape without volume
             return;
         }
         poly.addFace(0, 1, 2, 3);
@@ -620,73 +611,106 @@ public final class Gjk {
         poly.addFace(2, 3, 0, 1);
         double scale = 1;
         for (int i = 0; i < 4; i++) {
-            scale = Math.max(scale, Math.sqrt(ev[i][0] * ev[i][0] + ev[i][1] * ev[i][1] + ev[i][2] * ev[i][2]));
+            double[] p = poly.ev[i];
+            scale = Math.max(scale, Math.sqrt(p[0] * p[0] + p[1] * p[1] + p[2] * p[2]));
         }
-        int closest = -1;
-        for (int iter = 0; iter < MAX_EPA_ITERATIONS; iter++) {
-            closest = poly.nearestFace();
-            if (closest < 0) {
-                break;
-            }
-            double dmin = fd[closest];
-            double nx = fn[3 * closest], ny = fn[3 * closest + 1], nz = fn[3 * closest + 2];
-            if (poly.vertices >= MAX_VERTICES) {
-                break;
-            }
-            int p = poly.vertices;
-            minkowski(a, b, nx, ny, nz, ev[p], eva[p], evb[p]);
-            double gap = ev[p][0] * nx + ev[p][1] * ny + ev[p][2] * nz - dmin;
-            if (gap <= EPA_TOLERANCE * (1 + scale)) {
-                break;
-            }
-            poly.vertices++;
-            // remove the faces that can see the new point, and join the rim to it
-            if (poly.faces > MAX_FACES - FACE_RESERVE) {
-                poly.compactFaces();
-            }
-            int edges = 0;
-            for (int f = 0; f < poly.faces; f++) {
-                if (!fAlive[f]) {
-                    continue;
-                }
-                int fa = fv[3 * f], fb = fv[3 * f + 1], fc = fv[3 * f + 2];
-                double side = (ev[p][0] - ev[fa][0]) * fn[3 * f] + (ev[p][1] - ev[fa][1]) * fn[3 * f + 1] + (ev[p][2] - ev[fa][2]) * fn[3 * f + 2];
-                if (side > FACE_VISIBLE * scale) {
-                    fAlive[f] = false;
-                    edges = poly.addEdge(edges, fa, fb);
-                    edges = poly.addEdge(edges, fb, fc);
-                    edges = poly.addEdge(edges, fc, fa);
-                }
-            }
-            if (poly.faces + edges > MAX_FACES) {
-                poly.compactFaces();
-            }
-            int newFaces = 0;
-            for (int e = 0; e < edges && poly.faces < MAX_FACES; e++) {
-                poly.addFace(poly.horizon[2 * e], poly.horizon[2 * e + 1], p, -1);
-                newFaces++;
-            }
-            if (newFaces == 0) {
-                break;
-            }
+        for (int iter = 0; iter < MAX_EPA_ITERATIONS && expand(a, b, scale); iter++) {
+            // each pass pushes the face nearest to the origin out to the boundary of A - B until it cannot go further
         }
-        // the poly.faces may have been renumbered or replaced since the loop chose one: find the nearest again
-        closest = poly.nearestFace();
+        // the faces may have been renumbered or replaced since the loop chose one: find the nearest again
+        int closest = poly.nearestFace();
         if (closest < 0) {
-            // every face was removed (a polytope that numerically has no volume): report touching along the last search direction
-            witness(r);
-            r.depth = 0;
-            r.normal[0] = 0;
-            r.normal[1] = 1;
-            r.normal[2] = 0;
+            touching(r); // every face was removed (a polytope that numerically has no volume)
             return;
         }
-        // poly.faces of one planar facet of the polytope tie for the smallest distance: take the one that contains the projection of the origin
-        double tieLimit = fd[closest] + FACE_TIE * (1 + scale);
+        contact(flattestNear(closest, scale), r);
+    }
+
+    /** Reports touching along the last search direction, for a Minkowski difference without volume. */
+    private void touching(Result r) {
+        witness(r);
+        r.depth = 0;
+        r.normal[0] = 0;
+        r.normal[1] = 1;
+        r.normal[2] = 0;
+    }
+
+    /**
+     * One pass of the expansion: takes the face nearest to the origin, asks for the support point of the Minkowski difference along its normal, and if that is
+     * further out replaces the faces that can see it by a cone from it to the rim.
+     *
+     * @return {@code false} when the polytope can grow no more (the face is on the boundary, there is no room, or nothing could be added)
+     */
+    private boolean expand(ConvexShape a, ConvexShape b, double scale) {
+        double[][] ev = poly.ev, eva = poly.eva, evb = poly.evb;
+        int closest = poly.nearestFace();
+        if (closest < 0) {
+            return false;
+        }
+        double dmin = poly.fd[closest];
+        double nx = poly.fn[3 * closest], ny = poly.fn[3 * closest + 1], nz = poly.fn[3 * closest + 2];
+        if (poly.vertices >= MAX_VERTICES) {
+            return false;
+        }
+        int p = poly.vertices;
+        minkowski(a, b, nx, ny, nz, ev[p], eva[p], evb[p]);
+        double gap = ev[p][0] * nx + ev[p][1] * ny + ev[p][2] * nz - dmin;
+        if (gap <= EPA_TOLERANCE * (1 + scale)) {
+            return false;
+        }
+        poly.vertices++;
+        // remove the faces that can see the new point, and join the rim to it
+        if (poly.faces > MAX_FACES - FACE_RESERVE) {
+            poly.compactFaces();
+        }
+        int edges = removeVisibleFaces(p, scale);
+        if (poly.faces + edges > MAX_FACES) {
+            poly.compactFaces();
+        }
+        int newFaces = 0;
+        for (int e = 0; e < edges && poly.faces < MAX_FACES; e++) {
+            poly.addFace(poly.horizon[2 * e], poly.horizon[2 * e + 1], p, -1);
+            newFaces++;
+        }
+        return newFaces > 0;
+    }
+
+    /**
+     * Kills the faces that can see vertex {@code p} and leaves the edges of the hole they made in the horizon list.
+     *
+     * @return the number of edges of the horizon
+     */
+    private int removeVisibleFaces(int p, double scale) {
+        double[][] ev = poly.ev;
+        int[] fv = poly.fv;
+        double[] fn = poly.fn;
+        boolean[] fAlive = poly.fAlive;
+        int edges = 0;
+        for (int f = 0; f < poly.faces; f++) {
+            if (!fAlive[f]) {
+                continue;
+            }
+            int fa = fv[3 * f], fb = fv[3 * f + 1], fc = fv[3 * f + 2];
+            double side = (ev[p][0] - ev[fa][0]) * fn[3 * f] + (ev[p][1] - ev[fa][1]) * fn[3 * f + 1] + (ev[p][2] - ev[fa][2]) * fn[3 * f + 2];
+            if (side > FACE_VISIBLE * scale) {
+                fAlive[f] = false;
+                edges = poly.addEdge(edges, fa, fb);
+                edges = poly.addEdge(edges, fb, fc);
+                edges = poly.addEdge(edges, fc, fa);
+            }
+        }
+        return edges;
+    }
+
+    /**
+     * Several faces of one planar facet of the polytope tie for the smallest distance: takes the one that contains the projection of the origin.
+     */
+    private int flattestNear(int closest, double scale) {
+        double tieLimit = poly.fd[closest] + FACE_TIE * (1 + scale);
         double bestMin = -Double.MAX_VALUE;
         int chosen = closest;
         for (int f = 0; f < poly.faces; f++) {
-            if (fAlive[f] && fd[f] <= tieLimit) {
+            if (poly.fAlive[f] && poly.fd[f] <= tieLimit) {
                 double m = poly.minBarycentric(f);
                 if (m > bestMin) {
                     bestMin = m;
@@ -694,11 +718,16 @@ public final class Gjk {
                 }
             }
         }
-        closest = chosen;
-        // the contact: barycentric coordinates of the origin's projection on the nearest face give the witness points on both shapes
-        int ia = fv[3 * closest], ib = fv[3 * closest + 1], ic = fv[3 * closest + 2];
-        double depth = fd[closest];
-        double nx = fn[3 * closest], ny = fn[3 * closest + 1], nz = fn[3 * closest + 2];
+        return chosen;
+    }
+
+    /**
+     * The contact: the barycentric coordinates of the origin's projection on the nearest face give the witness points on both shapes, the face normal the
+     * normal (it points out of A - B; B moved along it frees the shapes) and its distance the depth.
+     */
+    private void contact(int closest, Result r) {
+        double[][] eva = poly.eva, evb = poly.evb;
+        int ia = poly.fv[3 * closest], ib = poly.fv[3 * closest + 1], ic = poly.fv[3 * closest + 2];
         poly.barycentric(closest, bary);
         double bu = Math.max(0, bary[0]), bv = Math.max(0, bary[1]), bw = Math.max(0, bary[2]);
         double sum = bu + bv + bw;
@@ -709,11 +738,10 @@ public final class Gjk {
             r.pointA[k] = bu * eva[ia][k] + bv * eva[ib][k] + bw * eva[ic][k];
             r.pointB[k] = bu * evb[ia][k] + bv * evb[ib][k] + bw * evb[ic][k];
         }
-        r.depth = depth;
-        // the face normal points out of A - B; B moved along it frees the shapes
-        r.normal[0] = nx;
-        r.normal[1] = ny;
-        r.normal[2] = nz;
+        r.depth = poly.fd[closest];
+        r.normal[0] = poly.fn[3 * closest];
+        r.normal[1] = poly.fn[3 * closest + 1];
+        r.normal[2] = poly.fn[3 * closest + 2];
         // A - B has its nearest boundary point at n * depth, so moving B by +n * depth moves that point to the origin
     }
 

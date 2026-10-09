@@ -415,4 +415,49 @@ public record Mat2f(float m00, float m01, float m10, float m11) {
     public Mat2f toFloat() {
         return new Mat2f((float) m00, (float) m01, (float) m10, (float) m11);
     }
+
+    /**
+     * Reads a matrix from text in any of the forms the types print or people write: the {@code toString} of the record
+     * ({@code Mat2f[m00, m01, m10, ...]}, with labels), the rows of {@link #toMatrixString(int)} or of {@link #toCompactString()}, or a bare list. Without
+     * labels the numbers are read <b>row by row</b>, the way a matrix is written on paper, so the first row is the first 2 numbers; with labels
+     * (the record's {@code m<column><row>} names) they may come in any order. Brackets and bars are ignored and the numbers are separated by commas,
+     * semicolons or white space.
+     *
+     * @param text the text; must not be {@code null}
+     * @return the matrix
+     * @throws IllegalArgumentException if the text does not hold exactly 4 numbers, mixes labelled and unlabelled ones, names a component twice or not
+     *     at all, starts with the name of another type, or holds a malformed number
+     */
+    public static Mat2f parse(CharSequence text) {
+        String[] t = Text.tokens(text, "Mat2f", Text.MAT2, Text.ROWS2);
+        return new Mat2f(Float.parseFloat(t[0]), Float.parseFloat(t[1]), Float.parseFloat(t[2]), Float.parseFloat(t[3]));
+    }
+
+    /**
+     * Gives the compact text of the matrix, row by row, such as {@code ((1.0, 0.0), (0.0, 1.0))}, with every number in the shortest form that reads back exactly.
+     *
+     * @return the rows between parentheses; {@link #parse(CharSequence)} gives back an equal matrix
+     */
+    public String toCompactString() {
+        return "((" + m00 + ", " + m10 + "), (" + m01 + ", " + m11 + "))";
+    }
+
+    /**
+     * Lays the matrix out as 2 lines of right-aligned columns between bars, for a log or a debugger, with a fixed number of decimals:
+     *
+     * <pre>
+     * | 1.000  0.000 |
+     * | 0.000 -2.500 |
+     * </pre>
+     *
+     * <p>The rows are the rows of the matrix as written on paper (the transform of a column vector {@code M v}), the lines are separated by a line feed, and
+     * {@link #parse(CharSequence)} reads the text back (rounded to the decimals).
+     *
+     * @param decimals the digits after the point, 0 to 17
+     * @return the 2 lines joined with a line feed, without a final one
+     * @throws IllegalArgumentException if {@code decimals} is outside 0 to 17
+     */
+    public String toMatrixString(int decimals) {
+        return Text.matrix(new double[] {m00, m10, m01, m11}, 2, decimals);
+    }
 }

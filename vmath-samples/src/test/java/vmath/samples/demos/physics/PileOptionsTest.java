@@ -22,14 +22,16 @@ class PileOptionsTest {
         assertEquals(4, o.perFrame());
         assertFalse(o.contacts());
         assertFalse(o.verify());
+        assertTrue(o.warmStart());
     }
 
     @Test
     void parsesAllOptions() {
-        PileOptions o = PileOptions.parse(List.of("--bodies", "50", "--per-frame", "7", "--contacts", "--verify"));
+        PileOptions o = PileOptions.parse(List.of("--bodies", "50", "--per-frame", "7", "--contacts", "--verify", "--no-warm-start"));
         assertEquals(50, o.bodies());
         assertEquals(7, o.perFrame());
         assertTrue(o.contacts() && o.verify());
+        assertFalse(o.warmStart());
     }
 
     @Test

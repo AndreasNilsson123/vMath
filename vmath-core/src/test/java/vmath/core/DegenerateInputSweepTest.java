@@ -307,6 +307,9 @@ class DegenerateInputSweepTest {
     /** Methods that select or read one part of a value by an index or name: they throw for an index outside the value, by design, and nothing else. */
     private static final java.util.Set<String> INDEXED_ACCESSORS = java.util.Set.of("get", "column", "row");
 
+    /** Methods with a count of decimals that must be from 0 to 17 (CORE-12): they refuse any other number with an IllegalArgumentException, by design. */
+    private static final java.util.Set<String> CHECKED_DECIMALS = java.util.Set.of("format", "toMatrixString");
+
     /**
      * Methods that may return a finite value although an input held NaN, each because the NaN was in a part the method does not read or because the result is
      * defined by a comparison. A new method that turns NaN into a finite number must be added here with its reason, or fixed.
@@ -365,7 +368,9 @@ class DegenerateInputSweepTest {
         for (Map.Entry<String, Stat> e : stats.entrySet()) {
             Stat st = e.getValue();
             for (String exception : st.exceptions.keySet()) {
-                if (!(INDEXED_ACCESSORS.contains(baseName(e.getKey())) && exception.equals("IndexOutOfBoundsException"))) {
+                boolean byDesign = INDEXED_ACCESSORS.contains(baseName(e.getKey())) && exception.equals("IndexOutOfBoundsException")
+                        || CHECKED_DECIMALS.contains(baseName(e.getKey())) && exception.equals("IllegalArgumentException");
+                if (!byDesign) {
                     unexpected.add(e.getKey() + " threw " + exception);
                 }
             }

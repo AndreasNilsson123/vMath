@@ -82,6 +82,65 @@ class SurfaceNetsTest {
     }
 
     @Test
+    void aShellThinnerThanACellBreaksTheEdgeRuleAndTheManifoldPassRepairsIt() {
+        // PERF-4 / TD-31: a shell of thickness 0.04 on cells of 0.17 holds two sheets in the same cell, which one vertex serves
+        Sdf shell = Sdfs.onion(Sdfs.sphere(0, 0, 0, 1f), 0.02f);
+        for (int n : new int[] {20, 33, 47}) {
+            SurfaceNets plain = new SurfaceNets().mesh(shell, -1.7f, -1.7f, -1.7f, 1.7f, 1.7f, 1.7f, n, n, n);
+            SurfaceNets split = new SurfaceNets().manifold(true).mesh(shell, -1.7f, -1.7f, -1.7f, 1.7f, 1.7f, 1.7f, n, n, n);
+            assertTrue(plain.overSharedEdgeCount() > 0, "the plain method shares edges between more than two triangles, n=" + n);
+            assertEquals(0, split.overSharedEdgeCount(), "n=" + n);
+            Topology t = topology(split);
+            assertTrue(t.closed, "every edge of the repaired mesh has exactly one partner, n=" + n);
+            assertEquals(0, t.degenerate);
+            assertEquals(plain.triangleCount(), split.triangleCount(), "the same quads, with other corners");
+            assertTrue(split.vertexCount() > plain.vertexCount(), "cells with two sheets got two vertices");
+        }
+        // two spheres (inner and outer face of the shell) give the Euler characteristic 4 once the sheets are told apart
+        // (on this grid of 40 cells the shell is 2.4 cells thick, and the plain method gives an Euler characteristic of -332 because of the shared edges)
+        Sdf thick = Sdfs.onion(Sdfs.sphere(0, 0, 0, 1f), 0.1f);
+        SurfaceNets fine = new SurfaceNets().manifold(true).mesh(thick, -1.7f, -1.7f, -1.7f, 1.7f, 1.7f, 1.7f, 40, 40, 40);
+        assertEquals(0, fine.overSharedEdgeCount());
+        assertEquals(4, topology(fine).euler());
+        assertEquals(-332, topology(new SurfaceNets().mesh(thick, -1.7f, -1.7f, -1.7f, 1.7f, 1.7f, 1.7f, 40, 40, 40)).euler());
+    }
+
+    @Test
+    void aBodyMeetingItselfInACreaseIsRepairedToo() {
+        Sdf field = Sdfs.union(Sdfs.torus(0, 0, 0, 1f, 0.35f), Sdfs.sphere(0, 0, 0, 0.35f));
+        SurfaceNets plain = new SurfaceNets().mesh(field, -1.7f, -1.7f, -1.7f, 1.7f, 1.7f, 1.7f, 20, 20, 20);
+        SurfaceNets split = new SurfaceNets().manifold(true).mesh(field, -1.7f, -1.7f, -1.7f, 1.7f, 1.7f, 1.7f, 20, 20, 20);
+        assertTrue(plain.overSharedEdgeCount() > 0);
+        assertEquals(0, split.overSharedEdgeCount());
+        assertTrue(topology(split).closed);
+    }
+
+    @Test
+    void whereNoCellHoldsTwoSheetsThePassChangesNothing() {
+        for (Sdf field : new Sdf[] {Sdfs.sphere(0.1f, -0.2f, 0.3f, 1f), Sdfs.torus(0, 0, 0, 1f, 0.35f), Sdfs.box(0, 0, 0, 0.8f, 0.5f, 0.6f)}) {
+            SurfaceNets plain = new SurfaceNets().mesh(field, -1.6f, -1.6f, -1.6f, 1.6f, 1.6f, 1.6f, 32, 32, 32);
+            SurfaceNets split = new SurfaceNets().manifold(true).mesh(field, -1.6f, -1.6f, -1.6f, 1.6f, 1.6f, 1.6f, 32, 32, 32);
+            assertEquals(plain.vertexCount(), split.vertexCount());
+            assertEquals(plain.triangleCount(), split.triangleCount());
+            assertEquals(java.util.Arrays.toString(java.util.Arrays.copyOf(plain.positions(), 3 * plain.vertexCount())), java.util.Arrays.toString(java.util.Arrays.copyOf(split.positions(), 3 * split.vertexCount())));
+            assertEquals(java.util.Arrays.toString(java.util.Arrays.copyOf(plain.indices(), 3 * plain.triangleCount())), java.util.Arrays.toString(java.util.Arrays.copyOf(split.indices(), 3 * split.triangleCount())));
+            assertEquals(0, plain.overSharedEdgeCount());
+        }
+    }
+
+    @Test
+    void theSheetTableGroupsTheEdgesOfEveryCornerPatternInLoops() {
+        // one inside corner: a single sheet; two opposite corners of a face (a saddle): two sheets, each cutting its own corner off; a full or empty cell: none
+        SurfaceNets m = new SurfaceNets().manifold(true);
+        Sdf oneCorner = (x, y, z) -> (x > 0.5f && y > 0.5f && z > 0.5f) ? -1f : 1f;
+        m.mesh(oneCorner, 0, 0, 0, 2, 2, 2, 2, 2, 2);
+        assertEquals(0, m.overSharedEdgeCount());
+        Sdf saddle = (x, y, z) -> ((x > 1f) == (y > 1f)) ? -1f : 1f; // alternating columns: every grid edge in a 2 x 2 x 2 box
+        m.mesh(saddle, -1, -1, -1, 3, 3, 3, 4, 4, 4);
+        assertEquals(0, m.overSharedEdgeCount());
+    }
+
+    @Test
     void projectionPutsTheVerticesOnTheSurface() {
         Sdf sphere = Sdfs.sphere(0, 0, 0, 1f);
         SurfaceNets plain = new SurfaceNets(), projected = new SurfaceNets().projection(2);

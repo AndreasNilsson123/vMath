@@ -84,6 +84,7 @@ public final class PileDemo implements Demo {
         this.ctx = ctx;
         target = options.bodies();
         sim = new PileSimulation(target + 1000 * 20);
+        sim.warmStart(options.warmStart());
         renderer = new BodyRenderer(ctx);
         int slots = sim.capacity() + sim.staticCount();
         boxStream = new InstanceStream(ctx.arena(), slots, 3);

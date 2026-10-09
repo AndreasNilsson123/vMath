@@ -688,4 +688,40 @@ public record Vec2f(float x, float y) {
     public Vec2f toFloat() {
         return new Vec2f((float) x, (float) y);
     }
+
+    /**
+     * Reads a vector from text in any of the forms the types print or people write: the {@code toString} of the record
+     * ({@code Vec2f[x=1.0, y=1.0]}), the compact form of {@link #toCompactString()}, or a bare list such as {@code 1 2 3}.
+     * Brackets and bars are ignored and the numbers are separated by commas, semicolons or white space. Labelled numbers may come in any
+     * order; without labels they are taken in the order of the components. {@code NaN} and {@code Infinity} are numbers.
+     *
+     * @param text the text; must not be {@code null}
+     * @return the vector with the 2 numbers of the text
+     * @throws IllegalArgumentException if the text does not hold exactly 2 numbers, mixes labelled and unlabelled ones, names a component
+     *     twice or not at all, starts with the name of another type, or holds a malformed number
+     */
+    public static Vec2f parse(CharSequence text) {
+        String[] t = Text.tokens(text, "Vec2f", Text.VEC2, null);
+        return new Vec2f(Float.parseFloat(t[0]), Float.parseFloat(t[1]));
+    }
+
+    /**
+     * Gives the compact text of the vector, such as {@code (1.0, 2.0, 3.0)}, with every component in the shortest form that reads back exactly.
+     *
+     * @return the components in order between parentheses; {@link #parse(CharSequence)} gives back an equal vector
+     */
+    public String toCompactString() {
+        return "(" + x + ", " + y + ")";
+    }
+
+    /**
+     * Gives the text of the vector with a fixed number of decimals, for a HUD or a log.
+     *
+     * @param decimals the digits after the point, 0 to 17
+     * @return the components in order between parentheses, each rounded to {@code decimals} digits (not read back exactly)
+     * @throws IllegalArgumentException if {@code decimals} is outside 0 to 17
+     */
+    public String format(int decimals) {
+        return "(" + Text.fixed(x, decimals) + ", " + Text.fixed(y, decimals) + ")";
+    }
 }

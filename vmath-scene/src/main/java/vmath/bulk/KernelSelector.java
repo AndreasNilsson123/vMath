@@ -18,7 +18,8 @@ import vmath.annotations.Experimental;
  * <em>positive</em> priority, falling back to the scalar kernel (priority 0). A system property
  * forces a provider by name instead; {@code scalar} always works. The providers are looked up
  * once, when the selector is created, and the list is kept; the properties are read on every
- * call.
+ * call. {@code -Dvmath.deterministic=true} overrides all of it and selects the scalar kernel (see
+ * {@link #isDeterministic()}).
  *
  * <p>Nothing here is fatal: a provider that cannot be instantiated, whose {@code isSupported()}
  * throws, whose module is not resolved or whose kernel cannot be built is skipped, and the scalar
@@ -52,6 +53,12 @@ public final class KernelSelector<P, K> {
      * The name that always selects the scalar kernel.
      */
     public static final String SCALAR = "scalar";
+
+    /**
+     * The system property that switches every selector to its scalar kernel
+     * ({@code -Dvmath.deterministic=true}): see {@link #isDeterministic()}.
+     */
+    public static final String DETERMINISTIC = "vmath.deterministic";
 
     private static final Logger LOG = System.getLogger("vmath.kernel");
     private static final Set<String> REPORTED = ConcurrentHashMap.newKeySet();
@@ -128,6 +135,12 @@ public final class KernelSelector<P, K> {
      */
     public K best() {
         String forced = forcedName();
+        if (isDeterministic()) {
+            if (forced != null && !SCALAR.equals(forced)) {
+                report("the kernel '" + forced + "' (" + properties[0] + ") is ignored because " + DETERMINISTIC + "=true selects the scalar kernel");
+            }
+            return scalar.get();
+        }
         KernelProvider<K> chosen = null;
         for (KernelProvider<K> p : providers) {
             if (forced != null) {
@@ -151,6 +164,20 @@ public final class KernelSelector<P, K> {
             report("the kernel '" + chosen.name() + "' cannot be created, the scalar kernel is used: " + e);
             return scalar.get();
         }
+    }
+
+    /**
+     * Tells whether the deterministic mode is on: {@code -Dvmath.deterministic=true}, read on every
+     * call. In that mode {@link #best()} of every selector returns the scalar kernel, whatever
+     * providers exist and even if a property names one, so that the same program gives the same
+     * bytes on machines with and without {@code jdk.incubator.vector} (for lockstep networking,
+     * replays and golden files). The scalar kernels use no fused multiply-add and a fixed order of
+     * operations; see {@code docs/DETERMINISM.md} for what else is not reproducible across machines.
+     *
+     * @return {@code true} if the property is set to {@code true} (ignoring case)
+     */
+    public static boolean isDeterministic() {
+        return Boolean.parseBoolean(System.getProperty(DETERMINISTIC));
     }
 
     /**

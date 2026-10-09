@@ -1181,4 +1181,49 @@ public record Mat4f(
                 (float) m20, (float) m21, (float) m22, (float) m23,
                 (float) m30, (float) m31, (float) m32, (float) m33);
     }
+
+    /**
+     * Reads a matrix from text in any of the forms the types print or people write: the {@code toString} of the record
+     * ({@code Mat4f[m00, m01, m02, ...]}, with labels), the rows of {@link #toMatrixString(int)} or of {@link #toCompactString()}, or a bare list. Without
+     * labels the numbers are read <b>row by row</b>, the way a matrix is written on paper, so the first row is the first 4 numbers; with labels
+     * (the record's {@code m<column><row>} names) they may come in any order. Brackets and bars are ignored and the numbers are separated by commas,
+     * semicolons or white space.
+     *
+     * @param text the text; must not be {@code null}
+     * @return the matrix
+     * @throws IllegalArgumentException if the text does not hold exactly 16 numbers, mixes labelled and unlabelled ones, names a component twice or not
+     *     at all, starts with the name of another type, or holds a malformed number
+     */
+    public static Mat4f parse(CharSequence text) {
+        String[] t = Text.tokens(text, "Mat4f", Text.MAT4, Text.ROWS4);
+        return new Mat4f(Float.parseFloat(t[0]), Float.parseFloat(t[1]), Float.parseFloat(t[2]), Float.parseFloat(t[3]), Float.parseFloat(t[4]), Float.parseFloat(t[5]), Float.parseFloat(t[6]), Float.parseFloat(t[7]), Float.parseFloat(t[8]), Float.parseFloat(t[9]), Float.parseFloat(t[10]), Float.parseFloat(t[11]), Float.parseFloat(t[12]), Float.parseFloat(t[13]), Float.parseFloat(t[14]), Float.parseFloat(t[15]));
+    }
+
+    /**
+     * Gives the compact text of the matrix, row by row, such as {@code ((1.0, 0.0), (0.0, 1.0))}, with every number in the shortest form that reads back exactly.
+     *
+     * @return the rows between parentheses; {@link #parse(CharSequence)} gives back an equal matrix
+     */
+    public String toCompactString() {
+        return "((" + m00 + ", " + m10 + ", " + m20 + ", " + m30 + "), (" + m01 + ", " + m11 + ", " + m21 + ", " + m31 + "), (" + m02 + ", " + m12 + ", " + m22 + ", " + m32 + "), (" + m03 + ", " + m13 + ", " + m23 + ", " + m33 + "))";
+    }
+
+    /**
+     * Lays the matrix out as 4 lines of right-aligned columns between bars, for a log or a debugger, with a fixed number of decimals:
+     *
+     * <pre>
+     * | 1.000  0.000 |
+     * | 0.000 -2.500 |
+     * </pre>
+     *
+     * <p>The rows are the rows of the matrix as written on paper (the transform of a column vector {@code M v}), the lines are separated by a line feed, and
+     * {@link #parse(CharSequence)} reads the text back (rounded to the decimals).
+     *
+     * @param decimals the digits after the point, 0 to 17
+     * @return the 4 lines joined with a line feed, without a final one
+     * @throws IllegalArgumentException if {@code decimals} is outside 0 to 17
+     */
+    public String toMatrixString(int decimals) {
+        return Text.matrix(new double[] {m00, m10, m20, m30, m01, m11, m21, m31, m02, m12, m22, m32, m03, m13, m23, m33}, 4, decimals);
+    }
 }

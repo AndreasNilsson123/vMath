@@ -52,10 +52,10 @@ Index (tick when fixed):
 - [x] **TD-28** Low: known functional gaps recorded in prose only
 - [ ] **TD-34** Low: `CascadeCasters` costs more CPU time than the shadow-pass time it saves on cheap geometry (found by the cascaded-shadows demo)
 - [x] **TD-33** Low: the Hi-Z pyramid of the GPU culling shader needs a power-of-two base and normalised device depth on OpenGL, which no document says (found by the gpu-culling demo)
-- [ ] **TD-32** Medium: the SIMD frustum kernel is slower than the scalar one and allocates on a few hundred boxes (found by the terrain demo)
-- [ ] **TD-30** Medium: the box-box narrow phase costs 10 us per pair and allocates about 9 kB per body per frame (found by the rigid-pile demo)
-- [ ] **TD-31** Low: `SurfaceNets` can make edges that more than two triangles share where the surface has a feature thinner than a cell (found by the sdf-sculpt demo)
-- [ ] **TD-29** Medium: the occlusion test costs 107 ns per box, so occlusion culling does not pay for cheap geometry (found by the occlusion demo)
+- [x] **TD-32** Medium: the SIMD frustum kernel is slower than the scalar one and allocates on a few hundred boxes (found by the terrain demo)
+- [x] **TD-30** Medium (box pairs fixed; sphere pairs now dominate, PERF-2): the box-box narrow phase costs 10 us per pair and allocates about 9 kB per body per frame (found by the rigid-pile demo)
+- [x] **TD-31** Low (documented, and mostly fixed by an opt-in pass, PERF-4): `SurfaceNets` can make edges that more than two triangles share where the surface has a feature thinner than a cell (found by the sdf-sculpt demo)
+- [x] **TD-29** Medium (improved by 32%, 80% with four threads; not solved for cheap geometry, PERF-1): the occlusion test costs 107 ns per box, so occlusion culling does not pay for cheap geometry (found by the occlusion demo)
 
 ---
 
@@ -443,7 +443,7 @@ None found. The closest calls are listed as High (TD-01, TD-04) with the reason 
 - **Estimated scope:** M.
 - **Testing required:** the existing `OcclusionTest` (brute-force oracle), the demo's `--verify` run, and a JMH benchmark of the stage over 100,000 boxes before and after.
 - **Depends on:** none. Pairs with CULL-7 (the orthographic variant) and the Hi-Z work.
-- **Status:** Open. Found 2026-10-04 by the occlusion demo (DEMOS.md C4).
+- **Status:** Done as far as it goes (2026-10-08, PERF-1). `DepthBuffer.cull(BoundsArray, VisibilitySet)` (and the ranged form for threads) is the batch entry point and `OcclusionStage` uses it; `OcclusionStage(buffer, executor, parts)` cuts the set into ranges of whole words. Three early outs: a box nearer than every occluder is visible without projection (the largest stored value is kept), a box that reaches the near plane is visible from the separable minimum of w, and a box is decided from its centre and extent (a conservative screen rectangle from a few multiplications and two reciprocals) before the eight corners are projected; the corner projection shares the six products between the corners and uses one reciprocal per corner instead of two divisions. Measured on a city scene of 100 000 boxes (26 105 in the frustum, 99.6% removed): 103 ns per tested box before, 70 ns after on one thread, 36 ns with two, 21 ns with four (`OcclusionBench` is the JMH form); the removed boxes are the same, and 60 000 boxes of random scenes agree with the old eight-corner test (`OcclusionTest`). The centre test decided 99.6% of the boxes in that scene; the rest went on to the corners. What was **not** done: the projection stays in `double` (the guarantee rests on margins of a thousandth of a pixel and 1e-4 in depth) and is not in a SIMD kernel, so the test still costs about 70 ns, and on the demo's cheap cubes (15 ns of GPU time each) it does not pay on one thread; it pays when an object costs more than that to draw (a hundred triangles or a heavy shader), or with threads on a scene as heavy as the demo's. A decision for a thinner rectangle (a coarser pyramid level, fewer texel reads) was measured at about 1 ns and not taken. Found 2026-10-04 by the occlusion demo (DEMOS.md C4).
 
 ### TD-30 — The narrow phase for boxes is slow and allocates per body
 
@@ -457,7 +457,7 @@ None found. The closest calls are listed as High (TD-01, TD-04) with the reason 
 - **Estimated scope:** M for step 1, S for step 2.
 - **Testing required:** the existing physics tests against the new path with random poses (the old general path is the oracle), `PileSimulationTest`, the demo's `--verify`, and a JMH benchmark of a pair before and after.
 - **Depends on:** none.
-- **Status:** Open. Found 2026-10-04 by the rigid-pile demo (DEMOS.md P1).
+- **Status:** Done for boxes (2026-10-08, PERF-2). (1) `ManifoldBuilder.boxes` with `OrientedBox`: 14.1 us per random touching pair with `polytopes`, 0.53 us with `boxes`, no allocation; tested against `polytopes` as the oracle on 18 000 random pairs. (2) `ConvexPolytope.transformed` shares the topology and rotates the derived data instead of rebuilding it (14.7 us and 15.3 kB before, 0.3 us and 576 B after) and `transformInto` reuses the arrays. (3) Warm starting already existed in `ContactManifold.warmStartFrom`; the demo uses it now (a small solver gain, the energy at the end of a run is a little lower). In the rigid-pile demo the step of 1 000 bodies went from 54.3 ms to 24.1 ms and that of 3 000 bodies from 228.9 ms to 105.4 ms, and the allocation per frame from 8.9 MB to 45 kB. **Not done:** the narrow phase is still 54% of the step because a third of the bodies are spheres and every pair with a sphere goes through `Gjk` penetration (EPA), about 4 to 7 us each; a closed-form sphere-box and sphere-sphere contact would remove that and is the next step if the pile matters. Found 2026-10-04 by the rigid-pile demo (DEMOS.md P1).
 
 ### TD-31 — `SurfaceNets` is closed but not always manifold
 
@@ -470,7 +470,7 @@ None found. The closest calls are listed as High (TD-01, TD-04) with the reason 
 - **Estimated scope:** S for the Javadoc, M for the splitting pass.
 - **Testing required:** a test with the sphere-over-a-hole field above that counts shared edges (the demo's `MeshCheck` is the checker).
 - **Depends on:** none.
-- **Status:** Open. Found 2026-10-04 by the sdf-sculpt demo (DEMOS.md P2).
+- **Status:** Done as far as it goes (2026-10-08, PERF-4). The class Javadoc now says what holds (closed and consistently wound everywhere; every edge shared by exactly two triangles only where the surface is thicker than a cell); `SurfaceNets.overSharedEdgeCount()` counts the offending edges and `SurfaceNets.manifold(true)` gives each sheet of a cell its own vertex (an opt-in pass: it costs nothing measurable and changes nothing where no cell has two sheets). It removes all of them on a thin shell and on a torus that meets a sphere, and cuts the sculpt demo's worst case from 128 shared edges to 6 (20 of 21 checks affected become 15 of 21); the rest are parts of the surface that the faces of a cell connect, which one vertex per sheet cannot separate. Found 2026-10-04 by the sdf-sculpt demo (DEMOS.md P2).
 
 ### TD-32 — The SIMD frustum kernel loses to the scalar one on a few hundred boxes, and allocates
 
@@ -485,6 +485,7 @@ None found. The closest calls are listed as High (TD-01, TD-04) with the reason 
 - **Estimated scope:** S for step 2 once the crossover is measured, M with the diagnosis.
 - **Testing required:** the existing frustum kernel tests, a JMH benchmark at 64, 256, 1,000, 10,000 and 250,000 boxes for both kernels, the allocation test above.
 - **Depends on:** none. Related: `docs/technical-debt.md` TD-17 (allocation in paths that read as allocation-free).
+- **Status:** Done (2026-10-08, PERF-3). Diagnosed with a harness that runs the kernel cold in a fresh JVM and with `-XX:+PrintCompilation`: it is the JIT warm-up of the Vector API, not the input size. The loop is C2-compiled (`SimdFrustumCuller::cull`, tier 4) only after about 5 000 calls of 256 boxes; until then each call is 680 to 100 us and allocates 185 to 169 kB, and the hot kernel is faster than the scalar one at every size (64 boxes: 1.2 against 1.5 us; 256: 0.4 against 1.7; 1 000: 1.4 against 8.5; 10 000: 14 against 58; 250 000: 0.4 ms against 1.6 ms). The fix is not a size threshold but `SimdWarmUp`: the `"simd"` frustum kernel uses the scalar kernel (same bits) until a background thread has seen the vector kernel beat it. Cold, at 256 boxes, the allocation went from 185 kB per call to 0 B. `SimdWarmUpTest` checks the bits before and after the switch and the allocation of the first 1 000 calls on the calling thread (it lives in `vmath-simd` and not in `AllocationContractTest`, because `vmath-render` does not have the SIMD module). The matrix kernel has the same cold start and is not switched (its results differ in the last bit); `SimdWarmUp.warmUp` is for the loading screen.
 - **Status:** Open. Found 2026-10-04 by the terrain demo, which uses the scalar kernel for its 256 chunks for this reason.
 
 ### TD-33 — The depth pyramid of the culling shader has two contracts that the documents leave out

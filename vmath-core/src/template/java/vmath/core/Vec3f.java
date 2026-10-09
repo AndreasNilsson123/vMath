@@ -646,4 +646,40 @@ public record Vec3f(float x, float y, float z) {
     public Vec3f relativeTo(Vec3d origin) {
         return new Vec3f((float) (x - origin.x), (float) (y - origin.y), (float) (z - origin.z));
     }
+
+    /**
+     * Reads a vector from text in any of the forms the types print or people write: the {@code toString} of the record
+     * ({@code Vec3f[x=1.0, y=1.0, z=1.0]}), the compact form of {@link #toCompactString()}, or a bare list such as {@code 1 2 3}.
+     * Brackets and bars are ignored and the numbers are separated by commas, semicolons or white space. Labelled numbers may come in any
+     * order; without labels they are taken in the order of the components. {@code NaN} and {@code Infinity} are numbers.
+     *
+     * @param text the text; must not be {@code null}
+     * @return the vector with the 3 numbers of the text
+     * @throws IllegalArgumentException if the text does not hold exactly 3 numbers, mixes labelled and unlabelled ones, names a component
+     *     twice or not at all, starts with the name of another type, or holds a malformed number
+     */
+    public static Vec3f parse(CharSequence text) {
+        String[] t = Text.tokens(text, "Vec3f", Text.VEC3, null);
+        return new Vec3f(Float.parseFloat(t[0]), Float.parseFloat(t[1]), Float.parseFloat(t[2]));
+    }
+
+    /**
+     * Gives the compact text of the vector, such as {@code (1.0, 2.0, 3.0)}, with every component in the shortest form that reads back exactly.
+     *
+     * @return the components in order between parentheses; {@link #parse(CharSequence)} gives back an equal vector
+     */
+    public String toCompactString() {
+        return "(" + x + ", " + y + ", " + z + ")";
+    }
+
+    /**
+     * Gives the text of the vector with a fixed number of decimals, for a HUD or a log.
+     *
+     * @param decimals the digits after the point, 0 to 17
+     * @return the components in order between parentheses, each rounded to {@code decimals} digits (not read back exactly)
+     * @throws IllegalArgumentException if {@code decimals} is outside 0 to 17
+     */
+    public String format(int decimals) {
+        return "(" + Text.fixed(x, decimals) + ", " + Text.fixed(y, decimals) + ", " + Text.fixed(z, decimals) + ")";
+    }
 }

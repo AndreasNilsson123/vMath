@@ -23,6 +23,10 @@ import vmath.spatial.FrustumKernel;
  * multiply-add, and NaN handling matches (a NaN distance stays visible), so both kernels clear
  * exactly the same bits. Tests assert that.
  *
+ * <p><b>Cold start.</b> Until the JIT has compiled {@link #cull} (about the first thousands of calls)
+ * a call is hundreds of times slower than the scalar kernel and allocates; see {@link SimdWarmUp}.
+ * The kernel that {@code FrustumKernels.best()} returns avoids that; this class used directly does not.
+ *
  * <p>Not thread-safe; use one per thread.
  *
  * <p><b>Thread safety.</b> Not thread-safe: use one instance per thread.

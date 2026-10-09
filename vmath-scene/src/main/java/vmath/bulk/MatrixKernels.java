@@ -10,7 +10,8 @@ import vmath.annotations.Experimental;
  * falling back to the scalar kernel (which counts as priority 0); the property
  * {@code -Dvmath.matrixKernel=<name>} forces a specific one ({@code scalar} always works).
  * {@link Mat4fArray#multiply(Mat4fArray, Mat4fArray, Mat4fArray)} uses the choice made once at
- * class initialisation.
+ * class initialisation. {@code -Dvmath.deterministic=true} selects the scalar kernel in every case
+ * (see {@link KernelSelector#isDeterministic()}).
  *
  * <p>The providers are looked up once, at the first selection, and the list is kept; the property
  * is read on every call. A provider that cannot be instantiated, whose {@code isSupported()}

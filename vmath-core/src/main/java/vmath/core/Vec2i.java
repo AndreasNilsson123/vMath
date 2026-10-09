@@ -362,4 +362,29 @@ public record Vec2i(int x, int y) {
     public void writeTo(IntBuffer dst, int index) {
         dst.put(index, x).put(index + 1, y);
     }
+
+    /**
+     * Reads a vector from text in any of the forms the types print or people write: the {@code toString} of the record
+     * ({@code Vec2i[x=1, y=1]}), the compact form of {@link #toCompactString()}, or a bare list such as {@code 1 2 3}.
+     * Brackets and bars are ignored and the numbers are separated by commas, semicolons or white space. Labelled numbers may come in any
+     * order; without labels they are taken in the order of the components.
+     *
+     * @param text the text; must not be {@code null}
+     * @return the vector with the 2 numbers of the text
+     * @throws IllegalArgumentException if the text does not hold exactly 2 numbers, mixes labelled and unlabelled ones, names a component
+     *     twice or not at all, starts with the name of another type, or holds a number that is not an {@code int}
+     */
+    public static Vec2i parse(CharSequence text) {
+        String[] t = Text.tokens(text, "Vec2i", Text.VEC2, null);
+        return new Vec2i(Integer.parseInt(t[0]), Integer.parseInt(t[1]));
+    }
+
+    /**
+     * Gives the compact text of the vector, such as {@code (1, 2, 3)}.
+     *
+     * @return the components in order between parentheses; {@link #parse(CharSequence)} gives back an equal vector
+     */
+    public String toCompactString() {
+        return "(" + x + ", " + y + ")";
+    }
 }
