@@ -33,13 +33,13 @@ jobs:
       - name: Check
         run: |
           if [ -f previous/jmh.json ]; then python3 scripts/perf_guard.py jmh.json previous/jmh.json; else python3 scripts/perf_guard.py jmh.json; fi
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: jmh-${{ github.run_id }}
           path: jmh.json
           retention-days: 30
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: success()
         with:
           name: jmh-previous
